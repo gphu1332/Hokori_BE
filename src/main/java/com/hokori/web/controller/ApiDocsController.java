@@ -13,21 +13,7 @@ public class ApiDocsController {
     @Value("${server.port:8080}")
     private String serverPort;
 
-    @GetMapping("/v3/api-docs")
-    public Map<String, Object> apiDocs() {
-        Map<String, Object> openApi = new HashMap<>();
-        openApi.put("openapi", "3.0.1");
-        openApi.put("info", Map.of(
-            "title", "Hokori API",
-            "version", "1.0.0",
-            "description", "Japanese Learning Platform API"
-        ));
-        openApi.put("servers", new Object[]{
-            Map.of("url", "", "description", "Current server")
-        });
-        openApi.put("paths", new HashMap<>());
-        return openApi;
-    }
+    // Removed manual /v3/api-docs endpoint to let SpringDoc handle it automatically
 
     @GetMapping("/v3/api-docs/swagger-config")
     public Map<String, Object> swaggerConfig() {
