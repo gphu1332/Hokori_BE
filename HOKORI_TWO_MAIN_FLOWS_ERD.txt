@@ -1,0 +1,488 @@
+================================================================================
+                    HOKORI - 2 LUỒNG CHÍNH - ERD DESIGN
+                Content-Based Learning + JLPT Mock Test System
+================================================================================
+
+I. PHÂN TÍCH 2 LUỒNG CHÍNH
+==========================
+
+1.1. LUỒNG 1: CONTENT-BASED LEARNING (VietnamJP Style)
+======================================================
+
+WORKFLOW:
+Level Selection → Lesson Selection → Reading Content → 4 Tabs:
+├── Tab 1: Từ vựng (Vocabulary from content)
+├── Tab 2: Ngữ pháp (Grammar from content)  
+├── Tab 3: Nội dung (Content details)
+└── Tab 4: Luyện tập (Practice exercises)
+
+CONTENT SOURCES:
+├── Try N3 (existing textbook)
+├── Minano Nihongo N3 (existing textbook)
+└── Teacher-created content (custom)
+
+1.2. LUỒNG 2: JLPT MOCK TEST SYSTEM
+===================================
+
+WORKFLOW:
+Test Selection → Section Practice/Full Test → Question by Question → Results & Analysis
+
+TEST STRUCTURE:
+├── Language Knowledge (Vocabulary + Grammar)
+├── Reading Comprehension
+└── Listening Comprehension
+
+
+II. DATABASE DESIGN - LUỒNG 1: CONTENT-BASED LEARNING
+======================================================
+
+2.1. CONTENT MANAGEMENT ENTITIES:
+
+CONTENT_SOURCE
+├── source_id (PK)
+├── source_name ("Try N3", "Minano Nihongo N3", "Teacher Created")
+├── source_type (textbook/custom)
+├── level_id (FK to JLPT_LEVEL)
+├── publisher
+├── isbn (for textbooks)
+├── description
+├── is_active
+└── created_date
+
+READING_LESSON (Bài đọc chính)
+├── lesson_id (PK)
+├── source_id (FK)
+├── level_id (FK)
+├── lesson_number (within source)
+├── lesson_title
+├── reading_content_japanese
+├── reading_content_vietnamese (translation)
+├── audio_file_id (FK - nullable)
+├── difficulty_score (1-10)
+├── estimated_read_time_minutes
+├── cultural_notes
+├── created_by_user_id (FK - for teacher-created content)
+├── is_approved (boolean - for teacher content)
+├── created_date
+└── updated_date
+
+2.2. AUTO-EXTRACTED CONTENT ENTITIES:
+
+LESSON_VOCABULARY_EXTRACT (Tab 1: Từ vựng)
+├── extract_id (PK)
+├── lesson_id (FK)
+├── vocabulary_id (FK)
+├── extraction_method (auto_ai/manual_teacher)
+├── appearance_count (số lần xuất hiện trong bài)
+├── context_sentences (JSON array - câu chứa từ này)
+├── importance_level (1-5)
+├── is_new_vocabulary (boolean - chưa xuất hiện bài trước)
+├── explanation_vietnamese
+└── usage_notes
+
+LESSON_GRAMMAR_EXTRACT (Tab 2: Ngữ pháp)
+├── extract_id (PK)
+├── lesson_id (FK)
+├── grammar_pattern_id (FK)
+├── extraction_method (auto_ai/manual_teacher)
+├── example_sentences (JSON array - từ bài đọc)
+├── explanation_vietnamese
+├── usage_context
+├── difficulty_level (1-5)
+├── related_patterns (JSON array)
+└── common_mistakes (JSON)
+
+LESSON_CONTENT_DETAIL (Tab 3: Nội dung chi tiết)
+├── content_detail_id (PK)
+├── lesson_id (FK)
+├── content_breakdown (JSON - phân tích từng đoạn)
+├── main_themes (JSON array)
+├── cultural_context
+├── background_information
+├── discussion_questions (JSON array)
+├── comprehension_questions (JSON array)
+└── additional_resources (JSON)
+
+LESSON_PRACTICE (Tab 4: Luyện tập)
+├── practice_id (PK)
+├── lesson_id (FK)
+├── practice_type (vocabulary_drill/grammar_exercise/comprehension_quiz/writing)
+├── questions (JSON array)
+├── target_vocabulary (JSON array of vocabulary_ids)
+├── target_grammar (JSON array of grammar_ids)
+├── difficulty_level (1-5)
+├── estimated_time_minutes
+├── passing_score_percentage
+└── instructions
+
+2.3. SIMPLE CONTENT ACCESS (VietnamJP Style - No User Progress):
+
+VietnamJP Style = Static Content Access:
+- No user registration required
+- No progress tracking
+- Just browse: Level → Lesson → 4 Tabs
+- Content is publicly accessible
+
+OPTIONAL: USER PROGRESS (If Hokori wants to enhance VietnamJP style)
+========================================================================
+Note: VietnamJP doesn't have this, but Hokori could add as enhancement:
+
+USER_READING_HISTORY (Optional - Simple tracking)
+├── history_id (PK)
+├── user_id (FK) -- nullable for guest users
+├── lesson_id (FK)
+├── last_accessed_date
+├── access_count
+└── bookmarked (boolean)
+
+USER_FAVORITES (Optional - Simple bookmarking)
+├── favorite_id (PK)
+├── user_id (FK)
+├── lesson_id (FK)
+├── favorited_date
+└── notes
+
+
+III. DATABASE DESIGN - LUỒNG 2: JLPT MOCK TEST SYSTEM
+======================================================
+
+3.1. TEST MANAGEMENT ENTITIES:
+
+JLPT_MOCK_TEST
+├── test_id (PK)
+├── level_id (FK)
+├── test_name ("N3 Mock Test #1", "N3 Grammar Practice")
+├── test_type (full_mock/section_practice/quick_drill)
+├── total_questions
+├── time_limit_minutes
+├── sections_included (JSON - which sections: vocab, grammar, reading, listening)
+├── difficulty_level (1-5)
+├── passing_score_percentage
+├── is_official_format (boolean)
+├── created_by_admin_id (FK)
+├── is_premium (boolean)
+├── created_date
+└── is_active
+
+JLPT_TEST_SECTION
+├── section_id (PK)
+├── test_id (FK)
+├── section_type (language_knowledge_vocab/language_knowledge_grammar/reading/listening)
+├── section_name
+├── section_order (1,2,3)
+├── time_limit_minutes
+├── total_questions
+├── instructions
+├── section_weight_percentage
+└── passing_score_percentage
+
+3.2. QUESTION BANK SYSTEM:
+
+JLPT_QUESTION_BANK
+├── question_id (PK)
+├── level_id (FK)
+├── question_type (vocabulary/grammar/reading_comprehension/listening_comprehension)
+├── skill_tested (word_meaning/grammar_usage/text_understanding/audio_comprehension)
+├── question_text
+├── question_format (multiple_choice/fill_blank)
+├── difficulty_level (1-5)
+├── source_material (official_past_exam/practice_book/custom)
+├── related_vocabulary (JSON array)
+├── related_grammar (JSON array)
+├── explanation_vietnamese
+├── explanation_english
+├── tags (JSON array - for categorization)
+├── usage_count (how many times used in tests)
+├── correct_rate_percentage (statistics)
+├── created_by_admin_id (FK)
+├── created_date
+└── is_active
+
+JLPT_QUESTION_OPTION
+├── option_id (PK)
+├── question_id (FK)
+├── option_text
+├── option_order (1,2,3,4)
+├── is_correct (boolean)
+├── selection_count (statistics)
+└── explanation_when_selected
+
+JLPT_READING_PASSAGE
+├── passage_id (PK)
+├── level_id (FK)
+├── passage_title
+├── passage_text
+├── passage_type (short/medium/long/information_retrieval)
+├── topic_category (daily_life/business/academic/culture)
+├── difficulty_score (1-10)
+├── word_count
+├── estimated_read_time_minutes
+├── source_reference
+└── created_date
+
+JLPT_LISTENING_AUDIO
+├── audio_id (PK)
+├── level_id (FK)
+├── audio_file_path
+├── transcript_text
+├── audio_type (task_based/point_comprehension/general/quick_response)
+├── speaker_count
+├── duration_seconds
+├── difficulty_level (1-5)
+├── topic_category
+└── created_date
+
+3.3. TEST ASSIGNMENT & QUESTIONS:
+
+TEST_QUESTION_ASSIGNMENT (Link questions to specific tests)
+├── assignment_id (PK)
+├── test_id (FK)
+├── section_id (FK)
+├── question_id (FK)
+├── passage_id (FK - nullable, for reading questions)
+├── audio_id (FK - nullable, for listening questions)
+├── question_order
+├── points_value
+└── time_allocation_seconds
+
+3.4. USER TEST ATTEMPTS:
+
+USER_JLPT_TEST_ATTEMPT
+├── attempt_id (PK)
+├── user_id (FK)
+├── test_id (FK)
+├── attempt_number (1,2,3...)
+├── start_timestamp
+├── end_timestamp
+├── total_time_taken_minutes
+├── overall_score
+├── overall_percentage
+├── passed (boolean)
+├── section_scores (JSON)
+├── weak_areas_identified (JSON)
+├── strong_areas_identified (JSON)
+├── improvement_suggestions (JSON)
+├── estimated_jlpt_readiness (percentage)
+└── attempt_status (in_progress/completed/abandoned)
+
+USER_JLPT_ANSWER
+├── answer_id (PK)
+├── attempt_id (FK)
+├── question_id (FK)
+├── selected_option_id (FK)
+├── user_answer_text (for fill-in-blank)
+├── is_correct (boolean)
+├── time_taken_seconds
+├── confidence_level (1-5 - user can rate their confidence)
+├── question_order_in_test
+├── section_type
+└── answer_timestamp
+
+3.5. ANALYTICS & REPORTING:
+
+JLPT_PERFORMANCE_ANALYTICS
+├── analytics_id (PK)
+├── user_id (FK)
+├── level_id (FK)
+├── calculation_date
+├── total_tests_taken
+├── average_score_percentage
+├── best_section (vocabulary/grammar/reading/listening)
+├── weakest_section
+├── improvement_trend (JSON - score over time)
+├── estimated_pass_probability
+├── recommended_study_areas (JSON)
+└── next_calculation_due_date
+
+
+IV. SHARED ENTITIES (Used by both flows)
+=========================================
+
+4.1. REFERENCE DATA:
+
+JLPT_LEVEL (Shared by both flows)
+├── level_id (PK)
+├── level_code (N5/N4/N3/N2/N1)
+├── level_name
+├── description
+├── vocabulary_count_target
+├── grammar_count_target
+├── kanji_count_target
+├── passing_score_percentage
+└── estimated_study_hours
+
+VOCABULARY (Shared vocabulary database)
+├── vocabulary_id (PK)
+├── level_id (FK)
+├── word_kanji
+├── word_hiragana
+├── word_romaji
+├── meaning_vietnamese
+├── meaning_english
+├── part_of_speech
+├── jlpt_frequency_rank
+├── difficulty_level (1-5)
+├── audio_file_id (FK)
+├── example_sentences (JSON)
+├── related_words (JSON array)
+└── usage_notes
+
+GRAMMAR_PATTERN (Shared grammar database)
+├── grammar_id (PK)
+├── level_id (FK)
+├── pattern_name
+├── pattern_structure
+├── meaning_vietnamese
+├── meaning_english
+├── usage_context
+├── formality_level (casual/polite/formal)
+├── example_sentences (JSON)
+├── common_mistakes (JSON)
+└── related_patterns (JSON array)
+
+4.2. USER MANAGEMENT (Shared):
+
+USER
+├── user_id (PK)
+├── email (unique)
+├── username (unique)
+├── password_hash
+├── role (student/teacher/admin)
+├── registration_date
+├── last_login_date
+├── account_status (active/inactive)
+└── email_verified
+
+USER_PROFILE
+├── profile_id (PK)
+├── user_id (FK)
+├── full_name
+├── current_jlpt_level
+├── target_jlpt_level
+├── study_preferences (JSON)
+├── total_study_time_minutes
+└── created_date
+
+TEACHER_PROFILE (For teacher-created content)
+├── teacher_id (PK)
+├── user_id (FK)
+├── qualification_level
+├── specialization (N5/N4/N3/N2/N1)
+├── approved_by_admin_id (FK)
+├── approval_date
+├── content_creation_count
+├── average_content_rating
+└── is_active
+
+
+V. RELATIONSHIPS SUMMARY
+=========================
+
+5.1. CONTENT-BASED LEARNING RELATIONSHIPS:
+
+CONTENT_SOURCE (1) → (M) READING_LESSON
+READING_LESSON (1) → (M) LESSON_VOCABULARY_EXTRACT
+READING_LESSON (1) → (M) LESSON_GRAMMAR_EXTRACT  
+READING_LESSON (1) → (1) LESSON_CONTENT_DETAIL
+READING_LESSON (1) → (M) LESSON_PRACTICE
+USER (1) → (M) USER_READING_PROGRESS
+USER (1) → (M) USER_TAB_PROGRESS
+USER (1) → (M) USER_VOCABULARY_LEARNING
+
+5.2. JLPT TEST RELATIONSHIPS:
+
+JLPT_MOCK_TEST (1) → (M) JLPT_TEST_SECTION
+JLPT_TEST_SECTION (M) → (M) JLPT_QUESTION_BANK (through TEST_QUESTION_ASSIGNMENT)
+JLPT_QUESTION_BANK (1) → (M) JLPT_QUESTION_OPTION
+USER (1) → (M) USER_JLPT_TEST_ATTEMPT
+USER_JLPT_TEST_ATTEMPT (1) → (M) USER_JLPT_ANSWER
+
+5.3. SHARED RELATIONSHIPS:
+
+JLPT_LEVEL (1) → (M) CONTENT_SOURCE
+JLPT_LEVEL (1) → (M) READING_LESSON
+JLPT_LEVEL (1) → (M) JLPT_MOCK_TEST
+VOCABULARY (M) → (M) LESSON_VOCABULARY_EXTRACT
+GRAMMAR_PATTERN (M) → (M) LESSON_GRAMMAR_EXTRACT
+
+
+VI. SAMPLE QUERIES FOR EACH FLOW
+=================================
+
+6.1. CONTENT-BASED LEARNING QUERIES:
+
+-- Get all lessons for N3 from Try N3
+SELECT rl.* FROM READING_LESSON rl
+JOIN CONTENT_SOURCE cs ON rl.source_id = cs.source_id
+WHERE cs.source_name = 'Try N3' AND rl.level_id = 3
+ORDER BY rl.lesson_number;
+
+-- Get vocabulary from a specific lesson
+SELECT v.word_kanji, v.word_hiragana, v.meaning_vietnamese, lve.context_sentences
+FROM LESSON_VOCABULARY_EXTRACT lve
+JOIN VOCABULARY v ON lve.vocabulary_id = v.vocabulary_id  
+WHERE lve.lesson_id = ?
+ORDER BY lve.importance_level DESC;
+
+-- Get user's reading progress
+SELECT rl.lesson_title, urp.reading_status, urp.practice_score
+FROM USER_READING_PROGRESS urp
+JOIN READING_LESSON rl ON urp.lesson_id = rl.lesson_id
+WHERE urp.user_id = ?
+ORDER BY urp.last_accessed_date DESC;
+
+6.2. JLPT TEST QUERIES:
+
+-- Get all N3 mock tests
+SELECT * FROM JLPT_MOCK_TEST
+WHERE level_id = 3 AND is_active = true
+ORDER BY created_date DESC;
+
+-- Get test questions with options
+SELECT q.question_text, qo.option_text, qo.is_correct
+FROM TEST_QUESTION_ASSIGNMENT tqa
+JOIN JLPT_QUESTION_BANK q ON tqa.question_id = q.question_id
+JOIN JLPT_QUESTION_OPTION qo ON q.question_id = qo.question_id
+WHERE tqa.test_id = ?
+ORDER BY tqa.question_order, qo.option_order;
+
+-- Get user's test performance
+SELECT jmt.test_name, ujta.overall_percentage, ujta.passed, ujta.end_timestamp
+FROM USER_JLPT_TEST_ATTEMPT ujta
+JOIN JLPT_MOCK_TEST jmt ON ujta.test_id = jmt.test_id
+WHERE ujta.user_id = ?
+ORDER BY ujta.end_timestamp DESC;
+
+
+VII. IMPLEMENTATION PHASES
+===========================
+
+7.1. PHASE 1 - Content-Based Learning MVP:
+- CONTENT_SOURCE, READING_LESSON
+- LESSON_VOCABULARY_EXTRACT, LESSON_GRAMMAR_EXTRACT
+- USER_READING_PROGRESS
+- Basic 4-tab interface
+
+7.2. PHASE 2 - JLPT Testing MVP:
+- JLPT_MOCK_TEST, JLPT_TEST_SECTION
+- JLPT_QUESTION_BANK, JLPT_QUESTION_OPTION
+- USER_JLPT_TEST_ATTEMPT, USER_JLPT_ANSWER
+- Basic test taking interface
+
+7.3. PHASE 3 - Advanced Features:
+- Teacher content creation
+- Advanced analytics
+- Performance tracking
+- Recommendation system
+
+7.4. PHASE 4 - Integration:
+- Cross-flow recommendations
+- Unified progress tracking
+- Advanced reporting
+- Mobile optimization
+
+================================================================================
+                              ERD DESIGN COMPLETE
+                    2 Main Flows: Content-Based + JLPT Testing
+                        Ready for Implementation Planning
+================================================================================

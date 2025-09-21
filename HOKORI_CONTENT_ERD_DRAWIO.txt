@@ -1,0 +1,225 @@
+================================================================================
+                    HOKORI - CONTENT FLOW CONCEPTUAL ERD
+                         Text-Based Diagram for Draw.io
+================================================================================
+
+I. CONCEPTUAL ERD - CONTENT-BASED LEARNING FLOW
+===============================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           CONTENT-BASED LEARNING ERD                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐    1:M    ┌─────────────────┐    1:M    ┌─────────────┐ │
+│  │ JLPT_LEVEL  │ ──────────→│ CONTENT_SOURCE  │ ──────────→│READING_LESSON│ │
+│  │             │            │                 │            │             │ │
+│  │ level_id(PK)│            │ source_id(PK)   │            │lesson_id(PK)│ │
+│  │ level_code  │            │ source_name     │            │lesson_title │ │
+│  │ level_name  │            │ source_type     │            │content_jp   │ │
+│  │ description │            │ level_id(FK)    │            │content_vi   │ │
+│  └─────────────┘            │ total_lessons  │            │source_id(FK)│ │
+│                              │ description    │            │lesson_number│ │
+│                              └─────────────────┘            │lesson_part │ │
+│                                                              └─────────────┘ │
+│                                                                      │       │
+│                                                                      │ 1:M   │
+│                                                                      ▼       │
+│                              ┌─────────────────────────────────────────────┐ │
+│                              │           READING_LESSON                    │ │
+│                              │              (1 lesson)                     │ │
+│                              └─────────────────────────────────────────────┘ │
+│                                                                      │       │
+│                                                                      │ 1:M   │
+│                                                                      ▼       │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐           │ │
+│  │LESSON_VOCABULARY│  │LESSON_GRAMMAR   │  │LESSON_PRACTICE  │           │ │
+│  │    EXTRACT      │  │    EXTRACT      │  │    EXERCISE     │           │ │
+│  │                 │  │                 │  │                 │           │ │
+│  │extract_id(PK)   │  │extract_id(PK)  │  │exercise_id(PK) │           │ │
+│  │lesson_id(FK)    │  │lesson_id(FK)   │  │lesson_id(FK)   │           │ │
+│  │vocabulary_word  │  │grammar_pattern │  │exercise_type   │           │ │
+│  │vocabulary_read  │  │pattern_struct  │  │questions(JSON) │           │ │
+│  │meaning_vi       │  │meaning_vi      │  │instructions    │           │ │
+│  │context_sentences│  │example_sentences│ │difficulty_level│           │ │
+│  │importance_level │  │explanation_vi  │  │passing_score   │           │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘           │ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+II. OPTIONAL USER ENTITIES (If including user features)
+======================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER INTERACTION                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐    1:M    ┌─────────────────┐    1:M    ┌─────────────┐ │
+│  │    USER     │ ──────────→│USER_READING_HIST│ ──────────→│READING_LESSON│ │
+│  │             │            │                 │            │             │ │
+│  │ user_id(PK) │            │ history_id(PK)  │            │lesson_id(PK)│ │
+│  │ username    │            │ user_id(FK)    │            │lesson_title │ │
+│  │ email       │            │ lesson_id(FK)  │            │content_jp   │ │
+│  │ password_hash│           │ last_accessed  │            │content_vi   │ │
+│  │ created_date│           │ access_count   │            │source_id(FK)│ │
+│  │ is_active   │           │ current_tab    │            │lesson_number│ │
+│  └─────────────┘            │ bookmarked    │            │lesson_part │ │
+│                             └─────────────────┘            └─────────────┘ │
+│                                                                      │       │
+│  ┌─────────────┐    1:M    ┌─────────────────┐    1:M    ┌─────────────┐ │
+│  │    USER     │ ──────────→│ USER_FAVORITES │ ──────────→│READING_LESSON│ │
+│  │             │            │                 │            │             │ │
+│  │ user_id(PK) │            │ favorite_id(PK)│            │lesson_id(PK)│ │
+│  │ username    │            │ user_id(FK)    │            │lesson_title │ │
+│  │ email       │            │ lesson_id(FK)  │            │content_jp   │ │
+│  │ password_hash│           │ favorited_date │            │content_vi   │ │
+│  │ created_date│           │ notes          │            │source_id(FK)│ │
+│  │ is_active   │            └─────────────────┘            │lesson_number│ │
+│  └─────────────┘                                           │lesson_part │ │
+│                                                            └─────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+III. RELATIONSHIP SUMMARY TABLE
+===============================
+
+| Parent Entity      | Child Entity           | Relationship | Cardinality |
+|--------------------|------------------------|--------------|-------------|
+| JLPT_LEVEL         | CONTENT_SOURCE         | Has          | 1:M         |
+| CONTENT_SOURCE     | READING_LESSON         | Contains     | 1:M         |
+| READING_LESSON     | LESSON_VOCABULARY_EXTRACT| Has         | 1:M         |
+| READING_LESSON     | LESSON_GRAMMAR_EXTRACT  | Has         | 1:M         |
+| READING_LESSON     | LESSON_PRACTICE_EXERCISE| Has         | 1:M         |
+| USER               | USER_READING_HISTORY    | Tracks       | 1:M         |
+| USER               | USER_FAVORITES          | Bookmarks    | 1:M         |
+| READING_LESSON     | USER_READING_HISTORY     | Accessed by  | 1:M         |
+| READING_LESSON     | USER_FAVORITES           | Favorited by | 1:M         |
+
+IV. ENTITY DETAILS FOR DRAW.IO
+==============================
+
+4.1. JLPT_LEVEL Entity:
+┌─────────────────┐
+│   JLPT_LEVEL    │
+├─────────────────┤
+│ level_id (PK)   │
+│ level_code      │
+│ level_name      │
+│ description     │
+│ display_order   │
+└─────────────────┘
+
+4.2. CONTENT_SOURCE Entity:
+┌─────────────────┐
+│ CONTENT_SOURCE  │
+├─────────────────┤
+│ source_id (PK)  │
+│ source_name     │
+│ source_type     │
+│ level_id (FK)   │
+│ total_lessons   │
+│ description     │
+│ publisher       │
+│ is_active       │
+│ display_order   │
+└─────────────────┘
+
+4.3. READING_LESSON Entity:
+┌─────────────────┐
+│ READING_LESSON   │
+├─────────────────┤
+│ lesson_id (PK)  │
+│ source_id (FK)  │
+│ lesson_number   │
+│ lesson_part     │
+│ lesson_title_jp │
+│ lesson_title_vi │
+│ lesson_objectives│
+│ content_jp      │
+│ content_vi      │
+│ audio_file_url  │
+│ difficulty_score│
+│ estimated_time  │
+│ cultural_notes  │
+│ created_date    │
+│ is_active       │
+└─────────────────┘
+
+4.4. LESSON_VOCABULARY_EXTRACT Entity:
+┌─────────────────────────┐
+│LESSON_VOCABULARY_EXTRACT│
+├─────────────────────────┤
+│ extract_id (PK)         │
+│ lesson_id (FK)          │
+│ vocabulary_word         │
+│ vocabulary_reading     │
+│ meaning_vietnamese      │
+│ meaning_english         │
+│ context_sentences       │
+│ highlight_positions     │
+│ importance_level        │
+│ extraction_method       │
+│ word_type               │
+│ usage_notes             │
+└─────────────────────────┘
+
+4.5. LESSON_GRAMMAR_EXTRACT Entity:
+┌─────────────────────┐
+│LESSON_GRAMMAR_EXTRACT│
+├─────────────────────┤
+│ extract_id (PK)     │
+│ lesson_id (FK)      │
+│ grammar_pattern     │
+│ pattern_structure   │
+│ meaning_vietnamese  │
+│ example_sentences   │
+│ explanation_vi      │
+│ usage_context       │
+│ difficulty_level    │
+│ extraction_method   │
+│ related_patterns    │
+└─────────────────────┘
+
+4.6. LESSON_PRACTICE_EXERCISE Entity:
+┌─────────────────────┐
+│LESSON_PRACTICE_EXERCISE│
+├─────────────────────┤
+│ exercise_id (PK)    │
+│ lesson_id (FK)      │
+│ exercise_type       │
+│ questions           │
+│ instructions        │
+│ estimated_time      │
+│ difficulty_level    │
+│ passing_score       │
+└─────────────────────┘
+
+V. DRAW.IO INSTRUCTIONS
+=======================
+
+5.1. Steps to create in Draw.io:
+1. Create rectangles for each entity
+2. Add entity name at top
+3. List attributes inside rectangle
+4. Mark Primary Keys with (PK)
+5. Mark Foreign Keys with (FK)
+6. Draw lines between related entities
+7. Add relationship labels on lines
+8. Use crow's foot notation for cardinality
+
+5.2. Color Coding Suggestions:
+- JLPT_LEVEL: Blue (reference data)
+- CONTENT_SOURCE: Green (content organization)
+- READING_LESSON: Yellow (main content)
+- LESSON_*_EXTRACT: Orange (extracted data)
+- USER entities: Purple (user interaction)
+
+5.3. Layout Suggestions:
+- Place JLPT_LEVEL at top
+- CONTENT_SOURCE below JLPT_LEVEL
+- READING_LESSON below CONTENT_SOURCE
+- LESSON_*_EXTRACT entities side by side below READING_LESSON
+- USER entities on the right side if including user features
+
+================================================================================
+                              ERD DIAGRAM COMPLETE
+                    Ready for Draw.io Implementation
+================================================================================
