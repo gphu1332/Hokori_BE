@@ -4,6 +4,11 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# Hokori documentation files
+HOKORI_CONTENT_ERD_DRAWIO.txt
+HOKORI_CONTENT_FLOW_ENTITIES.txt
+HOKORI_TWO_MAIN_FLOWS_ERD.txt
+
 ### STS ###
 .apt_generated
 .classpath
