@@ -19,8 +19,11 @@ public class SecurityConfig {
                 .requestMatchers("/api/**").permitAll()
                 .requestMatchers("/swagger-ui/**").permitAll()
                 .requestMatchers("/v3/api-docs/**").permitAll()
+                .requestMatchers("/h2-console/**").permitAll()
+                .requestMatchers("/").permitAll()
                 .anyRequest().permitAll()
-            );
+            )
+            .headers(headers -> headers.frameOptions().disable()); // For H2 console
         return http.build();
     }
 }
