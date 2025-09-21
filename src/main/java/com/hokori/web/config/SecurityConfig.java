@@ -15,16 +15,8 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(authz -> authz
-                .requestMatchers("/actuator/**").permitAll()
-                .requestMatchers("/api/**").permitAll()
-                .requestMatchers("/swagger-ui/**").permitAll()
-                .requestMatchers("/v3/api-docs/**").permitAll()
-                .requestMatchers("/h2-console/**").permitAll()
-                .requestMatchers("/health").permitAll()
-                .requestMatchers("/").permitAll()
                 .anyRequest().permitAll()
-            )
-            .headers(headers -> headers.frameOptions().disable()); // For H2 console
+            );
         return http.build();
     }
 }
