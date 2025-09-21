@@ -1,5 +1,6 @@
 package com.hokori.web.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -8,6 +9,9 @@ import java.util.Map;
 
 @RestController
 public class ApiDocsController {
+
+    @Value("${server.port:8080}")
+    private String serverPort;
 
     @GetMapping("/v3/api-docs")
     public Map<String, Object> apiDocs() {
@@ -19,7 +23,7 @@ public class ApiDocsController {
             "description", "Japanese Learning Platform API"
         ));
         openApi.put("servers", new Object[]{
-            Map.of("url", "https://web-production-521b5.up.railway.app", "description", "Production server")
+            Map.of("url", "", "description", "Current server")
         });
         openApi.put("paths", new HashMap<>());
         return openApi;
