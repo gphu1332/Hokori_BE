@@ -40,3 +40,13 @@ build/
 ### OS ###
 .DS_Store
 Thumbs.db
+
+### AIGUIDE ###
+AIGUIDE/
+
+### Sensitive Files ###
+firebase-service-account.json
+*.key
+*.pem
+*.p12
+*.jks
