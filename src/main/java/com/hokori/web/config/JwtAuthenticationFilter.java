@@ -1,6 +1,7 @@
 package com.hokori.web.config;
 
-import com.hokori.web.service.AuthService;
+import com.hokori.web.entity.User;
+import com.hokori.web.repository.UserRepository;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,7 +26,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private JwtConfig jwtConfig;
 
     @Autowired
-    private AuthService authService;
+    private UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
@@ -55,21 +56,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (jwtConfig.validateToken(jwtToken, email)) {
                 
                 try {
-                    // Get user and roles
-                    var user = authService.getUserByEmail(email);
-                    List<String> roles = authService.getUserRoles(user);
-                    
-                    // Convert roles to authorities
-                    var authorities = roles.stream()
-                            .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                            .collect(Collectors.toList());
+                    // Get user from repository
+                    var userOpt = userRepository.findByEmail(email);
+                    if (userOpt.isPresent()) {
+                        var user = userOpt.get();
+                        
+                        // Check if user is active
+                        if (user.getIsActive()) {
+                            // Get user roles
+                            List<String> roles = List.of();
+                            if (user.getRole() != null) {
+                                roles = List.of(user.getRole().getRoleName());
+                            }
+                            
+                            // Convert roles to authorities
+                            var authorities = roles.stream()
+                                    .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                                    .collect(Collectors.toList());
 
-                    UsernamePasswordAuthenticationToken authToken = 
-                            new UsernamePasswordAuthenticationToken(email, null, authorities);
-                    
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                            UsernamePasswordAuthenticationToken authToken = 
+                                    new UsernamePasswordAuthenticationToken(email, null, authorities);
+                            
+                            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                            
+                            SecurityContextHolder.getContext().setAuthentication(authToken);
+                        }
+                    }
                 } catch (Exception e) {
                     logger.error("Cannot set user authentication: {}", e);
                 }
