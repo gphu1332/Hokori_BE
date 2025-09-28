@@ -4,23 +4,23 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import com.hokori.web.config.JwtConfig;
-import com.hokori.web.dto.AuthRequest;
 import com.hokori.web.dto.AuthResponse;
+import com.hokori.web.dto.LoginRequest;
+import com.hokori.web.dto.RegisterRequest;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
 import com.hokori.web.repository.RoleRepository;
 import com.hokori.web.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -38,6 +38,8 @@ public class AuthService {
     @Autowired
     private RoleRepository roleRepository;
     
+    @Autowired
+    private PasswordEncoder passwordEncoder;
     
     @Value("${jwt.expiration}")
     private Long jwtExpiration;
@@ -222,5 +224,94 @@ public class AuthService {
     
     public String getEmailFromToken(String token) {
         return jwtConfig.extractUsername(token);
+    }
+    
+    // Username/Password Authentication
+    public AuthResponse authenticateWithUsernamePassword(LoginRequest loginRequest) {
+        // Find user by username or email
+        User user = userRepository.findByUsername(loginRequest.getUsername())
+                .orElseGet(() -> userRepository.findByEmail(loginRequest.getUsername())
+                        .orElseThrow(() -> new RuntimeException("Invalid username/email or password")));
+        
+        // Check if account is active
+        if (!user.getIsActive()) {
+            throw new RuntimeException("User account is deactivated");
+        }
+        
+        // Verify password
+        if (user.getPasswordHash() == null || !passwordEncoder.matches(loginRequest.getPassword(), user.getPasswordHash())) {
+            throw new RuntimeException("Invalid username/email or password");
+        }
+        
+        // Update last login
+        user.setLastLoginAt(LocalDateTime.now());
+        userRepository.save(user);
+        
+        // Get user roles
+        List<String> roles = getUserRoles(user);
+        
+        // Generate JWT tokens
+        String accessToken = jwtConfig.generateToken(user.getEmail(), new HashMap<>());
+        String refreshToken = jwtConfig.generateRefreshToken(user.getEmail());
+        
+        // Create response
+        AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(user);
+        
+        return new AuthResponse(
+                accessToken,
+                refreshToken,
+                jwtExpiration,
+                userInfo,
+                roles
+        );
+    }
+    
+    public AuthResponse registerUser(RegisterRequest registerRequest) {
+        // Check if username already exists
+        if (userRepository.findByUsername(registerRequest.getUsername()).isPresent()) {
+            throw new RuntimeException("Username already exists");
+        }
+        
+        // Check if email already exists
+        if (userRepository.findByEmail(registerRequest.getEmail()).isPresent()) {
+            throw new RuntimeException("Email already exists");
+        }
+        
+        // Create new user
+        User newUser = new User();
+        newUser.setUsername(registerRequest.getUsername());
+        newUser.setEmail(registerRequest.getEmail());
+        newUser.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
+        newUser.setDisplayName(registerRequest.getDisplayName() != null ? registerRequest.getDisplayName() : registerRequest.getUsername());
+        newUser.setCountry(registerRequest.getCountry());
+        newUser.setNativeLanguage(registerRequest.getNativeLanguage());
+        newUser.setCurrentJlptLevel(registerRequest.getCurrentJlptLevel());
+        newUser.setIsActive(true);
+        newUser.setIsVerified(false); // Require email verification for regular signup
+        newUser.setLearningLanguage("Japanese");
+        
+        // Save user
+        newUser = userRepository.save(newUser);
+        
+        // Assign default role (LEARNER)
+        assignDefaultRole(newUser);
+        
+        // Get user roles
+        List<String> roles = getUserRoles(newUser);
+        
+        // Generate JWT tokens
+        String accessToken = jwtConfig.generateToken(newUser.getEmail(), new HashMap<>());
+        String refreshToken = jwtConfig.generateRefreshToken(newUser.getEmail());
+        
+        // Create response
+        AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(newUser);
+        
+        return new AuthResponse(
+                accessToken,
+                refreshToken,
+                jwtExpiration,
+                userInfo,
+                roles
+        );
     }
 }

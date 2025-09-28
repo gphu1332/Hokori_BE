@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+
 @Component
 public class DataInitializer implements CommandLineRunner {
 
@@ -32,6 +34,8 @@ public class DataInitializer implements CommandLineRunner {
         for (int i = 0; i < defaultRoles.length; i++) {
             if (!roleRepository.existsByRoleName(defaultRoles[i])) {
                 Role role = new Role(defaultRoles[i], descriptions[i]);
+                role.setCreatedAt(LocalDateTime.now());
+                role.setUpdatedAt(LocalDateTime.now());
                 roleRepository.save(role);
                 System.out.println("Created role: " + defaultRoles[i]);
             }

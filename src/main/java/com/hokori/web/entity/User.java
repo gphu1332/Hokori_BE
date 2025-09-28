@@ -8,6 +8,9 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+
 @Entity
 @Table(name = "users")
 public class User {
@@ -16,9 +19,8 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @NotBlank
     @Size(max = 128)
-    @Column(name = "firebase_uid", unique = true, nullable = false)
+    @Column(name = "firebase_uid", unique = true)
     private String firebaseUid;
     
     @NotBlank
@@ -30,6 +32,10 @@ public class User {
     @Size(max = 100)
     @Column(unique = true)
     private String username;
+    
+    @Size(max = 255)
+    @Column(name = "password_hash")
+    private String passwordHash;
     
     @Size(max = 255)
     @Column(name = "display_name")
@@ -47,7 +53,7 @@ public class User {
     private LocalDate dateOfBirth;
     
     @Enumerated(EnumType.STRING)
-    @Column(columnDefinition = "ENUM('MALE', 'FEMALE', 'OTHER') DEFAULT 'OTHER'")
+    @Column(name = "gender", length = 10)
     private Gender gender = Gender.OTHER;
     
     @Size(max = 100)
@@ -62,7 +68,7 @@ public class User {
     private String learningLanguage = "Japanese";
     
     @Enumerated(EnumType.STRING)
-    @Column(name = "current_jlpt_level", columnDefinition = "ENUM('N5', 'N4', 'N3', 'N2', 'N1') DEFAULT 'N5'")
+    @Column(name = "current_jlpt_level", length = 10)
     private JLPTLevel currentJlptLevel = JLPTLevel.N5;
     
     @Column(name = "role_id")
@@ -129,6 +135,14 @@ public class User {
     
     public void setUsername(String username) {
         this.username = username;
+    }
+    
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+    
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
     
     public String getDisplayName() {
@@ -271,6 +285,18 @@ public class User {
     
     public enum JLPTLevel {
         N5, N4, N3, N2, N1
+    }
+    
+    // Lifecycle callbacks
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
     
     @Override

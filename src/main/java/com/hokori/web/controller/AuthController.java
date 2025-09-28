@@ -1,7 +1,10 @@
 package com.hokori.web.controller;
 
 import com.hokori.web.dto.AuthResponse;
+import com.hokori.web.dto.LoginRequest;
+import com.hokori.web.dto.RegisterRequest;
 import com.hokori.web.service.AuthService;
+import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,9 +22,9 @@ public class AuthController {
     @Autowired
     private AuthService authService;
 
-    @PostMapping("/login")
+    @PostMapping("/login/firebase")
     @Operation(summary = "Login with Firebase token", description = "Authenticate user with Firebase ID token")
-    public ResponseEntity<AuthResponse> login(@RequestBody Map<String, String> request) {
+    public ResponseEntity<AuthResponse> loginWithFirebase(@RequestBody Map<String, String> request) {
         try {
             String idToken = request.get("idToken");
             if (idToken == null || idToken.trim().isEmpty()) {
@@ -29,6 +32,28 @@ public class AuthController {
             }
             
             AuthResponse response = authService.authenticateUser(idToken);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/login")
+    @Operation(summary = "Login with username/password", description = "Authenticate user with username/email and password")
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
+        try {
+            AuthResponse response = authService.authenticateWithUsernamePassword(loginRequest);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/register")
+    @Operation(summary = "Register new user", description = "Create new user account with username and password")
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest registerRequest) {
+        try {
+            AuthResponse response = authService.registerUser(registerRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
