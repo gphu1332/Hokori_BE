@@ -116,6 +116,11 @@
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Railway PostgreSQL URL parser -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
         <!-- SQL Server for local development -->
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
