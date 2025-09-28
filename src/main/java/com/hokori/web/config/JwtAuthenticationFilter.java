@@ -63,10 +63,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         
                         // Check if user is active
                         if (user.getIsActive()) {
-                            // Get user roles
+                            // Extract roles from JWT claims (fallback to database)
                             List<String> roles = List.of();
-                            if (user.getRole() != null) {
-                                roles = List.of(user.getRole().getRoleName());
+                            try {
+                                var claims = jwtConfig.extractAllClaims(jwtToken);
+                                @SuppressWarnings("unchecked")
+                                var rolesFromToken = (List<String>) claims.get("roles");
+                                if (rolesFromToken != null && !rolesFromToken.isEmpty()) {
+                                    roles = rolesFromToken;
+                                }
+                            } catch (Exception ex) {
+                                // Fallback to database roles
+                                if (user.getRole() != null) {
+                                    roles = List.of(user.getRole().getRoleName());
+                                }
                             }
                             
                             // Convert roles to authorities

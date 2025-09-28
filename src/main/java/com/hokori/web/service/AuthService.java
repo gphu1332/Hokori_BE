@@ -65,23 +65,8 @@ public class AuthService {
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
         
-        // Get user roles
-        List<String> roles = getUserRoles(user);
-        
-        // Generate JWT tokens
-        String accessToken = jwtConfig.generateToken(user.getEmail(), new HashMap<>());
-        String refreshToken = jwtConfig.generateRefreshToken(user.getEmail());
-        
-        // Create response
-        AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(user);
-        
-        return new AuthResponse(
-                accessToken,
-                refreshToken,
-                jwtExpiration,
-                userInfo,
-                roles
-        );
+        // Generate authentication response
+        return createAuthResponse(user, "firebase");
     }
     
     public AuthResponse refreshToken(String refreshToken) {
@@ -99,23 +84,8 @@ public class AuthService {
                 throw new RuntimeException("User account is deactivated");
             }
             
-            // Generate new tokens
-            String newAccessToken = jwtConfig.generateToken(user.getEmail(), new HashMap<>());
-            String newRefreshToken = jwtConfig.generateRefreshToken(user.getEmail());
-            
-            // Get user roles
-            List<String> roles = getUserRoles(user);
-            
-            // Create response
-            AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(user);
-            
-            return new AuthResponse(
-                    newAccessToken,
-                    newRefreshToken,
-                    jwtExpiration,
-                    userInfo,
-                    roles
-            );
+            // Generate authentication response
+            return createAuthResponse(user, "refresh");
             
         } catch (Exception e) {
             throw new RuntimeException("Failed to refresh token", e);
@@ -226,6 +196,34 @@ public class AuthService {
         return jwtConfig.extractUsername(token);
     }
     
+    // Helper method to generate JWT tokens with claims
+    private AuthResponse createAuthResponse(User user, String loginType) {
+        // Get user roles
+        List<String> roles = getUserRoles(user);
+        
+        // Generate JWT tokens with user info
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", user.getId());
+        claims.put("roles", roles);
+        claims.put("loginType", loginType);
+        if (user.getFirebaseUid() != null) {
+            claims.put("firebaseUid", user.getFirebaseUid());
+        }
+        String accessToken = jwtConfig.generateToken(user.getEmail(), claims);
+        String refreshToken = jwtConfig.generateRefreshToken(user.getEmail());
+        
+        // Create response
+        AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(user);
+        
+        return new AuthResponse(
+                accessToken,
+                refreshToken,
+                jwtExpiration,
+                userInfo,
+                roles
+        );
+    }
+    
     // Username/Password Authentication
     public AuthResponse authenticateWithUsernamePassword(LoginRequest loginRequest) {
         // Find user by username or email
@@ -247,23 +245,8 @@ public class AuthService {
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
         
-        // Get user roles
-        List<String> roles = getUserRoles(user);
-        
-        // Generate JWT tokens
-        String accessToken = jwtConfig.generateToken(user.getEmail(), new HashMap<>());
-        String refreshToken = jwtConfig.generateRefreshToken(user.getEmail());
-        
-        // Create response
-        AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(user);
-        
-        return new AuthResponse(
-                accessToken,
-                refreshToken,
-                jwtExpiration,
-                userInfo,
-                roles
-        );
+        // Generate authentication response
+        return createAuthResponse(user, "password");
     }
     
     public AuthResponse registerUser(RegisterRequest registerRequest) {
@@ -296,22 +279,7 @@ public class AuthService {
         // Assign default role (LEARNER)
         assignDefaultRole(newUser);
         
-        // Get user roles
-        List<String> roles = getUserRoles(newUser);
-        
-        // Generate JWT tokens
-        String accessToken = jwtConfig.generateToken(newUser.getEmail(), new HashMap<>());
-        String refreshToken = jwtConfig.generateRefreshToken(newUser.getEmail());
-        
-        // Create response
-        AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(newUser);
-        
-        return new AuthResponse(
-                accessToken,
-                refreshToken,
-                jwtExpiration,
-                userInfo,
-                roles
-        );
+        // Generate authentication response
+        return createAuthResponse(newUser, "registration");
     }
 }
