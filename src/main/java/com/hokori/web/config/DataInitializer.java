@@ -16,9 +16,11 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        if (roleRepository != null) {
-            initializeDefaultRoles();
-        }
+        // Skip role initialization since database already has role data
+        // if (roleRepository != null) {
+        //     initializeDefaultRoles();
+        // }
+        System.out.println("DataInitializer: Skipping role initialization - using existing database data");
     }
 
     private void initializeDefaultRoles() {

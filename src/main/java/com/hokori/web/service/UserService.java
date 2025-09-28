@@ -144,21 +144,5 @@ public class UserService {
         return userRepository.findUsersWithRecentLogin(date);
     }
     
-    public void initializeDefaultRoles() {
-        // Create default roles if they don't exist
-        String[] defaultRoles = {"LEARNER", "TEACHER", "STAFF", "ADMIN"};
-        String[] descriptions = {
-            "Regular student/learner",
-            "Teacher who can create content", 
-            "Staff member with limited admin access",
-            "Full system administrator"
-        };
-        
-        for (int i = 0; i < defaultRoles.length; i++) {
-            if (!roleRepository.existsByRoleName(defaultRoles[i])) {
-                Role role = new Role(defaultRoles[i], descriptions[i]);
-                roleRepository.save(role);
-            }
-        }
-    }
+    // initializeDefaultRoles() method removed - using existing database data
 }
