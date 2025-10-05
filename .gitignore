@@ -47,6 +47,8 @@ AIGUIDE/
 ### Sensitive Files ###
 firebase-service-account.json
 hokori-web-firebase-adminsdk-*.json
+application-dev.properties
+application-prod.properties
 *.key
 *.pem
 *.p12
