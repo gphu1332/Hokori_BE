@@ -18,9 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -32,6 +30,9 @@ public class AuthService {
     
     @Autowired
     private JwtConfig jwtConfig;
+    
+    @Autowired
+    private JwtTokenService jwtTokenService;
     
     @Autowired
     private UserRepository userRepository;
@@ -202,16 +203,9 @@ public class AuthService {
         // Get user roles
         List<String> roles = getUserRoles(user);
         
-        // Generate JWT tokens with user info
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", user.getId());
-        claims.put("roles", roles);
-        claims.put("loginType", loginType);
-        if (user.getFirebaseUid() != null) {
-            claims.put("firebaseUid", user.getFirebaseUid());
-        }
-        String accessToken = jwtConfig.generateToken(user.getEmail(), claims);
-        String refreshToken = jwtConfig.generateRefreshToken(user.getEmail());
+        // Generate JWT tokens using unified service
+        String accessToken = jwtTokenService.generateAccessToken(user, loginType, roles);
+        String refreshToken = jwtTokenService.generateRefreshToken(user);
         
         // Create response
         AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(user);
@@ -219,7 +213,7 @@ public class AuthService {
         return new AuthResponse(
                 accessToken,
                 refreshToken,
-                jwtExpiration,
+                jwtTokenService.getTokenExpiration(),
                 userInfo,
                 roles
         );
