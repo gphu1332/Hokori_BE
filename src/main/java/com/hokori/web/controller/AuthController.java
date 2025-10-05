@@ -25,28 +25,40 @@ public class AuthController {
 
     @PostMapping("/login/firebase")
     @Operation(summary = "Login with Firebase token", description = "Authenticate user with Firebase ID token")
-    public ResponseEntity<AuthResponse> loginWithFirebase(@RequestBody Map<String, String> request) {
+    public ResponseEntity<?> loginWithFirebase(@RequestBody Map<String, String> request) {
         try {
             String idToken = request.get("idToken");
             if (idToken == null || idToken.trim().isEmpty()) {
-                return ResponseEntity.badRequest().build();
+                Map<String, Object> error = new HashMap<>();
+                error.put("message", "Firebase ID token is required");
+                error.put("status", "error");
+                error.put("timestamp", java.time.LocalDateTime.now());
+                return ResponseEntity.badRequest().body(error);
             }
             
             AuthResponse response = authService.authenticateUser(idToken);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            Map<String, Object> error = new HashMap<>();
+            error.put("message", "Firebase authentication failed: " + e.getMessage());
+            error.put("status", "error");
+            error.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.badRequest().body(error);
         }
     }
 
     @PostMapping("/login")
     @Operation(summary = "Login with username/password", description = "Authenticate user with username/email and password")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
         try {
             AuthResponse response = authService.authenticateWithUsernamePassword(loginRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            Map<String, Object> error = new HashMap<>();
+            error.put("message", e.getMessage());
+            error.put("status", "error");
+            error.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.badRequest().body(error);
         }
     }
 

@@ -29,7 +29,11 @@ public class FirebaseConfig {
     public void initializeFirebase() {
         try {
             if (FirebaseApp.getApps().isEmpty()) {
-                Resource resource = new ClassPathResource(credentialsPath);
+                // Try to load from classpath first
+                String resourcePath = credentialsPath.startsWith("classpath:") ? 
+                    credentialsPath.substring("classpath:".length()) : credentialsPath;
+                
+                Resource resource = new ClassPathResource(resourcePath);
                 if (resource.exists()) {
                     InputStream serviceAccount = resource.getInputStream();
                     
@@ -39,14 +43,18 @@ public class FirebaseConfig {
                             .build();
                     
                     FirebaseApp.initializeApp(options);
-                    System.out.println("Firebase initialized successfully");
+                    System.out.println("✅ Firebase initialized successfully with project: " + projectId);
                 } else {
-                    System.out.println("Firebase service account file not found. Firebase features will be disabled.");
+                    System.out.println("❌ Firebase service account file not found at: " + resourcePath);
+                    System.out.println("Firebase features will be disabled. Username/password auth will still work.");
                 }
+            } else {
+                System.out.println("✅ Firebase already initialized");
             }
-        } catch (IOException e) {
-            System.out.println("Failed to initialize Firebase: " + e.getMessage());
-            System.out.println("Firebase features will be disabled.");
+        } catch (Exception e) {
+            System.out.println("❌ Failed to initialize Firebase: " + e.getMessage());
+            System.out.println("Firebase features will be disabled. Username/password auth will still work.");
+            e.printStackTrace();
         }
     }
     
