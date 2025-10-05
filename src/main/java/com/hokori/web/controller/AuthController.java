@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -98,5 +99,17 @@ public class AuthController {
                 "email", ""
             ));
         }
+    }
+
+    @PostMapping("/logout")
+    @Operation(summary = "Logout user", description = "Logout user (client-side token invalidation)")
+    public ResponseEntity<Map<String, Object>> logout(@RequestBody Map<String, String> request) {
+        // Since we're using stateless JWT, logout is handled client-side by removing the token
+        // This endpoint is mainly for consistency and future token blacklisting if needed
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Logged out successfully");
+        response.put("status", "success");
+        response.put("timestamp", java.time.LocalDateTime.now());
+        return ResponseEntity.ok(response);
     }
 }
