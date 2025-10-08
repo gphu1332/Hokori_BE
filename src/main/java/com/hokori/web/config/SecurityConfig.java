@@ -28,27 +28,28 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(AbstractHttpConfigurer::disable)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(authz -> authz
-                // Public endpoints
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/actuator/**").permitAll()
-                .requestMatchers("/v3/api-docs/**").permitAll()
-                .requestMatchers("/swagger-ui/**").permitAll()
-                .requestMatchers("/swagger-ui.html").permitAll()
-                .requestMatchers("/api-docs/**").permitAll()
-                
-                // Health check endpoints
-                .requestMatchers("/health").permitAll()
-                .requestMatchers("/api/health").permitAll()
-                
-                // All other requests need authentication
-                .anyRequest().authenticated()
-            )
-            // Add JWT filter
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(authz -> authz
+                        // Public endpoints
+                        .requestMatchers("/").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/v3/api-docs/**").permitAll()
+                        .requestMatchers("/swagger-ui/**").permitAll()
+                        .requestMatchers("/swagger-ui.html").permitAll()
+                        .requestMatchers("/api-docs/**").permitAll()
+
+                        // Health check endpoints
+                        .requestMatchers("/health").permitAll()
+                        .requestMatchers("/api/health").permitAll()
+
+                        // All other requests need authentication
+                        .anyRequest().authenticated()
+                )
+                // Add JWT filter
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

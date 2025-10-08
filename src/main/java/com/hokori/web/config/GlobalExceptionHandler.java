@@ -1,5 +1,9 @@
 package com.hokori.web.config;
 
+// IMPORT CÁC EXCEPTION TỪ FILE RIÊNG
+import com.hokori.web.exception.AuthenticationException;
+import com.hokori.web.exception.UserNotFoundException;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -20,18 +24,18 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException ex) {
         Map<String, Object> response = new HashMap<>();
         Map<String, String> errors = new HashMap<>();
-        
+
         ex.getBindingResult().getAllErrors().forEach((error) -> {
             String fieldName = ((FieldError) error).getField();
             String errorMessage = error.getDefaultMessage();
             errors.put(fieldName, errorMessage);
         });
-        
+
         response.put("message", "Validation failed");
         response.put("status", "error");
         response.put("errors", errors);
         response.put("timestamp", LocalDateTime.now());
-        
+
         return ResponseEntity.badRequest().body(response);
     }
 
@@ -43,7 +47,7 @@ public class GlobalExceptionHandler {
         response.put("status", "error");
         response.put("timestamp", LocalDateTime.now());
         response.put("path", request.getDescription(false));
-        
+
         return ResponseEntity.badRequest().body(response);
     }
 
@@ -55,7 +59,7 @@ public class GlobalExceptionHandler {
         response.put("status", "error");
         response.put("timestamp", LocalDateTime.now());
         response.put("path", request.getDescription(false));
-        
+
         return ResponseEntity.badRequest().body(response);
     }
 
@@ -67,10 +71,10 @@ public class GlobalExceptionHandler {
         response.put("status", "error");
         response.put("timestamp", LocalDateTime.now());
         response.put("path", request.getDescription(false));
-        
+
         // Log the actual exception for debugging
         ex.printStackTrace();
-        
+
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 
@@ -82,8 +86,8 @@ public class GlobalExceptionHandler {
         response.put("status", "error");
         response.put("timestamp", LocalDateTime.now());
         response.put("path", request.getDescription(false));
-        
-        return ResponseEntity.notFound().build();
+
+        return ResponseEntity.notFound().build(); // Sử dụng notFound() cho lỗi không tìm thấy
     }
 
     @ExceptionHandler(AuthenticationException.class)
@@ -94,20 +98,9 @@ public class GlobalExceptionHandler {
         response.put("status", "error");
         response.put("timestamp", LocalDateTime.now());
         response.put("path", request.getDescription(false));
-        
+
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 
-    // Custom exception classes
-    public static class UserNotFoundException extends RuntimeException {
-        public UserNotFoundException(String message) {
-            super(message);
-        }
-    }
-
-    public static class AuthenticationException extends RuntimeException {
-        public AuthenticationException(String message) {
-            super(message);
-        }
-    }
+    // ĐÃ XÓA CÁC INNER CLASS Ở ĐÂY
 }
