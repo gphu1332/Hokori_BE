@@ -5,29 +5,29 @@ import jakarta.validation.constraints.Size;
 
 public class LoginRequest {
     
-    @NotBlank(message = "Username is required")
-    @Size(max = 100, message = "Username must not exceed 100 characters")
-    private String username;
+    @NotBlank(message = "Username or email is required")
+    @Size(max = 100, message = "Username or email must not exceed 100 characters")
+    private String usernameOrEmail;
     
     @NotBlank(message = "Password is required")
-    @Size(min = 6, max = 50, message = "Password must be between 6 and 50 characters")
+    @Size(min = 6, max = 100, message = "Password must be between 6 and 100 characters")
     private String password;
     
     // Constructors
     public LoginRequest() {}
     
-    public LoginRequest(String username, String password) {
-        this.username = username;
+    public LoginRequest(String usernameOrEmail, String password) {
+        this.usernameOrEmail = usernameOrEmail;
         this.password = password;
     }
     
     // Getters and Setters
     public String getUsername() {
-        return username;
+        return usernameOrEmail;
     }
     
-    public void setUsername(String username) {
-        this.username = username;
+    public void setUsername(String usernameOrEmail) {
+        this.usernameOrEmail = usernameOrEmail;
     }
     
     public String getPassword() {
@@ -41,8 +41,8 @@ public class LoginRequest {
     @Override
     public String toString() {
         return "LoginRequest{" +
-                "username='" + username + '\'' +
-                ", password='[PROTECTED]'" +
+                "usernameOrEmail='" + usernameOrEmail + '\'' +
+                ", password='[HIDDEN]'" +
                 '}';
     }
 }

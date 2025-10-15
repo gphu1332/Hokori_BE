@@ -95,10 +95,10 @@ public class AuthService {
     }
     
     public User findOrCreateUser(String firebaseUid, String email, String displayName, String photoUrl) {
-        Optional<User> existingUser = userRepository.findByFirebaseUid(firebaseUid);
-        
-        if (existingUser.isPresent()) {
-            User user = existingUser.get();
+        // First check if user exists by Firebase UID
+        Optional<User> existingUserByFirebase = userRepository.findByFirebaseUid(firebaseUid);
+        if (existingUserByFirebase.isPresent()) {
+            User user = existingUserByFirebase.get();
             
             // Update user information if needed
             boolean updated = false;
@@ -120,24 +120,55 @@ public class AuthService {
             }
             
             return user;
-        } else {
-            // Create new user
-            User newUser = new User();
-            newUser.setFirebaseUid(firebaseUid);
-            newUser.setEmail(email);
-            newUser.setDisplayName(displayName);
-            newUser.setAvatarUrl(photoUrl);
-            newUser.setIsActive(true);
-            newUser.setIsVerified(true); // Firebase verified users are considered verified
-            
-            // Save user
-            newUser = userRepository.save(newUser);
-            
-            // Assign default role (LEARNER)
-            assignDefaultRole(newUser);
-            
-            return newUser;
         }
+        
+        // Check if user exists by email (might be a username/password user)
+        Optional<User> existingUserByEmail = userRepository.findByEmail(email);
+        if (existingUserByEmail.isPresent()) {
+            User user = existingUserByEmail.get();
+            
+            // Link Firebase UID to existing user
+            user.setFirebaseUid(firebaseUid);
+            
+            // Update user information if needed
+            boolean updated = false;
+            if (displayName != null && !displayName.equals(user.getDisplayName())) {
+                user.setDisplayName(displayName);
+                updated = true;
+            }
+            if (photoUrl != null && !photoUrl.equals(user.getAvatarUrl())) {
+                user.setAvatarUrl(photoUrl);
+                updated = true;
+            }
+            
+            // Mark as verified since Firebase verified the email
+            if (!user.getIsVerified()) {
+                user.setIsVerified(true);
+                updated = true;
+            }
+            
+            if (updated) {
+                userRepository.save(user);
+            }
+            return user;
+        }
+        
+        // Create new user
+        User newUser = new User();
+        newUser.setFirebaseUid(firebaseUid);
+        newUser.setEmail(email);
+        newUser.setDisplayName(displayName);
+        newUser.setAvatarUrl(photoUrl);
+        newUser.setIsActive(true);
+        newUser.setIsVerified(true); // Firebase verified users are considered verified
+        
+        // Save user
+        newUser = userRepository.save(newUser);
+        
+        // Assign default role (LEARNER)
+        assignDefaultRole(newUser);
+        
+        return newUser;
     }
     
     private void assignDefaultRole(User user) {
@@ -146,6 +177,45 @@ public class AuthService {
         
         user.setRoleId(learnerRole.getId());
         userRepository.save(user);
+    }
+    
+    /**
+     * Assign specific role to user
+     */
+    public void assignRoleToUser(User user, String roleName) {
+        Role role = roleRepository.findByRoleName(roleName)
+                .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
+        
+        user.setRoleId(role.getId());
+        userRepository.save(user);
+    }
+    
+    /**
+     * Check if user has specific role
+     */
+    public boolean userHasRole(User user, String roleName) {
+        return user.getRole() != null && user.getRole().getRoleName().equals(roleName);
+    }
+    
+    /**
+     * Check if user is admin
+     */
+    public boolean isAdmin(User user) {
+        return userHasRole(user, "ADMIN");
+    }
+    
+    /**
+     * Check if user is staff or admin
+     */
+    public boolean isStaffOrAdmin(User user) {
+        return userHasRole(user, "STAFF") || userHasRole(user, "ADMIN");
+    }
+    
+    /**
+     * Check if user can create content (Teacher, Staff, Admin)
+     */
+    public boolean canCreateContent(User user) {
+        return userHasRole(user, "TEACHER") || userHasRole(user, "STAFF") || userHasRole(user, "ADMIN");
     }
     
     public List<String> getUserRoles(User user) {
@@ -245,6 +315,16 @@ public class AuthService {
     }
     
     public AuthResponse registerUser(RegisterRequest registerRequest) {
+        // Validate password confirmation
+        if (!registerRequest.isPasswordConfirmed()) {
+            throw new RuntimeException("Password and confirmation do not match");
+        }
+        
+        // Validate role selection
+        if (!registerRequest.isValidRole()) {
+            throw new RuntimeException("Invalid role selected");
+        }
+        
         // Check if username already exists
         if (userRepository.findByUsername(registerRequest.getUsername()).isPresent()) {
             throw new RuntimeException("Username already exists");
@@ -263,7 +343,22 @@ public class AuthService {
         newUser.setDisplayName(registerRequest.getDisplayName() != null ? registerRequest.getDisplayName() : registerRequest.getUsername());
         newUser.setCountry(registerRequest.getCountry());
         newUser.setNativeLanguage(registerRequest.getNativeLanguage());
-        newUser.setCurrentJlptLevel(registerRequest.getCurrentJlptLevel());
+        
+        // Generate a unique identifier for username/password users (since firebase_uid is required)
+        String usernamePasswordUid = "username_" + registerRequest.getUsername() + "_" + System.currentTimeMillis();
+        newUser.setFirebaseUid(usernamePasswordUid);
+        
+        // Set JLPT level safely
+        if (registerRequest.getCurrentJlptLevel() != null) {
+            try {
+                newUser.setCurrentJlptLevel(User.JLPTLevel.valueOf(registerRequest.getCurrentJlptLevel()));
+            } catch (IllegalArgumentException e) {
+                newUser.setCurrentJlptLevel(User.JLPTLevel.N5); // Default to N5
+            }
+        } else {
+            newUser.setCurrentJlptLevel(User.JLPTLevel.N5); // Default to N5
+        }
+        
         newUser.setIsActive(true);
         newUser.setIsVerified(false); // Require email verification for regular signup
         newUser.setLearningLanguage("Japanese");
@@ -271,8 +366,9 @@ public class AuthService {
         // Save user
         newUser = userRepository.save(newUser);
         
-        // Assign default role (LEARNER)
-        assignDefaultRole(newUser);
+        // Assign role based on request (default to LEARNER if not specified)
+        String roleName = registerRequest.getRoleName() != null ? registerRequest.getRoleName() : "LEARNER";
+        assignRoleToUser(newUser, roleName);
         
         // Generate authentication response
         return createAuthResponse(newUser, "registration");

@@ -71,7 +71,7 @@ public class User {
     @Column(name = "current_jlpt_level", length = 10)
     private JLPTLevel currentJlptLevel = JLPTLevel.N5;
     
-    @Column(name = "role_id")
+    @Column(name = "role_id", insertable = false, updatable = false)
     private Long roleId;
     
     @Column(name = "is_active")
@@ -91,7 +91,7 @@ public class User {
     
     // Relationship
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "role_id", insertable = false, updatable = false)
+    @JoinColumn(name = "role_id")
     private Role role;
     
     // Constructors

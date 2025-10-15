@@ -1,16 +1,20 @@
 package com.hokori.web.controller;
 
+import com.hokori.web.dto.ApiResponse;
+import com.hokori.web.dto.UserProfileUpdateRequest;
+import com.hokori.web.dto.PasswordChangeRequest;
 import com.hokori.web.entity.User;
+import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -25,9 +29,24 @@ public class UserProfileController {
     
     @Autowired
     private PasswordEncoder passwordEncoder;
+    
+    @Autowired
+    private CurrentUserService currentUserService;
+
+    @GetMapping("/me")
+    @Operation(summary = "Get current user profile", description = "Retrieve current authenticated user's profile")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getCurrentUserProfile() {
+        try {
+            User currentUser = currentUserService.getCurrentUserOrThrow();
+            Map<String, Object> profile = createProfileResponse(currentUser);
+            return ResponseEntity.ok(ApiResponse.success("Current user profile retrieved", profile));
+        } catch (Exception e) {
+            return ResponseEntity.ok(ApiResponse.error("Failed to get current user profile: " + e.getMessage()));
+        }
+    }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get user profile", description = "Get user profile information")
+    @Operation(summary = "Get user profile by ID", description = "Retrieve user profile by ID")
     public ResponseEntity<Map<String, Object>> getUserProfile(
             @Parameter(description = "User ID") @PathVariable Long id) {
         try {
@@ -52,10 +71,35 @@ public class UserProfileController {
         }
     }
 
+    @PutMapping("/me")
+    @Operation(summary = "Update current user profile", description = "Update current authenticated user's profile")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateCurrentUserProfile(@Valid @RequestBody UserProfileUpdateRequest profileData) {
+        try {
+            User currentUser = currentUserService.getCurrentUserOrThrow();
+            
+            // Update basic profile information
+            if (profileData.getDisplayName() != null) {
+                currentUser.setDisplayName(profileData.getDisplayName());
+            }
+            if (profileData.getPhoneNumber() != null) {
+                currentUser.setPhoneNumber(profileData.getPhoneNumber());
+            }
+            if (profileData.getCountry() != null) {
+                currentUser.setCountry(profileData.getCountry());
+            }
+            
+            User updatedUser = userService.updateUser(currentUser);
+            Map<String, Object> response = createProfileResponse(updatedUser);
+            return ResponseEntity.ok(ApiResponse.success("Profile updated successfully", response));
+        } catch (Exception e) {
+            return ResponseEntity.ok(ApiResponse.error("Failed to update profile: " + e.getMessage()));
+        }
+    }
+
     @PutMapping("/{id}")
-    @Operation(summary = "Update user profile", description = "Update user profile information")
+    @Operation(summary = "Update user profile by ID", description = "Update user profile information by ID")
     public ResponseEntity<Map<String, Object>> updateUserProfile(
-            @Parameter(description = "User ID") @PathVariable Long id,
+            @Parameter(description = "User ID") @PathVariable Long id, 
             @RequestBody Map<String, Object> profileData) {
         try {
             Optional<User> userOpt = userService.getUserById(id);
@@ -79,30 +123,6 @@ public class UserProfileController {
             if (profileData.containsKey("country")) {
                 user.setCountry((String) profileData.get("country"));
             }
-            if (profileData.containsKey("nativeLanguage")) {
-                user.setNativeLanguage((String) profileData.get("nativeLanguage"));
-            }
-            if (profileData.containsKey("learningLanguage")) {
-                user.setLearningLanguage((String) profileData.get("learningLanguage"));
-            }
-            if (profileData.containsKey("dateOfBirth")) {
-                String dobStr = (String) profileData.get("dateOfBirth");
-                if (dobStr != null && !dobStr.isEmpty()) {
-                    user.setDateOfBirth(LocalDate.parse(dobStr));
-                }
-            }
-            if (profileData.containsKey("gender")) {
-                String genderStr = (String) profileData.get("gender");
-                if (genderStr != null) {
-                    user.setGender(User.Gender.valueOf(genderStr.toUpperCase()));
-                }
-            }
-            if (profileData.containsKey("currentJlptLevel")) {
-                String levelStr = (String) profileData.get("currentJlptLevel");
-                if (levelStr != null) {
-                    user.setCurrentJlptLevel(User.JLPTLevel.valueOf(levelStr.toUpperCase()));
-                }
-            }
 
             User updatedUser = userService.updateUser(user);
             Map<String, Object> response = createProfileResponse(updatedUser);
@@ -119,55 +139,38 @@ public class UserProfileController {
         }
     }
 
-    @PutMapping("/{id}/avatar")
-    @Operation(summary = "Update user avatar", description = "Update user avatar URL")
-    public ResponseEntity<Map<String, Object>> updateUserAvatar(
-            @Parameter(description = "User ID") @PathVariable Long id,
-            @RequestBody Map<String, String> avatarData) {
+    @PutMapping("/me/password")
+    @Operation(summary = "Change current user password", description = "Change current authenticated user's password")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> changeCurrentUserPassword(@Valid @RequestBody PasswordChangeRequest passwordData) {
         try {
-            Optional<User> userOpt = userService.getUserById(id);
-            if (!userOpt.isPresent()) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("message", "User not found");
-                errorResponse.put("status", "error");
-                errorResponse.put("timestamp", LocalDateTime.now());
-                return ResponseEntity.notFound().build();
+            User currentUser = currentUserService.getCurrentUserOrThrow();
+            
+            if (!passwordData.isPasswordConfirmed()) {
+                return ResponseEntity.ok(ApiResponse.error("New password and confirmation do not match"));
             }
 
-            User user = userOpt.get();
-            String avatarUrl = avatarData.get("avatarUrl");
-            
-            if (avatarUrl != null) {
-                user.setAvatarUrl(avatarUrl);
-                User updatedUser = userService.updateUser(user);
-                
-                Map<String, Object> response = new HashMap<>();
-                response.put("message", "Avatar updated successfully");
-                response.put("avatarUrl", updatedUser.getAvatarUrl());
-                response.put("status", "success");
-                response.put("timestamp", LocalDateTime.now());
-                
-                return ResponseEntity.ok(response);
-            } else {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("message", "Avatar URL is required");
-                errorResponse.put("status", "error");
-                errorResponse.put("timestamp", LocalDateTime.now());
-                return ResponseEntity.badRequest().body(errorResponse);
+            // Verify current password
+            if (currentUser.getPasswordHash() != null && 
+                !passwordEncoder.matches(passwordData.getCurrentPassword(), currentUser.getPasswordHash())) {
+                return ResponseEntity.ok(ApiResponse.error("Current password is incorrect"));
             }
+
+            // Update password
+            currentUser.setPasswordHash(passwordEncoder.encode(passwordData.getNewPassword()));
+            userService.updateUser(currentUser);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Password changed successfully");
+            return ResponseEntity.ok(ApiResponse.success("Password changed successfully", response));
         } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("message", "Failed to update avatar");
-            errorResponse.put("status", "error");
-            errorResponse.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.internalServerError().body(errorResponse);
+            return ResponseEntity.ok(ApiResponse.error("Failed to change password: " + e.getMessage()));
         }
     }
 
     @PutMapping("/{id}/password")
-    @Operation(summary = "Change user password", description = "Change user password")
+    @Operation(summary = "Change user password by ID", description = "Change user password by ID")
     public ResponseEntity<Map<String, Object>> changePassword(
-            @Parameter(description = "User ID") @PathVariable Long id,
+            @Parameter(description = "User ID") @PathVariable Long id, 
             @RequestBody Map<String, String> passwordData) {
         try {
             Optional<User> userOpt = userService.getUserById(id);
@@ -220,84 +223,6 @@ public class UserProfileController {
         }
     }
 
-    @PutMapping("/{id}/preferences")
-    @Operation(summary = "Update user preferences", description = "Update user learning preferences")
-    public ResponseEntity<Map<String, Object>> updateUserPreferences(
-            @Parameter(description = "User ID") @PathVariable Long id,
-            @RequestBody Map<String, Object> preferences) {
-        try {
-            Optional<User> userOpt = userService.getUserById(id);
-            if (!userOpt.isPresent()) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("message", "User not found");
-                errorResponse.put("status", "error");
-                errorResponse.put("timestamp", LocalDateTime.now());
-                return ResponseEntity.notFound().build();
-            }
-
-            User user = userOpt.get();
-            
-            // Update learning preferences
-            if (preferences.containsKey("currentJlptLevel")) {
-                String levelStr = (String) preferences.get("currentJlptLevel");
-                if (levelStr != null) {
-                    user.setCurrentJlptLevel(User.JLPTLevel.valueOf(levelStr.toUpperCase()));
-                }
-            }
-            if (preferences.containsKey("learningLanguage")) {
-                user.setLearningLanguage((String) preferences.get("learningLanguage"));
-            }
-            if (preferences.containsKey("nativeLanguage")) {
-                user.setNativeLanguage((String) preferences.get("nativeLanguage"));
-            }
-
-            User updatedUser = userService.updateUser(user);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Preferences updated successfully");
-            response.put("preferences", createPreferencesResponse(updatedUser));
-            response.put("status", "success");
-            response.put("timestamp", LocalDateTime.now());
-            
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("message", "Failed to update preferences");
-            errorResponse.put("status", "error");
-            errorResponse.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.internalServerError().body(errorResponse);
-        }
-    }
-
-    @GetMapping("/{id}/preferences")
-    @Operation(summary = "Get user preferences", description = "Get user learning preferences")
-    public ResponseEntity<Map<String, Object>> getUserPreferences(
-            @Parameter(description = "User ID") @PathVariable Long id) {
-        try {
-            Optional<User> userOpt = userService.getUserById(id);
-            if (userOpt.isPresent()) {
-                User user = userOpt.get();
-                Map<String, Object> response = new HashMap<>();
-                response.put("preferences", createPreferencesResponse(user));
-                response.put("status", "success");
-                response.put("timestamp", LocalDateTime.now());
-                return ResponseEntity.ok(response);
-            } else {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("message", "User not found");
-                errorResponse.put("status", "error");
-                errorResponse.put("timestamp", LocalDateTime.now());
-                return ResponseEntity.notFound().build();
-            }
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("message", "Failed to retrieve preferences");
-            errorResponse.put("status", "error");
-            errorResponse.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.internalServerError().body(errorResponse);
-        }
-    }
-
     private Map<String, Object> createProfileResponse(User user) {
         Map<String, Object> profile = new HashMap<>();
         profile.put("id", user.getId());
@@ -306,12 +231,7 @@ public class UserProfileController {
         profile.put("displayName", user.getDisplayName());
         profile.put("avatarUrl", user.getAvatarUrl());
         profile.put("phoneNumber", user.getPhoneNumber());
-        profile.put("dateOfBirth", user.getDateOfBirth());
-        profile.put("gender", user.getGender());
         profile.put("country", user.getCountry());
-        profile.put("nativeLanguage", user.getNativeLanguage());
-        profile.put("learningLanguage", user.getLearningLanguage());
-        profile.put("currentJlptLevel", user.getCurrentJlptLevel());
         profile.put("isActive", user.getIsActive());
         profile.put("isVerified", user.getIsVerified());
         profile.put("lastLoginAt", user.getLastLoginAt());
@@ -319,13 +239,5 @@ public class UserProfileController {
         profile.put("status", "success");
         profile.put("timestamp", LocalDateTime.now());
         return profile;
-    }
-
-    private Map<String, Object> createPreferencesResponse(User user) {
-        Map<String, Object> preferences = new HashMap<>();
-        preferences.put("currentJlptLevel", user.getCurrentJlptLevel());
-        preferences.put("learningLanguage", user.getLearningLanguage());
-        preferences.put("nativeLanguage", user.getNativeLanguage());
-        return preferences;
     }
 }

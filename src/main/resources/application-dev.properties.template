@@ -1,6 +1,9 @@
 # Development configuration template
 # Copy this file to application-dev.properties and update with your local settings
 
+# Server configuration
+server.port=8080
+
 # Database configuration - SQL Server for local development
 spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=hokori_db;encrypt=true;trustServerCertificate=true
 spring.datasource.username=YOUR_DB_USERNAME
@@ -31,3 +34,8 @@ spring.thymeleaf.check-template-location=false
 
 # Disable JPA open-in-view (better performance for REST API)
 spring.jpa.open-in-view=false
+
+# Google Cloud AI configuration
+google.cloud.enabled=true
+google.cloud.project-id=hokori-web
+google.cloud.credentials.path=classpath:google-cloud-service-account.json

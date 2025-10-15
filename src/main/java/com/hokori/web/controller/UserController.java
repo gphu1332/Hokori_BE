@@ -22,7 +22,7 @@ public class UserController {
     private UserService userService;
 
     @GetMapping
-    @Operation(summary = "Get all users", description = "Retrieve list of all users")
+    @Operation(summary = "Get all users", description = "Retrieve all users from the system")
     public ResponseEntity<Map<String, Object>> getAllUsers() {
         try {
             List<User> users = userService.getAllUsers();
@@ -70,7 +70,7 @@ public class UserController {
     }
 
     @GetMapping("/active")
-    @Operation(summary = "Get active users", description = "Retrieve list of active users")
+    @Operation(summary = "Get active users", description = "Retrieve all active users")
     public ResponseEntity<Map<String, Object>> getActiveUsers() {
         try {
             List<User> activeUsers = userService.getActiveUsers();
@@ -89,70 +89,8 @@ public class UserController {
         }
     }
 
-    @GetMapping("/role/{roleName}")
-    @Operation(summary = "Get users by role", description = "Retrieve users with specific role")
-    public ResponseEntity<Map<String, Object>> getUsersByRole(
-            @Parameter(description = "Role name") @PathVariable String roleName) {
-        try {
-            List<User> users = userService.getUsersByRole(roleName);
-            Map<String, Object> response = new HashMap<>();
-            response.put("users", users);
-            response.put("total", users.size());
-            response.put("role", roleName);
-            response.put("status", "success");
-            response.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("message", "Failed to retrieve users by role");
-            errorResponse.put("status", "error");
-            errorResponse.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.internalServerError().body(errorResponse);
-        }
-    }
-
-    @PutMapping("/{id}/deactivate")
-    @Operation(summary = "Deactivate user", description = "Deactivate a user account")
-    public ResponseEntity<Map<String, Object>> deactivateUser(
-            @Parameter(description = "User ID") @PathVariable Long id) {
-        try {
-            userService.deactivateUser(id);
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "User deactivated successfully");
-            response.put("status", "success");
-            response.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("message", "Failed to deactivate user");
-            errorResponse.put("status", "error");
-            errorResponse.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.internalServerError().body(errorResponse);
-        }
-    }
-
-    @PutMapping("/{id}/activate")
-    @Operation(summary = "Activate user", description = "Activate a user account")
-    public ResponseEntity<Map<String, Object>> activateUser(
-            @Parameter(description = "User ID") @PathVariable Long id) {
-        try {
-            userService.activateUser(id);
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "User activated successfully");
-            response.put("status", "success");
-            response.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("message", "Failed to activate user");
-            errorResponse.put("status", "error");
-            errorResponse.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.internalServerError().body(errorResponse);
-        }
-    }
-
     @GetMapping("/stats")
-    @Operation(summary = "Get user statistics", description = "Get statistics about users")
+    @Operation(summary = "Get user statistics", description = "Retrieve user statistics (total, active, verified)")
     public ResponseEntity<Map<String, Object>> getUserStats() {
         try {
             List<User> allUsers = userService.getAllUsers();
@@ -162,19 +100,9 @@ public class UserController {
             long activeUsers = allUsers.stream().filter(User::getIsActive).count();
             long verifiedUsers = allUsers.stream().filter(User::getIsVerified).count();
             
-            // Count by JLPT levels
-            Map<String, Long> jlptStats = new HashMap<>();
-            for (User.JLPTLevel level : User.JLPTLevel.values()) {
-                long count = allUsers.stream()
-                    .filter(u -> level.equals(u.getCurrentJlptLevel()))
-                    .count();
-                jlptStats.put(level.name(), count);
-            }
-            
             response.put("totalUsers", totalUsers);
             response.put("activeUsers", activeUsers);
             response.put("verifiedUsers", verifiedUsers);
-            response.put("jlptLevelStats", jlptStats);
             response.put("status", "success");
             response.put("timestamp", LocalDateTime.now());
             

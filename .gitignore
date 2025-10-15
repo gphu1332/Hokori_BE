@@ -49,7 +49,14 @@ firebase-service-account.json
 hokori-web-firebase-adminsdk-*.json
 application-dev.properties
 application-prod.properties
+google-cloud-service-account.json
 *.key
 *.pem
 *.p12
 *.jks
+ngrok.exe
+ngrok
+
+### Template Files (keep these) ###
+!application-dev.properties.template
+!google-cloud-service-account.json.template
