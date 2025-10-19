@@ -1,20 +1,16 @@
 # Development configuration template
-# Copy this file to application-dev.properties and update with your local settings
-
-# Server configuration
-server.port=8080
+# Copy this file to application-dev.properties and update with your values
 
 # Database configuration - SQL Server for local development
 spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=hokori_db;encrypt=true;trustServerCertificate=true
-spring.datasource.username=YOUR_DB_USERNAME
-spring.datasource.password=YOUR_DB_PASSWORD
+spring.datasource.username=sa
+spring.datasource.password=YOUR_DATABASE_PASSWORD
 spring.datasource.driver-class-name=com.microsoft.sqlserver.jdbc.SQLServerDriver
 
 # JPA/Hibernate configuration for development
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
-# Remove explicit dialect - Hibernate will auto-detect SQL Server
 
 # Firebase configuration for development
 firebase.enabled=true
@@ -22,8 +18,13 @@ firebase.project-id=hokori-web
 firebase.credentials.path=classpath:firebase-service-account.json
 
 # JWT configuration for development
-jwt.secret=YOUR_JWT_SECRET_KEY
+jwt.secret=your-super-secret-jwt-key-change-this-in-production-123456789012345678901234567890
 jwt.expiration=86400000
+
+# Google Cloud AI configuration for development
+google.cloud.enabled=true
+google.cloud.project-id=capable-sphinx-475210-a6
+google.cloud.credentials.path=classpath:google-cloud-service-account.json
 
 # Logging configuration for development
 logging.level.com.hokori.web=DEBUG
@@ -34,8 +35,3 @@ spring.thymeleaf.check-template-location=false
 
 # Disable JPA open-in-view (better performance for REST API)
 spring.jpa.open-in-view=false
-
-# Google Cloud AI configuration
-google.cloud.enabled=true
-google.cloud.project-id=hokori-web
-google.cloud.credentials.path=classpath:google-cloud-service-account.json

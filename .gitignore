@@ -60,3 +60,5 @@ ngrok
 ### Template Files (keep these) ###
 !application-dev.properties.template
 !google-cloud-service-account.json.template
+!firebase-service-account.json.template
+!SETUP_GUIDE.md
