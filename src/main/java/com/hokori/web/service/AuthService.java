@@ -172,11 +172,17 @@ public class AuthService {
     }
     
     private void assignDefaultRole(User user) {
-        Role learnerRole = roleRepository.findByRoleName("LEARNER")
-                .orElseThrow(() -> new RuntimeException("Default role LEARNER not found"));
-        
-        user.setRoleId(learnerRole.getId());
-        userRepository.save(user);
+        try {
+            Role learnerRole = roleRepository.findByRoleName("LEARNER")
+                    .orElseThrow(() -> new RuntimeException("Default role LEARNER not found"));
+            
+            user.setRoleId(learnerRole.getId());
+            userRepository.save(user);
+        } catch (Exception e) {
+            System.err.println("❌ Failed to assign default role: " + e.getMessage());
+            System.err.println("User saved without role. Please check roles table.");
+            // Don't throw exception - let user be saved without role
+        }
     }
     
     /**

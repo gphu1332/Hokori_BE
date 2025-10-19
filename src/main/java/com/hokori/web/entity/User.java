@@ -71,7 +71,7 @@ public class User {
     @Column(name = "current_jlpt_level", length = 10)
     private JLPTLevel currentJlptLevel = JLPTLevel.N5;
     
-    @Column(name = "role_id", insertable = false, updatable = false)
+    @Column(name = "role_id")
     private Long roleId;
     
     @Column(name = "is_active")
