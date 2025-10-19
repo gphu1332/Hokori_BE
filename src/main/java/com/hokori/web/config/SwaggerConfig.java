@@ -22,7 +22,7 @@ public class SwaggerConfig {
                         .version("1.0.0")
                         .description("Japanese Learning Platform API"))
                 .servers(List.of(
-                        new Server().url("https://c306f7963fef.ngrok-free.app").description("Ngrok Tunnel")
+                        new Server().url("https://135257ed0daf.ngrok-free.app").description("Ngrok Tunnel")
                 ))
                 .addSecurityItem(new SecurityRequirement().addList("Bearer Authentication"))
                 .components(new io.swagger.v3.oas.models.Components()
