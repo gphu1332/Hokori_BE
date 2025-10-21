@@ -1,18 +1,22 @@
 package com.hokori.web.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
 @Table(name = "roles")
+@Data
 public class Role {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
     
     @NotBlank
@@ -31,6 +35,7 @@ public class Role {
     
     // Relationship
     @OneToMany(mappedBy = "role", fetch = FetchType.LAZY)
+    @JsonIgnore
     private List<User> users;
     
     // Constructors
@@ -40,64 +45,7 @@ public class Role {
         this.roleName = roleName;
         this.description = description;
     }
-    
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
-    
-    public void setId(Long id) {
-        this.id = id;
-    }
-    
-    public String getRoleName() {
-        return roleName;
-    }
-    
-    public void setRoleName(String roleName) {
-        this.roleName = roleName;
-    }
-    
-    public String getDescription() {
-        return description;
-    }
-    
-    public void setDescription(String description) {
-        this.description = description;
-    }
-    
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-    
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-    
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-    
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-    
-    public List<User> getUsers() {
-        return users;
-    }
-    
-    public void setUsers(List<User> users) {
-        this.users = users;
-    }
-    
-    @Override
-    public String toString() {
-        return "Role{" +
-                "id=" + id +
-                ", roleName='" + roleName + '\'' +
-                ", description='" + description + '\'' +
-                '}';
-    }
+
     
     @Override
     public boolean equals(Object o) {

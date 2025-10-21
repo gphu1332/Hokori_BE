@@ -2,147 +2,129 @@ package com.hokori.web.service;
 
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
-import com.hokori.web.repository.RoleRepository;
 import com.hokori.web.repository.UserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 @Transactional
 public class UserService {
-    
-    @Autowired
-    private UserRepository userRepository;
-    
-    @Autowired
-    private RoleRepository roleRepository;
-    
-    
+
+    private final UserRepository userRepository;
+    private final RoleService roleService;
+
+    public UserService(UserRepository userRepository, RoleService roleService) {
+        this.userRepository = userRepository;
+        this.roleService = roleService;
+    }
+
+    /* ===== READ ===== */
+    @Transactional(readOnly = true)
     public List<User> getAllUsers() {
-        return userRepository.findAll();
+        // nạp sẵn role để tránh LazyInitialization khi serialize
+        return userRepository.findAllWithRole();
     }
-    
-    public Optional<User> getUserById(Long id) {
-        return userRepository.findById(id);
-    }
-    
-    public Optional<User> getUserByEmail(String email) {
-        return userRepository.findByEmail(email);
-    }
-    
-    public Optional<User> getUserByFirebaseUid(String firebaseUid) {
-        return userRepository.findByFirebaseUid(firebaseUid);
-    }
-    
-    public List<User> getActiveUsers() {
-        return userRepository.findByIsActiveTrue();
-    }
-    
-    public List<User> getUsersByRole(String roleName) {
-        return userRepository.findByRoleName(roleName);
-    }
-    
-    public User createUser(User user) {
-        return userRepository.save(user);
-    }
-    
-    public User updateUser(User user) {
-        return userRepository.save(user);
-    }
-    
-    public void deleteUser(Long id) {
-        userRepository.deleteById(id);
-    }
-    
-    public void deactivateUser(Long id) {
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isPresent()) {
-            User user = userOpt.get();
-            user.setIsActive(false);
-            userRepository.save(user);
-        }
-    }
-    
-    public void activateUser(Long id) {
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isPresent()) {
-            User user = userOpt.get();
-            user.setIsActive(true);
-            userRepository.save(user);
-        }
-    }
-    
-    public void assignRole(Long userId, String roleName) {
-        Optional<User> userOpt = userRepository.findById(userId);
-        Optional<Role> roleOpt = roleRepository.findByRoleName(roleName);
-        
-        if (userOpt.isPresent() && roleOpt.isPresent()) {
-            User user = userOpt.get();
-            Role role = roleOpt.get();
-            
-            user.setRoleId(role.getId());
-            userRepository.save(user);
-        }
-    }
-    
-    public void removeRole(Long userId) {
-        Optional<User> userOpt = userRepository.findById(userId);
-        
-        if (userOpt.isPresent()) {
-            User user = userOpt.get();
-            user.setRoleId(null);
-            userRepository.save(user);
-        }
-    }
-    
+
+    @Transactional(readOnly = true)
+    public Optional<User> getUserById(Long id) { return userRepository.findById(id); }
+
+    @Transactional(readOnly = true)
+    public Optional<User> getUserByEmail(String email) { return userRepository.findByEmail(email); }
+
+    @Transactional(readOnly = true)
+    public Optional<User> getUserByFirebaseUid(String firebaseUid) { return userRepository.findByFirebaseUid(firebaseUid); }
+
+    @Transactional(readOnly = true)
+    public List<User> getActiveUsers() { return userRepository.findByIsActiveTrue(); }
+
+    @Transactional(readOnly = true)
+    public List<User> getUsersByRole(String roleName) { return userRepository.findByRoleName(roleName); }
+
+    @Transactional(readOnly = true)
     public List<String> getUserRoles(Long userId) {
-        Optional<User> userOpt = userRepository.findById(userId);
-        if (userOpt.isPresent() && userOpt.get().getRole() != null) {
-            return List.of(userOpt.get().getRole().getRoleName());
-        }
-        return List.of();
+        return userRepository.findById(userId)
+                .map(u -> u.getRole() != null ? List.of(u.getRole().getRoleName()) : Collections.<String>emptyList())
+                .orElse(Collections.emptyList());
     }
-    
+
+    @Transactional(readOnly = true)
     public boolean userHasRole(Long userId, String roleName) {
-        Optional<User> userOpt = userRepository.findById(userId);
-        return userOpt.isPresent() && 
-               userOpt.get().getRole() != null && 
-               userOpt.get().getRole().getRoleName().equals(roleName);
+        return userRepository.findById(userId)
+                .map(u -> u.getRole() != null && roleName.equals(u.getRole().getRoleName()))
+                .orElse(false);
     }
-    
-    public void updateLastLogin(Long userId) {
-        Optional<User> userOpt = userRepository.findById(userId);
-        if (userOpt.isPresent()) {
-            User user = userOpt.get();
-            user.setLastLoginAt(LocalDateTime.now());
-            userRepository.save(user);
-        }
-    }
-    
-    public long getUserCount() {
-        return userRepository.count();
-    }
-    
+
+    @Transactional(readOnly = true)
+    public long getUserCount() { return userRepository.count(); }
+
+    @Transactional(readOnly = true)
     public long getUserCountByRole(String roleName) {
-        Optional<Role> roleOpt = roleRepository.findByRoleName(roleName);
-        if (roleOpt.isPresent()) {
-            return userRepository.countByRoleId(roleOpt.get().getId());
+        return roleService.getRoleByName(roleName)
+                .map(r -> userRepository.countByRoleId(r.getId()))
+                .orElse(0L);
+    }
+
+    @Transactional(readOnly = true)
+    public List<User> searchUsers(String q) { return userRepository.searchUsers(q); }
+
+    @Transactional(readOnly = true)
+    public List<User> getUsersWithRecentLogin(LocalDateTime since) {
+        return userRepository.findUsersWithRecentLogin(since);
+    }
+
+    /* ===== WRITE ===== */
+
+    public User createUser(User user) {
+        if (user.getRole() == null) {
+            Role defaultRole = roleService.getDefaultRole();
+            user.setRole(defaultRole);
         }
-        return 0;
+        return userRepository.save(user);
     }
-    
-    public List<User> searchUsers(String searchTerm) {
-        return userRepository.searchUsers(searchTerm);
+
+    public User updateUser(User user) { return userRepository.save(user); }
+
+    public void deleteUser(Long id) { userRepository.deleteById(id); }
+
+    public void deactivateUser(Long id) {
+        userRepository.findById(id).ifPresent(u -> {
+            u.setIsActive(false);
+            userRepository.save(u);
+        });
     }
-    
-    public List<User> getUsersWithRecentLogin(LocalDateTime date) {
-        return userRepository.findUsersWithRecentLogin(date);
+
+    public void activateUser(Long id) {
+        userRepository.findById(id).ifPresent(u -> {
+            u.setIsActive(true);
+            userRepository.save(u);
+        });
     }
-    
-    // initializeDefaultRoles() method removed - using existing database data
+
+    public void assignRole(Long userId, String roleName) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        Role role = roleService.getRoleByName(roleName)
+                .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
+        user.setRole(role);
+        userRepository.save(user);
+    }
+
+    public void removeRole(Long userId) {
+        userRepository.findById(userId).ifPresent(u -> {
+            u.setRole(null);
+            userRepository.save(u);
+        });
+    }
+
+    public void updateLastLogin(Long userId) {
+        userRepository.findById(userId).ifPresent(u -> {
+            u.setLastLoginAt(LocalDateTime.now());
+            userRepository.save(u);
+        });
+    }
 }

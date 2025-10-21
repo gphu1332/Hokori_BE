@@ -24,268 +24,183 @@ import java.util.Optional;
 @Service
 @Transactional
 public class AuthService {
-    
+
     @Autowired(required = false)
     private FirebaseAuth firebaseAuth;
-    
+
     @Autowired
     private JwtConfig jwtConfig;
-    
+
     @Autowired
     private JwtTokenService jwtTokenService;
-    
+
     @Autowired
     private UserRepository userRepository;
-    
+
     @Autowired
     private RoleRepository roleRepository;
-    
+
     @Autowired
     private PasswordEncoder passwordEncoder;
-    
-    @Value("${jwt.expiration}")
+
+    @Value("${jwt.expiration:3600}")
     private Long jwtExpiration;
-    
+
+    /* ===================== FIREBASE LOGIN ===================== */
     public AuthResponse authenticateUser(String idToken) throws FirebaseAuthException {
         if (firebaseAuth == null) {
             throw new RuntimeException("Firebase authentication is not configured. Please set firebase.enabled=true in application.properties");
         }
-        
-        // Verify Firebase token
+
         FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken);
-        
-        // Extract user information from Firebase token
         String firebaseUid = decodedToken.getUid();
         String email = decodedToken.getEmail();
         String displayName = decodedToken.getName();
         String photoUrl = decodedToken.getPicture();
-        
-        // Find or create user
+
         User user = findOrCreateUser(firebaseUid, email, displayName, photoUrl);
-        
-        // Update last login
+
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
-        
-        // Generate authentication response
+
         return createAuthResponse(user, "firebase");
     }
-    
+
+    /* ===================== REFRESH TOKEN ===================== */
     public AuthResponse refreshToken(String refreshToken) {
         try {
-            // Validate refresh token
             if (!jwtConfig.isRefreshToken(refreshToken)) {
                 throw new RuntimeException("Invalid refresh token");
             }
-            
+
             String email = jwtConfig.extractUsername(refreshToken);
             User user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found"));
-            
-            if (!user.getIsActive()) {
+
+            if (Boolean.FALSE.equals(user.getIsActive())) {
                 throw new RuntimeException("User account is deactivated");
             }
-            
-            // Generate authentication response
+
             return createAuthResponse(user, "refresh");
-            
         } catch (Exception e) {
             throw new RuntimeException("Failed to refresh token", e);
         }
     }
-    
+
+    /* ===================== FIND OR CREATE USER (FIREBASE) ===================== */
     public User findOrCreateUser(String firebaseUid, String email, String displayName, String photoUrl) {
-        // First check if user exists by Firebase UID
-        Optional<User> existingUserByFirebase = userRepository.findByFirebaseUid(firebaseUid);
-        if (existingUserByFirebase.isPresent()) {
-            User user = existingUserByFirebase.get();
-            
-            // Update user information if needed
+        // 1) Tồn tại theo Firebase UID
+        Optional<User> byFirebase = userRepository.findByFirebaseUid(firebaseUid);
+        if (byFirebase.isPresent()) {
+            User user = byFirebase.get();
             boolean updated = false;
-            if (displayName != null && !displayName.equals(user.getDisplayName())) {
-                user.setDisplayName(displayName);
-                updated = true;
-            }
-            if (photoUrl != null && !photoUrl.equals(user.getAvatarUrl())) {
-                user.setAvatarUrl(photoUrl);
-                updated = true;
-            }
-            if (email != null && !email.equals(user.getEmail())) {
-                user.setEmail(email);
-                updated = true;
-            }
-            
-            if (updated) {
-                userRepository.save(user);
-            }
-            
+
+            if (displayName != null && !displayName.equals(user.getDisplayName())) { user.setDisplayName(displayName); updated = true; }
+            if (photoUrl    != null && !photoUrl.equals(user.getAvatarUrl()))      { user.setAvatarUrl(photoUrl);    updated = true; }
+            if (email       != null && !email.equals(user.getEmail()))             { user.setEmail(email);           updated = true; }
+
+            if (updated) userRepository.save(user);
             return user;
         }
-        
-        // Check if user exists by email (might be a username/password user)
-        Optional<User> existingUserByEmail = userRepository.findByEmail(email);
-        if (existingUserByEmail.isPresent()) {
-            User user = existingUserByEmail.get();
-            
-            // Link Firebase UID to existing user
+
+        // 2) Tồn tại theo email (đã đăng ký username/password trước đó)
+        Optional<User> byEmail = userRepository.findByEmail(email);
+        if (byEmail.isPresent()) {
+            User user = byEmail.get();
             user.setFirebaseUid(firebaseUid);
-            
-            // Update user information if needed
+
             boolean updated = false;
-            if (displayName != null && !displayName.equals(user.getDisplayName())) {
-                user.setDisplayName(displayName);
+            if (displayName != null && !displayName.equals(user.getDisplayName())) { user.setDisplayName(displayName); updated = true; }
+            if (photoUrl    != null && !photoUrl.equals(user.getAvatarUrl()))      { user.setAvatarUrl(photoUrl);    updated = true; }
+            if (!Boolean.TRUE.equals(user.getIsVerified())) { user.setIsVerified(true); updated = true; }
+
+            // nếu chưa có role thì gán mặc định
+            if (user.getRole() == null) {
+                user.setRole(getDefaultRole());
                 updated = true;
             }
-            if (photoUrl != null && !photoUrl.equals(user.getAvatarUrl())) {
-                user.setAvatarUrl(photoUrl);
-                updated = true;
-            }
-            
-            // Mark as verified since Firebase verified the email
-            if (!user.getIsVerified()) {
-                user.setIsVerified(true);
-                updated = true;
-            }
-            
-            if (updated) {
-                userRepository.save(user);
-            }
+            if (updated) userRepository.save(user);
             return user;
         }
-        
-        // Create new user
+
+        // 3) Tạo mới + gán role mặc định TRƯỚC KHI SAVE để Hibernate set luôn FK role_id
         User newUser = new User();
         newUser.setFirebaseUid(firebaseUid);
         newUser.setEmail(email);
         newUser.setDisplayName(displayName);
         newUser.setAvatarUrl(photoUrl);
         newUser.setIsActive(true);
-        newUser.setIsVerified(true); // Firebase verified users are considered verified
-        
-        // Save user
-        newUser = userRepository.save(newUser);
-        
-        // Assign default role (LEARNER)
-        assignDefaultRole(newUser);
-        
-        return newUser;
+        newUser.setIsVerified(true);
+        newUser.setRole(getDefaultRole()); // <-- quan trọng: set Role entity, KHÔNG set roleId
+
+        return userRepository.save(newUser);
     }
-    
-    private void assignDefaultRole(User user) {
-        try {
-            Role learnerRole = roleRepository.findByRoleName("LEARNER")
-                    .orElseThrow(() -> new RuntimeException("Default role LEARNER not found"));
-            
-            user.setRoleId(learnerRole.getId());
-            userRepository.save(user);
-        } catch (Exception e) {
-            System.err.println("❌ Failed to assign default role: " + e.getMessage());
-            System.err.println("User saved without role. Please check roles table.");
-            // Don't throw exception - let user be saved without role
-        }
+
+    /* ===================== ROLE HELPERS ===================== */
+    private Role getDefaultRole() {
+        return roleRepository.findByRoleName("LEARNER")
+                .orElseThrow(() -> new RuntimeException("Default role LEARNER not found"));
     }
-    
-    /**
-     * Assign specific role to user
-     */
+
+    /** Gán role theo tên (dùng entity quan hệ) */
     public void assignRoleToUser(User user, String roleName) {
         Role role = roleRepository.findByRoleName(roleName)
                 .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
-        
-        user.setRoleId(role.getId());
+        user.setRole(role);
         userRepository.save(user);
     }
-    
-    /**
-     * Check if user has specific role
-     */
-    public boolean userHasRole(User user, String roleName) {
-        return user.getRole() != null && user.getRole().getRoleName().equals(roleName);
+
+    public void assignRole(User user, String roleName) {
+        assignRoleToUser(user, roleName);
     }
-    
-    /**
-     * Check if user is admin
-     */
+
+    public void removeRole(User user) {
+        user.setRole(null);
+        userRepository.save(user);
+    }
+
+    public boolean userHasRole(User user, String roleName) {
+        return user.getRole() != null && roleName.equals(user.getRole().getRoleName());
+    }
+
     public boolean isAdmin(User user) {
         return userHasRole(user, "ADMIN");
     }
-    
-    /**
-     * Check if user is staff or admin
-     */
+
     public boolean isStaffOrAdmin(User user) {
         return userHasRole(user, "STAFF") || userHasRole(user, "ADMIN");
     }
-    
-    /**
-     * Check if user can create content (Teacher, Staff, Admin)
-     */
+
     public boolean canCreateContent(User user) {
         return userHasRole(user, "TEACHER") || userHasRole(user, "STAFF") || userHasRole(user, "ADMIN");
     }
-    
+
     public List<String> getUserRoles(User user) {
-        if (user.getRole() != null) {
-            return List.of(user.getRole().getRoleName());
-        }
-        return List.of();
+        return (user.getRole() != null) ? List.of(user.getRole().getRoleName()) : List.of();
     }
-    
-    public boolean hasRole(User user, String roleName) {
-        return user.getRole() != null && user.getRole().getRoleName().equals(roleName);
-    }
-    
-    public void assignRole(User user, String roleName) {
-        Role role = roleRepository.findByRoleName(roleName)
-                .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
-        
-        user.setRoleId(role.getId());
-        userRepository.save(user);
-    }
-    
-    public void removeRole(User user) {
-        user.setRoleId(null);
-        userRepository.save(user);
-    }
-    
-    public User getUserByEmail(String email) {
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-    }
-    
-    public User getUserByFirebaseUid(String firebaseUid) {
-        return userRepository.findByFirebaseUid(firebaseUid)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-    }
-    
+
+    /* ===================== JWT HELPERS ===================== */
     public boolean validateToken(String token) {
         try {
             String email = jwtConfig.extractUsername(token);
             User user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found"));
-            
-            return jwtConfig.validateToken(token, user.getEmail()) && user.getIsActive();
+            return jwtConfig.validateToken(token, user.getEmail()) && Boolean.TRUE.equals(user.getIsActive());
         } catch (Exception e) {
             return false;
         }
     }
-    
+
     public String getEmailFromToken(String token) {
         return jwtConfig.extractUsername(token);
     }
-    
-    // Helper method to generate JWT tokens with claims
+
     private AuthResponse createAuthResponse(User user, String loginType) {
-        // Get user roles
         List<String> roles = getUserRoles(user);
-        
-        // Generate JWT tokens using unified service
         String accessToken = jwtTokenService.generateAccessToken(user, loginType, roles);
         String refreshToken = jwtTokenService.generateRefreshToken(user);
-        
-        // Create response
         AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(user);
-        
+
         return new AuthResponse(
                 accessToken,
                 refreshToken,
@@ -294,89 +209,88 @@ public class AuthService {
                 roles
         );
     }
-    
-    // Username/Password Authentication
+
+    /* ===================== USERNAME/PASSWORD LOGIN ===================== */
     public AuthResponse authenticateWithUsernamePassword(LoginRequest loginRequest) {
-        // Find user by username or email
         User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElseGet(() -> userRepository.findByEmail(loginRequest.getUsername())
                         .orElseThrow(() -> new RuntimeException("Invalid username/email or password")));
-        
-        // Check if account is active
-        if (!user.getIsActive()) {
+
+        if (Boolean.FALSE.equals(user.getIsActive())) {
             throw new RuntimeException("User account is deactivated");
         }
-        
-        // Verify password
+
         if (user.getPasswordHash() == null || !passwordEncoder.matches(loginRequest.getPassword(), user.getPasswordHash())) {
             throw new RuntimeException("Invalid username/email or password");
         }
-        
-        // Update last login
+
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
-        
-        // Generate authentication response
+
         return createAuthResponse(user, "password");
     }
-    
+
     public AuthResponse registerUser(RegisterRequest registerRequest) {
-        // Validate password confirmation
         if (!registerRequest.isPasswordConfirmed()) {
             throw new RuntimeException("Password and confirmation do not match");
         }
-        
-        // Validate role selection
         if (!registerRequest.isValidRole()) {
             throw new RuntimeException("Invalid role selected");
         }
-        
-        // Check if username already exists
         if (userRepository.findByUsername(registerRequest.getUsername()).isPresent()) {
             throw new RuntimeException("Username already exists");
         }
-        
-        // Check if email already exists
         if (userRepository.findByEmail(registerRequest.getEmail()).isPresent()) {
             throw new RuntimeException("Email already exists");
         }
-        
-        // Create new user
+
         User newUser = new User();
         newUser.setUsername(registerRequest.getUsername());
         newUser.setEmail(registerRequest.getEmail());
         newUser.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
-        newUser.setDisplayName(registerRequest.getDisplayName() != null ? registerRequest.getDisplayName() : registerRequest.getUsername());
+        newUser.setDisplayName(
+                registerRequest.getDisplayName() != null ? registerRequest.getDisplayName() : registerRequest.getUsername());
         newUser.setCountry(registerRequest.getCountry());
         newUser.setNativeLanguage(registerRequest.getNativeLanguage());
-        
-        // Generate a unique identifier for username/password users (since firebase_uid is required)
+
+        // tạo uid giả cho user/password
         String usernamePasswordUid = "username_" + registerRequest.getUsername() + "_" + System.currentTimeMillis();
         newUser.setFirebaseUid(usernamePasswordUid);
-        
-        // Set JLPT level safely
+
+        // JLPT
         if (registerRequest.getCurrentJlptLevel() != null) {
             try {
                 newUser.setCurrentJlptLevel(User.JLPTLevel.valueOf(registerRequest.getCurrentJlptLevel()));
             } catch (IllegalArgumentException e) {
-                newUser.setCurrentJlptLevel(User.JLPTLevel.N5); // Default to N5
+                newUser.setCurrentJlptLevel(User.JLPTLevel.N5);
             }
         } else {
-            newUser.setCurrentJlptLevel(User.JLPTLevel.N5); // Default to N5
+            newUser.setCurrentJlptLevel(User.JLPTLevel.N5);
         }
-        
+
         newUser.setIsActive(true);
-        newUser.setIsVerified(false); // Require email verification for regular signup
+        newUser.setIsVerified(false);
         newUser.setLearningLanguage("Japanese");
-        
-        // Save user
+
+        // Gán role theo request (hoặc LEARNER) TRƯỚC khi save để set FK
+        String roleName = (registerRequest.getRoleName() != null) ? registerRequest.getRoleName() : "LEARNER";
+        Role role = roleRepository.findByRoleName(roleName)
+                .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
+        newUser.setRole(role);
+
         newUser = userRepository.save(newUser);
-        
-        // Assign role based on request (default to LEARNER if not specified)
-        String roleName = registerRequest.getRoleName() != null ? registerRequest.getRoleName() : "LEARNER";
-        assignRoleToUser(newUser, roleName);
-        
-        // Generate authentication response
+
         return createAuthResponse(newUser, "registration");
+    }
+
+    /* ===================== SIMPLE GETTERS ===================== */
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    public User getUserByFirebaseUid(String firebaseUid) {
+        return userRepository.findByFirebaseUid(firebaseUid)
+                .orElseThrow(() -> new RuntimeException("User not found"));
     }
 }
