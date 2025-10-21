@@ -3,10 +3,13 @@ package com.hokori.web.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import lombok.Data;
 
 /**
  * Enhanced registration request with role selection
  */
+
+@Data
 public class RegisterRequest {
     
     @NotBlank(message = "Username is required")
@@ -42,112 +45,6 @@ public class RegisterRequest {
     private String teachingExperience;
     private String qualifications;
     private String bio;
-    
-    // Constructors
-    public RegisterRequest() {}
-    
-    public RegisterRequest(String username, String email, String password) {
-        this.username = username;
-        this.email = email;
-        this.password = password;
-    }
-    
-    // Getters and Setters
-    public String getUsername() {
-        return username;
-    }
-    
-    public void setUsername(String username) {
-        this.username = username;
-    }
-    
-    public String getEmail() {
-        return email;
-    }
-    
-    public void setEmail(String email) {
-        this.email = email;
-    }
-    
-    public String getPassword() {
-        return password;
-    }
-    
-    public void setPassword(String password) {
-        this.password = password;
-    }
-    
-    public String getConfirmPassword() {
-        return confirmPassword;
-    }
-    
-    public void setConfirmPassword(String confirmPassword) {
-        this.confirmPassword = confirmPassword;
-    }
-    
-    public String getDisplayName() {
-        return displayName;
-    }
-    
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
-    }
-    
-    public String getCountry() {
-        return country;
-    }
-    
-    public void setCountry(String country) {
-        this.country = country;
-    }
-    
-    public String getNativeLanguage() {
-        return nativeLanguage;
-    }
-    
-    public void setNativeLanguage(String nativeLanguage) {
-        this.nativeLanguage = nativeLanguage;
-    }
-    
-    public String getCurrentJlptLevel() {
-        return currentJlptLevel;
-    }
-    
-    public void setCurrentJlptLevel(String currentJlptLevel) {
-        this.currentJlptLevel = currentJlptLevel;
-    }
-    
-    public String getRoleName() {
-        return roleName;
-    }
-    
-    public void setRoleName(String roleName) {
-        this.roleName = roleName;
-    }
-    
-    public String getTeachingExperience() {
-        return teachingExperience;
-    }
-    
-    public void setTeachingExperience(String teachingExperience) {
-        this.teachingExperience = teachingExperience;
-    }
-    
-    public String getQualifications() {
-        return qualifications;
-    }
-    
-    public void setQualifications(String qualifications) {
-        this.qualifications = qualifications;
-    }
-    
-    public String getBio() {
-        return bio;
-    }
-    
-    public void setBio(String bio) {
-        this.bio = bio;
-    }
     
     /**
      * Validate role selection
