@@ -1,9 +1,6 @@
 package com.hokori.web.controller;
 
-import com.hokori.web.dto.ApiResponse;
-import com.hokori.web.dto.RoleAssignmentRequest;
-import com.hokori.web.dto.UserStatusRequest;
-import com.hokori.web.dto.RoleCreateRequest;
+import com.hokori.web.dto.*;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
 import com.hokori.web.service.CurrentUserService;
@@ -96,40 +93,49 @@ public class AdminController {
 
     @GetMapping("/users/{userId}")
     @Operation(summary = "Get user by ID", description = "Retrieve a specific user by their ID")
-    public ResponseEntity<ApiResponse<User>> getUserById(@PathVariable Long userId) {
+    public ResponseEntity<ApiResponse<UserSimpleDTO>> getUserById(@PathVariable Long userId) {
         try {
-            User user = userService.getUserById(userId)
+            User user = userService.getUserWithRole(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
-            return ResponseEntity.ok(ApiResponse.success("User retrieved successfully", user));
+            return ResponseEntity.ok(
+                    ApiResponse.success("User retrieved successfully", UserSimpleDTO.from(user))
+            );
         } catch (RuntimeException e) {
-            return ResponseEntity.status(404).body(ApiResponse.error("Failed to retrieve user: " + e.getMessage()));
+            int status = (e.getMessage() != null && e.getMessage().contains("not found")) ? 404 : 400;
+            return ResponseEntity.status(status).body(ApiResponse.error(e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error("Failed to retrieve user: " + e.getMessage()));
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to retrieve user: " + e.getMessage()));
         }
     }
 
+
     @PutMapping("/users/{userId}/role")
     @Operation(summary = "Assign role to user", description = "Assign a specific role to a user")
-    public ResponseEntity<ApiResponse<User>> assignRoleToUser(
+    public ResponseEntity<ApiResponse<UserSimpleDTO>> assignRoleToUser(
             @PathVariable Long userId,
             @Valid @RequestBody RoleAssignmentRequest request) {
         try {
-            // ✅ Gán role đúng chuẩn JPA (set Role entity, không set roleId thô)
+            // Gán role đúng chuẩn JPA (set Role entity)
             userService.assignRole(userId, request.getRoleName());
 
-            // Load lại user sau khi cập nhật
-            User updated = userService.getUserById(userId)
+            // Load lại user với role đã fetch để tránh LazyInitializationException
+            User updated = userService.getUserWithRole(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            return ResponseEntity.ok(ApiResponse.success("Role assigned successfully", updated));
+            return ResponseEntity.ok(
+                    ApiResponse.success("Role assigned successfully", UserSimpleDTO.from(updated))
+            );
         } catch (RuntimeException e) {
             String msg = e.getMessage();
             int status = (msg != null && (msg.contains("User not found") || msg.contains("Role not found"))) ? 404 : 400;
             return ResponseEntity.status(status).body(ApiResponse.error("Failed to assign role: " + msg));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error("Failed to assign role: " + e.getMessage()));
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to assign role: " + e.getMessage()));
         }
     }
+
 
     @PutMapping("/users/{userId}/status")
     @Operation(summary = "Update user status", description = "Activate or deactivate a user account")

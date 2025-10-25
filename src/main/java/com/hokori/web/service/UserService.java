@@ -26,7 +26,6 @@ public class UserService {
     /* ===== READ ===== */
     @Transactional(readOnly = true)
     public List<User> getAllUsers() {
-        // nạp sẵn role để tránh LazyInitialization khi serialize
         return userRepository.findAllWithRole();
     }
 
@@ -127,4 +126,10 @@ public class UserService {
             userRepository.save(u);
         });
     }
+
+    @Transactional(readOnly = true)
+    public Optional<User> getUserWithRole(Long id) {
+        return userRepository.findByIdWithRole(id);
+    }
+
 }

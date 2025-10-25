@@ -37,7 +37,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findUsersWithRecentLogin(@Param("date") LocalDateTime date);
 
     // ------------ Fetch-join to avoid LazyInitialization on serialization ------------
-    @Query("SELECT u FROM User u LEFT JOIN FETCH u.role")
+    @Query("select distinct u from User u left join fetch u.role")
     List<User> findAllWithRole();
 
     @Query("SELECT u FROM User u JOIN FETCH u.role r WHERE r.id = :roleId")
@@ -57,4 +57,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
               OR LOWER(u.email)       LIKE LOWER(CONCAT('%', :q, '%'))
            """)
     List<User> searchUsers(@Param("q") String searchTerm);
+
+    @Query("select u from User u left join fetch u.role where u.id = :id")
+    Optional<User> findByIdWithRole(@Param("id") Long id);
 }
