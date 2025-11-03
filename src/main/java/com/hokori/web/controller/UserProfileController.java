@@ -2,7 +2,7 @@ package com.hokori.web.controller;
 
 import com.hokori.web.dto.ApiResponse;
 import com.hokori.web.dto.UserProfileUpdateRequest;
-import com.hokori.web.dto.PasswordChangeRequest;
+import com.hokori.web.dto.ChangePasswordRequest;
 import com.hokori.web.entity.User;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.UserService;
@@ -141,7 +141,7 @@ public class UserProfileController {
 
     @PutMapping("/me/password")
     @Operation(summary = "Change current user password", description = "Change current authenticated user's password")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> changeCurrentUserPassword(@Valid @RequestBody PasswordChangeRequest passwordData) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> changeCurrentUserPassword(@Valid @RequestBody ChangePasswordRequest passwordData) {
         try {
             User currentUser = currentUserService.getCurrentUserOrThrow();
             

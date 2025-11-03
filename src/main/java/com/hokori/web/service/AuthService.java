@@ -4,21 +4,13 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import com.hokori.web.config.JwtConfig;
-import com.hokori.web.dto.AuthResponse;
-import com.hokori.web.dto.LoginRequest;
-import com.hokori.web.dto.RegisterRequest;
-
-// NEW: 2 DTO tách luồng đăng ký
-import com.hokori.web.dto.RegisterLearnerRequest;
-import com.hokori.web.dto.RegisterTeacherRequest;
-
+import com.hokori.web.dto.auth.AuthResponse;
+import com.hokori.web.dto.auth.LoginRequest;
+import com.hokori.web.dto.auth.RegisterLearnerRequest;
+import com.hokori.web.dto.auth.RegisterRequest;
+import com.hokori.web.dto.auth.RegisterTeacherRequest;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
-
-// NEW: tạo hồ sơ teacher
-import com.hokori.web.entity.TeacherProfile;
-import com.hokori.web.repository.TeacherProfileRepository;
-
 import com.hokori.web.repository.RoleRepository;
 import com.hokori.web.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,8 +19,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -44,26 +38,44 @@ public class AuthService {
     @Autowired private RoleRepository roleRepository;
     @Autowired private PasswordEncoder passwordEncoder;
 
-    // NEW
-    @Autowired private TeacherProfileRepository teacherProfileRepository;
-
     @Value("${jwt.expiration:3600}")
-    private Long jwtExpiration;
+    private Long jwtExpiration; // hiện chưa dùng — giữ lại cho cấu hình
 
     /* ===================== FIREBASE LOGIN ===================== */
     public AuthResponse authenticateUser(String idToken) throws FirebaseAuthException {
         if (firebaseAuth == null) {
             throw new RuntimeException("Firebase authentication is not configured. Please set firebase.enabled=true");
         }
-        FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken);
-        String firebaseUid = decodedToken.getUid();
-        String email = decodedToken.getEmail();
-        String displayName = decodedToken.getName();
-        String photoUrl = decodedToken.getPicture();
+        FirebaseToken decoded = firebaseAuth.verifyIdToken(idToken);
+
+        String firebaseUid = decoded.getUid();
+        String email       = decoded.getEmail();
+        String displayName = decoded.getName();
+        String photoUrl    = decoded.getPicture();
+
+        // Lấy thêm thông tin từ claims
+        Boolean emailVerified = decoded.isEmailVerified();
+        String provider = null;
+        Object firebaseClaim = decoded.getClaims().get("firebase");
+        if (firebaseClaim instanceof Map<?, ?> map) {
+            Object sp = map.get("sign_in_provider"); // "password", "google.com", ...
+            if (sp != null) provider = String.valueOf(sp);
+        }
 
         User user = findOrCreateUser(firebaseUid, email, displayName, photoUrl);
+
+        boolean updated = false;
+        if (emailVerified != null && !emailVerified.equals(user.getFirebaseEmailVerified())) {
+            user.setFirebaseEmailVerified(emailVerified);
+            updated = true;
+        }
+        if (provider != null && (user.getFirebaseProvider() == null || !provider.equals(user.getFirebaseProvider()))) {
+            user.setFirebaseProvider(provider);
+            updated = true;
+        }
         user.setLastLoginAt(LocalDateTime.now());
-        userRepository.save(user);
+
+        userRepository.save(user); // lưu một lần là đủ (kể cả có updated hay không)
         return createAuthResponse(user, "firebase");
     }
 
@@ -83,39 +95,50 @@ public class AuthService {
 
     /* ===================== FIND OR CREATE USER (FIREBASE) ===================== */
     public User findOrCreateUser(String firebaseUid, String email, String displayName, String photoUrl) {
+        // 1) Tìm theo firebaseUid
         Optional<User> byFirebase = userRepository.findByFirebaseUid(firebaseUid);
         if (byFirebase.isPresent()) {
             User user = byFirebase.get();
             boolean updated = false;
+
             if (displayName != null && !displayName.equals(user.getDisplayName())) { user.setDisplayName(displayName); updated = true; }
             if (photoUrl    != null && !photoUrl.equals(user.getAvatarUrl()))      { user.setAvatarUrl(photoUrl);    updated = true; }
             if (email       != null && !email.equals(user.getEmail()))             { user.setEmail(email);           updated = true; }
+
             if (updated) userRepository.save(user);
             return user;
         }
 
-        Optional<User> byEmail = userRepository.findByEmail(email);
-        if (byEmail.isPresent()) {
-            User user = byEmail.get();
-            user.setFirebaseUid(firebaseUid);
-            boolean updated = false;
-            if (displayName != null && !displayName.equals(user.getDisplayName())) { user.setDisplayName(displayName); updated = true; }
-            if (photoUrl    != null && !photoUrl.equals(user.getAvatarUrl()))      { user.setAvatarUrl(photoUrl);    updated = true; }
-            if (!Boolean.TRUE.equals(user.getIsVerified())) { user.setIsVerified(true); updated = true; }
-            if (user.getRole() == null) { user.setRole(getDefaultRole()); updated = true; }
-            if (updated) userRepository.save(user);
-            return user;
+        // 2) Nếu chưa có uid → map theo email, gộp tài khoản cũ
+        if (email != null) {
+            Optional<User> byEmail = userRepository.findByEmail(email);
+            if (byEmail.isPresent()) {
+                User user = byEmail.get();
+                user.setFirebaseUid(firebaseUid);
+                boolean updated = false;
+
+                if (displayName != null && !displayName.equals(user.getDisplayName())) { user.setDisplayName(displayName); updated = true; }
+                if (photoUrl    != null && !photoUrl.equals(user.getAvatarUrl()))      { user.setAvatarUrl(photoUrl);    updated = true; }
+                if (!Boolean.TRUE.equals(user.getIsVerified())) { user.setIsVerified(true); updated = true; }
+                if (user.getRole() == null) { user.setRole(getDefaultRole()); updated = true; }
+
+                if (updated) userRepository.save(user);
+                return user;
+            }
         }
 
-        User newUser = new User();
-        newUser.setFirebaseUid(firebaseUid);
-        newUser.setEmail(email);
-        newUser.setDisplayName(displayName);
-        newUser.setAvatarUrl(photoUrl);
-        newUser.setIsActive(true);
-        newUser.setIsVerified(true);
-        newUser.setRole(getDefaultRole()); // set Role entity, KHÔNG set roleId
-        return userRepository.save(newUser);
+        // 3) Tạo user mới
+        User u = new User();
+        u.setFirebaseUid(firebaseUid);
+        u.setEmail(email);
+        u.setDisplayName(displayName);
+        u.setAvatarUrl(photoUrl);
+        u.setIsActive(true);
+        u.setIsVerified(true);
+        u.setLearningLanguage("Japanese");
+        u.setCurrentJlptLevel(User.JLPTLevel.N5);
+        u.setRole(getDefaultRole()); // LEARNER mặc định
+        return userRepository.save(u);
     }
 
     /* ===================== ROLE HELPERS ===================== */
@@ -154,10 +177,24 @@ public class AuthService {
 
     private AuthResponse createAuthResponse(User user, String loginType) {
         List<String> roles = getUserRoles(user);
-        String accessToken = jwtTokenService.generateAccessToken(user, loginType, roles);
+
+        String accessToken  = jwtTokenService.generateAccessToken(user, loginType, roles);
         String refreshToken = jwtTokenService.generateRefreshToken(user);
-        AuthResponse.UserInfo userInfo = new AuthResponse.UserInfo(user);
-        return new AuthResponse(accessToken, refreshToken, jwtTokenService.getTokenExpiration(), userInfo, roles);
+
+        // jwtTokenService.getTokenExpiration() trả về Long (epoch millis hoặc epoch seconds)
+        Long exp = jwtTokenService.getTokenExpiration();
+        // Nếu lớn hơn ~ 3e9 thì coi là milliseconds, ngược lại là seconds
+        Instant expiresAt = (exp != null)
+                ? (exp > 3_000_000_000L ? Instant.ofEpochMilli(exp) : Instant.ofEpochSecond(exp))
+                : null;
+
+        return new AuthResponse(
+                accessToken,
+                refreshToken,
+                expiresAt,
+                new AuthResponse.UserInfo(user),
+                roles
+        );
     }
 
     /* ===================== USERNAME/PASSWORD LOGIN ===================== */
@@ -168,54 +205,16 @@ public class AuthService {
         if (Boolean.FALSE.equals(user.getIsActive())) throw new RuntimeException("User account is deactivated");
         if (user.getPasswordHash() == null || !passwordEncoder.matches(loginRequest.getPassword(), user.getPasswordHash()))
             throw new RuntimeException("Invalid username/email or password");
+
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
         return createAuthResponse(user, "password");
     }
 
-    /* ===================== OLD COMBINED REGISTER (vẫn giữ) ===================== */
-    public AuthResponse registerUser(RegisterRequest registerRequest) {
-        if (!registerRequest.isPasswordConfirmed()) throw new RuntimeException("Password and confirmation do not match");
-        if (!registerRequest.isValidRole()) throw new RuntimeException("Invalid role selected");
-        if (userRepository.findByUsername(registerRequest.getUsername()).isPresent())
-            throw new RuntimeException("Username already exists");
-        if (userRepository.findByEmail(registerRequest.getEmail()).isPresent())
-            throw new RuntimeException("Email already exists");
-
-        User newUser = new User();
-        newUser.setUsername(registerRequest.getUsername());
-        newUser.setEmail(registerRequest.getEmail());
-        newUser.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
-        newUser.setDisplayName(registerRequest.getDisplayName() != null ? registerRequest.getDisplayName() : registerRequest.getUsername());
-        newUser.setCountry(registerRequest.getCountry());
-        newUser.setNativeLanguage(registerRequest.getNativeLanguage());
-
-        String usernamePasswordUid = "username_" + registerRequest.getUsername() + "_" + System.currentTimeMillis();
-        newUser.setFirebaseUid(usernamePasswordUid);
-
-        if (registerRequest.getCurrentJlptLevel() != null) {
-            try { newUser.setCurrentJlptLevel(User.JLPTLevel.valueOf(registerRequest.getCurrentJlptLevel())); }
-            catch (IllegalArgumentException e) { newUser.setCurrentJlptLevel(User.JLPTLevel.N5); }
-        } else {
-            newUser.setCurrentJlptLevel(User.JLPTLevel.N5);
-        }
-        newUser.setIsActive(true);
-        newUser.setIsVerified(false);
-        newUser.setLearningLanguage("Japanese");
-
-        String roleName = (registerRequest.getRoleName() != null) ? registerRequest.getRoleName() : "LEARNER";
-        Role role = roleRepository.findByRoleName(roleName)
-                .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
-        newUser.setRole(role);
-
-        newUser = userRepository.save(newUser);
-        return createAuthResponse(newUser, "registration");
-    }
-
-    /* ===================== NEW: SEPARATE REGISTRATION ===================== */
-
-    public AuthResponse registerLearner(RegisterLearnerRequest req) {
-        // validate cơ bản
+    /* ===================== OLD COMBINED REGISTER (giữ tương thích) ===================== */
+    public AuthResponse registerUser(RegisterRequest req) {
+        if (!req.isPasswordConfirmed()) throw new RuntimeException("Password and confirmation do not match");
+        if (!req.isValidRole()) throw new RuntimeException("Invalid role selected");
         if (userRepository.findByUsername(req.getUsername()).isPresent())
             throw new RuntimeException("Username already exists");
         if (userRepository.findByEmail(req.getEmail()).isPresent())
@@ -225,7 +224,7 @@ public class AuthService {
         u.setUsername(req.getUsername());
         u.setEmail(req.getEmail());
         u.setPasswordHash(passwordEncoder.encode(req.getPassword()));
-        u.setDisplayName((req.getDisplayName()!=null && !req.getDisplayName().isBlank()) ? req.getDisplayName() : req.getUsername());
+        u.setDisplayName(req.getDisplayName() != null ? req.getDisplayName() : req.getUsername());
         u.setCountry(req.getCountry());
         u.setNativeLanguage(req.getNativeLanguage());
         u.setLearningLanguage("Japanese");
@@ -233,12 +232,40 @@ public class AuthService {
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
         u.setFirebaseUid(uid);
 
-        if (req.getCurrentJlptLevel() != null) {
-            try { u.setCurrentJlptLevel(User.JLPTLevel.valueOf(req.getCurrentJlptLevel())); }
-            catch (IllegalArgumentException ignored) { u.setCurrentJlptLevel(User.JLPTLevel.N5); }
-        } else {
-            u.setCurrentJlptLevel(User.JLPTLevel.N5);
-        }
+        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), User.JLPTLevel.N5));
+        u.setIsActive(true);
+        u.setIsVerified(false);
+
+        String roleName = (req.getRoleName() != null) ? req.getRoleName() : "LEARNER";
+        Role role = roleRepository.findByRoleName(roleName)
+                .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
+        u.setRole(role);
+
+        u = userRepository.save(u);
+        return createAuthResponse(u, "registration");
+    }
+
+    /* ===================== NEW: SEPARATE REGISTRATION ===================== */
+    public AuthResponse registerLearner(RegisterLearnerRequest req) {
+        if (userRepository.findByUsername(req.getUsername()).isPresent())
+            throw new RuntimeException("Username already exists");
+        if (userRepository.findByEmail(req.getEmail()).isPresent())
+            throw new RuntimeException("Email already exists");
+
+        User u = new User();
+        u.setUsername(req.getUsername());
+        u.setEmail(req.getEmail());
+        u.setPasswordHash(passwordEncoder.encode(req.getPassword()));
+        u.setDisplayName((req.getDisplayName()!=null && !req.getDisplayName().isBlank())
+                ? req.getDisplayName() : req.getUsername());
+        u.setCountry(req.getCountry());
+        u.setNativeLanguage(req.getNativeLanguage());
+        u.setLearningLanguage("Japanese");
+
+        String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
+        u.setFirebaseUid(uid);
+
+        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), User.JLPTLevel.N5));
         u.setIsActive(true);
         u.setIsVerified(false);
 
@@ -251,7 +278,6 @@ public class AuthService {
     }
 
     public AuthResponse registerTeacher(RegisterTeacherRequest req) {
-        // validate
         if (userRepository.findByUsername(req.getUsername()).isPresent())
             throw new RuntimeException("Username already exists");
         if (userRepository.findByEmail(req.getEmail()).isPresent())
@@ -260,19 +286,40 @@ public class AuthService {
         // yêu cầu tối thiểu: bio >= 50, JLPT N2/N1
         if (req.getBio() == null || req.getBio().trim().length() < 50)
             throw new RuntimeException("Bio must be at least 50 characters");
-        if (!"N1".equalsIgnoreCase(req.getCurrentJlptLevel()) && !"N2".equalsIgnoreCase(req.getCurrentJlptLevel()))
+        if (!"N1".equalsIgnoreCase(req.getCurrentJlptLevel()) &&
+                !"N2".equalsIgnoreCase(req.getCurrentJlptLevel()))
             throw new RuntimeException("Teacher must have JLPT N2 or N1");
 
         User u = new User();
         u.setUsername(req.getUsername());
         u.setEmail(req.getEmail());
         u.setPasswordHash(passwordEncoder.encode(req.getPassword()));
-        u.setDisplayName(req.getFirstName() + " " + req.getLastName());
-        u.setCurrentJlptLevel(User.JLPTLevel.valueOf(req.getCurrentJlptLevel()));
+
+        // hồ sơ (đã gộp vào User)
+        u.setFirstName(req.getFirstName());
+        u.setLastName(req.getLastName());
+        u.setDisplayName((req.getFirstName() != null ? req.getFirstName() : "") +
+                (req.getLastName()!= null ? " " + req.getLastName() : ""));
+        u.setHeadline(req.getHeadline());
+        u.setBio(req.getBio());
+        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), User.JLPTLevel.N2));
+        u.setLearningLanguage("Japanese");
         u.setIsActive(true);
         u.setIsVerified(false);
-        u.setLearningLanguage("Japanese");
 
+        // social / website
+        u.setWebsiteUrl(req.getWebsiteUrl());
+        u.setFacebook(req.getFacebook());
+        u.setInstagram(req.getInstagram());
+        u.setLinkedin(req.getLinkedin());
+        u.setTiktok(req.getTiktok());
+        u.setX(req.getX());
+        u.setYoutube(req.getYoutube());
+
+        // trạng thái duyệt mặc định
+        u.setApprovedStatus(User.ApproveStatus.NONE);
+
+        // UID giả cho tài khoản username/password
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
         u.setFirebaseUid(uid);
 
@@ -281,25 +328,6 @@ public class AuthService {
         u.setRole(teacher);
 
         u = userRepository.save(u);
-
-        // tạo TeacherProfile DRAFT
-        TeacherProfile profile = new TeacherProfile();
-        profile.setUser(u);
-        profile.setFirstName(req.getFirstName());
-        profile.setLastName(req.getLastName());
-        profile.setHeadline(req.getHeadline());
-        profile.setBio(req.getBio());
-        profile.setLanguage(req.getLanguage());
-        profile.setWebsiteUrl(req.getWebsiteUrl());
-        profile.setFacebook(req.getFacebook());
-        profile.setInstagram(req.getInstagram());
-        profile.setLinkedin(req.getLinkedin());
-        profile.setTiktok(req.getTiktok());
-        profile.setX(req.getX());
-        profile.setYoutube(req.getYoutube());
-        profile.setApprovalStatus(TeacherProfile.ApprovalStatus.DRAFT);
-        teacherProfileRepository.save(profile);
-
         return createAuthResponse(u, "registration");
     }
 
@@ -312,5 +340,12 @@ public class AuthService {
     public User getUserByFirebaseUid(String firebaseUid) {
         return userRepository.findByFirebaseUid(firebaseUid)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    /* ===================== Helpers ===================== */
+    private User.JLPTLevel parseJlptOrDefault(String s, User.JLPTLevel def) {
+        if (s == null || s.isBlank()) return def;
+        try { return User.JLPTLevel.valueOf(s.toUpperCase()); }
+        catch (IllegalArgumentException e) { return def; }
     }
 }

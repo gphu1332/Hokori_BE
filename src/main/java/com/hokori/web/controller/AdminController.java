@@ -21,8 +21,9 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin")
 @Tag(name = "Admin Management", description = "Administrative functions for user and role management")
-@SecurityRequirement(name = "Bearer Authentication")
+@SecurityRequirement(name = "Bearer Authentication") // chỉ dành cho Swagger UI
 @CrossOrigin(origins = "*")
+@org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')") // ⬅️ BẮT BUỘC LÀ ADMIN
 public class AdminController {
 
     @Autowired

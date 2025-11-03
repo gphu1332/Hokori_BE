@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 public class ChangePasswordRequest {
     
     @NotBlank(message = "Current password is required")
+    @Size(max = 100, message = "Current password must not exceed 100 characters")
     private String currentPassword;
     
     @NotBlank(message = "New password is required")
@@ -13,6 +14,7 @@ public class ChangePasswordRequest {
     private String newPassword;
     
     @NotBlank(message = "Confirm password is required")
+    @Size(min = 6, max = 100, message = "Confirm password must be between 6 and 100 characters")
     private String confirmPassword;
     
     // Constructors
@@ -50,7 +52,16 @@ public class ChangePasswordRequest {
     }
     
     // Validation method
-    public boolean isPasswordsMatch() {
+    public boolean isPasswordConfirmed() {
         return newPassword != null && newPassword.equals(confirmPassword);
+    }
+    
+    @Override
+    public String toString() {
+        return "PasswordChangeRequest{" +
+                "currentPassword='[HIDDEN]'" +
+                ", newPassword='[HIDDEN]'" +
+                ", confirmPassword='[HIDDEN]'" +
+                '}';
     }
 }

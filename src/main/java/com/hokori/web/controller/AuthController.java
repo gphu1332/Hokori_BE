@@ -1,15 +1,12 @@
 package com.hokori.web.controller;
 
 import com.hokori.web.dto.ApiResponse;
-import com.hokori.web.dto.AuthResponse;
-import com.hokori.web.dto.LoginRequest;
-import com.hokori.web.dto.FirebaseAuthRequest;
-import com.hokori.web.dto.RegisterRequest;
-
-// === NEW: tách 2 DTO riêng cho learner/teacher ===
-import com.hokori.web.dto.RegisterLearnerRequest;
-import com.hokori.web.dto.RegisterTeacherRequest;
-
+import com.hokori.web.dto.auth.AuthResponse;
+import com.hokori.web.dto.auth.LoginRequest;
+import com.hokori.web.dto.auth.FirebaseAuthRequest;
+import com.hokori.web.dto.auth.RegisterRequest;
+import com.hokori.web.dto.auth.RegisterLearnerRequest;
+import com.hokori.web.dto.auth.RegisterTeacherRequest;
 import com.hokori.web.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -58,7 +55,8 @@ public class AuthController {
     // NEW: Register Teacher
     // ===========================
     @PostMapping("/register/teacher")
-    @Operation(summary = "Register teacher", description = "Đăng ký tài khoản giáo viên (TEACHER) + tạo TeacherProfile(DRAFT)")
+    @Operation(summary = "Register teacher",
+            description = "Đăng ký tài khoản giáo viên (TEACHER); hồ sơ được lưu trực tiếp trong bảng Users")
     public ResponseEntity<ApiResponse<Map<String, Object>>> registerTeacher(
             @Valid @RequestBody RegisterTeacherRequest req) {
         try {
@@ -82,10 +80,11 @@ public class AuthController {
     // ===========================
     @Deprecated
     @PostMapping("/register")
-    @Operation(summary = "Register new user (deprecated)", description = "Dùng /register/learner hoặc /register/teacher")
+    @Operation(summary = "Register new user (deprecated)",
+            description = "Vui lòng dùng /register/learner hoặc /register/teacher")
     public ResponseEntity<ApiResponse<Map<String, Object>>> register(@RequestBody RegisterRequest registerRequest) {
         try {
-            // Giữ validate cũ
+            // Validate cơ bản
             if (registerRequest.getUsername() == null || registerRequest.getUsername().trim().isEmpty()) {
                 return ResponseEntity.ok(ApiResponse.error("Username is required"));
             }
@@ -120,36 +119,27 @@ public class AuthController {
             }
             if ("TEACHER".equalsIgnoreCase(role)) {
                 RegisterTeacherRequest req = new RegisterTeacherRequest();
-                // các trường có sẵn trong RegisterRequest
+                // Chỉ map các trường có thật trong DTO
                 req.setUsername(registerRequest.getUsername());
                 req.setEmail(registerRequest.getEmail());
                 req.setPassword(registerRequest.getPassword());
-                req.setBio(registerRequest.getBio()); // đã có trong RegisterRequest
-                req.setCurrentJlptLevel(registerRequest.getCurrentJlptLevel());
 
-                // Fallback cho các trường teacher không có trong RegisterRequest
-                // Dùng displayName/username làm firstName, bỏ trống lastName, headline mặc định
-                String display = (registerRequest.getDisplayName() != null
-                        && !registerRequest.getDisplayName().isBlank())
+                String display = (registerRequest.getDisplayName() != null &&
+                        !registerRequest.getDisplayName().isBlank())
                         ? registerRequest.getDisplayName()
                         : registerRequest.getUsername();
 
-                req.setFirstName(display);       // fallback
-                req.setLastName("");             // fallback
-                req.setHeadline("Teacher");      // fallback
-                // Ngôn ngữ hiển thị: ưu tiên nativeLanguage; không có thì để null (service tự xử lý)
-                req.setLanguage(registerRequest.getNativeLanguage());
+                req.setFirstName(display);   // fallback
+                req.setLastName("");         // fallback
+                req.setHeadline("Teacher");  // fallback
 
-                // Các social/website không có trong RegisterRequest -> để null
-                // req.setWebsiteUrl(null);
-                // req.setFacebook(null); req.setInstagram(null); req.setLinkedin(null);
-                // req.setTiktok(null);   req.setX(null);         req.setYoutube(null);
+                req.setCurrentJlptLevel(registerRequest.getCurrentJlptLevel());
+                // Socials/website: để null nếu form cũ không có
 
                 return registerTeacher(req);
             }
 
-
-            // các role khác (STAFF/ADMIN) giữ luồng cũ nếu bạn muốn
+            // các role khác (STAFF/ADMIN) dùng luồng cũ
             AuthResponse authResponse = authService.registerUser(registerRequest);
 
             Map<String, Object> response = new HashMap<>();
@@ -184,7 +174,8 @@ public class AuthController {
 
     @PostMapping("/firebase")
     @Operation(summary = "Firebase authentication", description = "Authenticate user with Firebase token")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> firebaseAuth(@Valid @RequestBody FirebaseAuthRequest firebaseRequest) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> firebaseAuth(
+            @Valid @RequestBody FirebaseAuthRequest firebaseRequest) {
         try {
             AuthResponse authResponse = authService.authenticateUser(firebaseRequest.getFirebaseToken());
             Map<String, Object> response = new HashMap<>();

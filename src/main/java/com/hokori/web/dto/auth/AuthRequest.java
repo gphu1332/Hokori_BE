@@ -1,4 +1,4 @@
-package com.hokori.web.dto;
+package com.hokori.web.dto.auth;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Email;
