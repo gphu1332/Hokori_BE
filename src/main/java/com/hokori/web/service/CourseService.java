@@ -20,18 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.util.*;
-
-/*
- * REPO cần có:
- * ChapterRepository:
- *   long countByCourse_Id(Long courseId);
- *   long countByCourse_IdAndIsTrialTrue(Long courseId);
- *   Optional<Chapter> findByCourse_IdAndIsTrialTrue(Long courseId);
- *
- * LessonRepository:  long countByChapter_Id(Long chapterId);
- * SectionRepository: long countByLesson_Id(Long lessonId);
- * SectionsContentRepository: long countBySection_Id(Long sectionId);
- */
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -44,8 +33,9 @@ public class CourseService {
     private final SectionRepository sectionRepo;
     private final SectionsContentRepository contentRepo;
 
-    // ===== Course =====
-
+    // =========================
+    // COURSE
+    // =========================
     public CourseRes createCourse(Long teacherUserId, @Valid CourseUpsertReq r) {
         Course c = new Course();
         c.setUserId(teacherUserId);
@@ -53,7 +43,7 @@ public class CourseService {
         c.setSlug(uniqueSlug(r.getTitle()));
         c = courseRepo.save(c);
 
-        // Auto tạo 1 Chapter học thử ở orderIndex = 0
+        // Tự tạo 1 chapter học thử
         Chapter preview = new Chapter();
         preview.setCourse(c);
         preview.setTitle("Học thử");
@@ -62,7 +52,7 @@ public class CourseService {
         preview.setTrial(true);
         chapterRepo.save(preview);
 
-        return CourseMapper.toRes(c);
+        return toCourseResLite(c);
     }
 
     public CourseRes updateCourse(Long id, Long teacherUserId, @Valid CourseUpsertReq r) {
@@ -72,7 +62,7 @@ public class CourseService {
         if (!SlugUtil.toSlug(r.getTitle()).equals(old)) {
             c.setSlug(uniqueSlug(r.getTitle()));
         }
-        return CourseMapper.toRes(c);
+        return toCourseResLite(c);
     }
 
     public void softDelete(Long id, Long teacherUserId) {
@@ -82,11 +72,11 @@ public class CourseService {
     public CourseRes publish(Long id, Long teacherUserId) {
         Course c = getOwned(id, teacherUserId);
 
-        // đúng 1 chapter học thử
+        // Đúng 1 chapter học thử
         long trialCount = chapterRepo.countByCourse_IdAndIsTrialTrue(id);
         if (trialCount != 1) throw bad("Course must have exactly ONE trial chapter");
 
-        // validate toàn bộ tree
+        // Validate cấu trúc
         c.getChapters().forEach(ch ->
                 ch.getLessons().forEach(ls ->
                         ls.getSections().forEach(this::validateSectionBeforePublish)
@@ -95,31 +85,73 @@ public class CourseService {
 
         c.setStatus(CourseStatus.PUBLISHED);
         c.setPublishedAt(Instant.now());
-        return CourseMapper.toRes(c);
+        return toCourseResLite(c);
     }
 
     public CourseRes unpublish(Long id, Long teacherUserId) {
         Course c = getOwned(id, teacherUserId);
         c.setStatus(CourseStatus.DRAFT);
         c.setPublishedAt(null);
-        return CourseMapper.toRes(c);
+        return toCourseResLite(c);
     }
 
     @Transactional(readOnly = true)
     public CourseRes getTree(Long id) {
-        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+        var c = courseRepo.findByIdAndDeletedFlagFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        return CourseMapper.toRes(c);
+
+        var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(c.getId());
+        var chapterDtos = new java.util.ArrayList<ChapterRes>();
+
+        for (var ch : chapterEntities) {
+            var lessonEntities = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(ch.getId());
+            var lessonDtos = new java.util.ArrayList<LessonRes>();
+
+            for (var ls : lessonEntities) {
+                var sectionEntities = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(ls.getId());
+                var sectionDtos = new java.util.ArrayList<SectionRes>();
+
+                for (var s : sectionEntities) {
+                    var contentEntities = contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId());
+                    var contentDtos = new java.util.ArrayList<ContentRes>(contentEntities.size());
+                    for (var ct : contentEntities) {
+                        contentDtos.add(new ContentRes(
+                                ct.getId(), ct.getOrderIndex(), ct.getContentFormat(), ct.isPrimaryContent(),
+                                ct.getAssetId(), ct.getRichText(), ct.getQuizId(), ct.getFlashcardSetId()
+                        ));
+                    }
+                    sectionDtos.add(new SectionRes(
+                            s.getId(), s.getTitle(), s.getOrderIndex(), s.getStudyType(), s.getFlashcardSetId(), contentDtos
+                    ));
+                }
+
+                lessonDtos.add(new LessonRes(
+                        ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(), sectionDtos
+                ));
+            }
+
+            chapterDtos.add(new ChapterRes(
+                    ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), lessonDtos
+            ));
+        }
+
+        return new CourseRes(
+                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
+                c.getDescription(), c.getLevel(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                chapterDtos
+        );
     }
 
-    /** Trả về chỉ cây của chapter học thử (làm endpoint public /trial) */
+
     @Transactional(readOnly = true)
     public CourseRes getTrialTree(Long courseId) {
         Course c = courseRepo.findByIdAndDeletedFlagFalse(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         Chapter trial = chapterRepo.findByCourse_IdAndIsTrialTrue(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No trial chapter"));
-        return CourseMapper.toResOnlyTrial(c, trial);
+        return toCourseResWithChapters(c, List.of(trial));
     }
 
     @Transactional(readOnly = true)
@@ -132,22 +164,183 @@ public class CourseService {
             if (status != null) ps.add(cb.equal(root.get("status"), status));
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("title")), like),
-                        cb.like(cb.lower(root.get("slug")), like)
-                ));
+                ps.add(cb.or(cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("slug")), like)));
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        return courseRepo.findAll(spec, p).map(CourseMapper::toRes);
+        return courseRepo.findAll(spec, p).map(this::toCourseResLite);
     }
 
     @Transactional(readOnly = true)
     public Page<CourseRes> listPublished(JLPTLevel level, int page, int size) {
         return courseRepo.findPublishedByLevel(
-                level,
-                PageRequest.of(page, size, Sort.by("publishedAt").descending())
-        ).map(CourseMapper::toRes);
+                level, PageRequest.of(page, size, Sort.by("publishedAt").descending())
+        ).map(this::toCourseResLite);
+    }
+
+    // =========================
+    // CHILDREN (trả DTO, tránh fetch tree)
+    // =========================
+
+    public ChapterRes createChapter(Long courseId, Long teacherUserId, ChapterUpsertReq r) {
+        assertOwner(courseId, teacherUserId);
+
+        Course courseRef = courseRepo.getReferenceById(courseId);
+
+        Chapter ch = new Chapter();
+        ch.setCourse(courseRef);
+        ch.setTitle(r.getTitle());
+        ch.setSummary(r.getSummary());
+
+        int oi = (r.getOrderIndex() == null)
+                ? Math.toIntExact(chapterRepo.countByCourse_Id(courseId))
+                : r.getOrderIndex();
+        ch.setOrderIndex(oi);
+
+        if (Boolean.TRUE.equals(r.getIsTrial())) {
+            if (chapterRepo.countByCourse_IdAndIsTrialTrue(courseId) > 0) {
+                throw bad("Course already has a trial chapter");
+            }
+            ch.setTrial(true);
+        }
+
+        Chapter saved = chapterRepo.save(ch);
+        return toChapterResShallow(saved);
+    }
+
+    public LessonRes createLesson(Long chapterId, Long teacherUserId, LessonUpsertReq r) {
+        Long courseId = chapterRepo.findCourseIdByChapterId(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+
+        assertOwner(courseId, teacherUserId);
+
+        Lesson ls = new Lesson();
+        ls.setChapter(chapterRepo.getReferenceById(chapterId));
+        ls.setTitle(r.getTitle());
+
+        int oi = (r.getOrderIndex() == null)
+                ? Math.toIntExact(lessonRepo.countByChapter_Id(chapterId))
+                : r.getOrderIndex();
+        ls.setOrderIndex(oi);
+        ls.setTotalDurationSec(r.getTotalDurationSec() == null ? 0L : r.getTotalDurationSec());
+
+        Lesson saved = lessonRepo.save(ls);
+        return toLessonResShallow(saved);
+    }
+
+    public SectionRes createSection(Long lessonId, Long teacherUserId, SectionUpsertReq r) {
+        Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+
+        assertOwner(courseId, teacherUserId);
+
+        Section s = new Section();
+        s.setLesson(lessonRepo.getReferenceById(lessonId));
+        s.setTitle(r.getTitle());
+
+        int oi = (r.getOrderIndex() == null)
+                ? Math.toIntExact(sectionRepo.countByLesson_Id(lessonId))
+                : r.getOrderIndex();
+        s.setOrderIndex(oi);
+
+        s.setStudyType(r.getStudyType() == null ? ContentType.GRAMMAR : r.getStudyType());
+        s.setFlashcardSetId(r.getFlashcardSetId());
+        validateSectionByStudyType(s);
+
+        Section saved = sectionRepo.save(s);
+        return toSectionResShallow(saved);
+    }
+
+    public ContentRes createContent(Long sectionId, Long teacherUserId, ContentUpsertReq r) {
+        Long courseId = sectionRepo.findCourseIdBySectionId(sectionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
+        assertOwner(courseId, teacherUserId);
+
+        Section scRef = sectionRepo.getReferenceById(sectionId);
+        validateContentPayload(scRef, r);
+
+        SectionsContent ct = new SectionsContent();
+        ct.setSection(scRef);
+
+        int oi = (r.getOrderIndex() == null)
+                ? Math.toIntExact(contentRepo.countBySection_Id(sectionId))
+                : r.getOrderIndex();
+        ct.setOrderIndex(oi);
+
+        ct.setContentFormat(r.getContentFormat() == null ? ContentFormat.ASSET : r.getContentFormat());
+        ct.setPrimaryContent(r.isPrimaryContent());
+        ct.setAssetId(r.getAssetId());
+        ct.setRichText(r.getRichText());
+        ct.setQuizId(r.getQuizId());
+        ct.setFlashcardSetId(r.getFlashcardSetId());
+
+        SectionsContent saved = contentRepo.save(ct);
+        return toContentRes(saved);
+    }
+
+    public ChapterRes markTrialChapter(Long chapterId, Long teacherUserId) {
+        Chapter ch = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+
+        assertOwner(ch.getCourse().getId(), teacherUserId);
+
+        chapterRepo.findByCourse_IdAndIsTrialTrue(ch.getCourse().getId()).ifPresent(old -> {
+            if (!old.getId().equals(ch.getId())) old.setTrial(false);
+        });
+
+        ch.setTrial(true);
+        return toChapterResShallow(ch);
+    }
+
+    // =========================
+    // VALIDATION & HELPERS
+    // =========================
+
+    private void validateSectionByStudyType(Section s) {
+        if (s.getStudyType() == ContentType.VOCABULARY && s.getFlashcardSetId() == null) {
+            throw bad("VOCABULARY section requires flashcardSetId");
+        }
+    }
+
+    private void validateContentPayload(Section section, ContentUpsertReq r) {
+        ContentFormat fmt = r.getContentFormat();
+        if (fmt == null || fmt == ContentFormat.ASSET) {
+            if (r.getAssetId() == null) throw bad("assetId is required for ASSET");
+
+            if (section.getStudyType() == ContentType.GRAMMAR && r.isPrimaryContent()) {
+                long primaryCount = section.getContents().stream()
+                        .filter(SectionsContent::isPrimaryContent).count();
+                if (primaryCount >= 1) throw bad("GRAMMAR requires exactly ONE primary video (already set)");
+            }
+
+        } else if (fmt == ContentFormat.RICH_TEXT) {
+            if (r.getRichText() == null || r.getRichText().isBlank())
+                throw bad("richText is required for RICH_TEXT");
+            if (r.isPrimaryContent()) throw bad("primaryContent must be false for RICH_TEXT");
+
+        } else if (fmt == ContentFormat.FLASHCARD_SET) {
+            if (section.getStudyType() != ContentType.VOCABULARY)
+                throw bad("FLASHCARD_SET only allowed in VOCAB sections");
+            if (r.getFlashcardSetId() == null) throw bad("flashcardSetId required for FLASHCARD_SET");
+
+        } else if (fmt == ContentFormat.QUIZ_REF) {
+            if (r.getQuizId() == null) throw bad("quizId required for QUIZ_REF");
+        }
+    }
+
+    private void validateSectionBeforePublish(Section s) {
+        if (s.getStudyType() == ContentType.VOCABULARY) {
+            if (s.getFlashcardSetId() == null) throw bad("VOCAB section must link a flashcard set");
+
+        } else if (s.getStudyType() == ContentType.GRAMMAR) {
+            long primary = s.getContents().stream().filter(SectionsContent::isPrimaryContent).count();
+            if (primary != 1) throw bad("GRAMMAR section requires exactly ONE primary video");
+
+        } else if (s.getStudyType() == ContentType.KANJI) {
+            long primary = s.getContents().stream().filter(SectionsContent::isPrimaryContent).count();
+            if (primary < 1) throw bad("KANJI section requires at least ONE primary content (video or doc)");
+        }
     }
 
     private void applyCourse(Course c, CourseUpsertReq r) {
@@ -180,147 +373,101 @@ public class CourseService {
         return c;
     }
 
-    // ===== Children (trả DTO để tránh LAZY) =====
-
-// ===== Children (return DTO only, no overloads) =====
-
-    public ChapterRes createChapter(Long courseId, Long teacherUserId, ChapterUpsertReq r) {
-        Course c = getOwned(courseId, teacherUserId);
-
-        Chapter ch = new Chapter();
-        ch.setCourse(c);
-        ch.setTitle(r.getTitle());
-        ch.setSummary(r.getSummary());
-
-        // Append nếu không truyền orderIndex
-        int oi = (r.getOrderIndex() == null)
-                ? Math.toIntExact(chapterRepo.countByCourse_Id(courseId))
-                : r.getOrderIndex();
-        ch.setOrderIndex(oi);
-
-        // isTrial: chỉ được 1 chapter học thử
-        if (Boolean.TRUE.equals(r.getIsTrial())) {
-            if (chapterRepo.countByCourse_IdAndIsTrialTrue(courseId) > 0) {
-                throw bad("Course already has a trial chapter");
-            }
-            ch.setTrial(true);
+    private void assertOwner(Long courseId, Long teacherUserId) {
+        if (!courseRepo.existsByIdAndUserIdAndDeletedFlagFalse(courseId, teacherUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
         }
-
-        Chapter saved = chapterRepo.save(ch);
-        return toChapterRes(saved);
     }
 
-    public LessonRes createLesson(Long chapterId, Long teacherUserId, LessonUpsertReq r) {
-        Chapter ch = chapterRepo.findById(chapterId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
-        // check owner
-        getOwned(ch.getCourse().getId(), teacherUserId);
-
-        Lesson ls = new Lesson();
-        ls.setChapter(ch);
-        ls.setTitle(r.getTitle());
-
-        int oi = (r.getOrderIndex() == null)
-                ? Math.toIntExact(lessonRepo.countByChapter_Id(chapterId))
-                : r.getOrderIndex();
-        ls.setOrderIndex(oi);
-
-        ls.setTotalDurationSec(r.getTotalDurationSec() == null ? 0L : r.getTotalDurationSec());
-
-        Lesson saved = lessonRepo.save(ls);
-        return toLessonRes(saved);
+    private ResponseStatusException bad(String m) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, m);
     }
 
-    public SectionRes createSection(Long lessonId, Long teacherUserId, SectionUpsertReq r) {
-        Lesson ls = lessonRepo.findById(lessonId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
-        // check owner
-        getOwned(ls.getChapter().getCourse().getId(), teacherUserId);
+    // =========================
+    // MAPPERS
+    // =========================
 
-        Section s = new Section();
-        s.setLesson(ls);
-        s.setTitle(r.getTitle());
-
-        int oi = (r.getOrderIndex() == null)
-                ? Math.toIntExact(sectionRepo.countByLesson_Id(lessonId))
-                : r.getOrderIndex();
-        s.setOrderIndex(oi);
-
-        s.setStudyType(r.getStudyType() == null ? ContentType.GRAMMAR : r.getStudyType());
-        s.setFlashcardSetId(r.getFlashcardSetId());
-
-        // VOCAB phải có flashcardSetId
-        validateSectionByStudyType(s);
-
-        Section saved = sectionRepo.save(s);
-        return toSectionRes(saved);
-    }
-
-    public ContentRes createContent(Long sectionId, Long teacherUserId, ContentUpsertReq r) {
-        Section sc = sectionRepo.findById(sectionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
-        // check owner
-        getOwned(sc.getLesson().getChapter().getCourse().getId(), teacherUserId);
-
-        // Ràng buộc payload theo contentFormat & studyType
-        validateContentPayload(sc, r);
-
-        SectionsContent ct = new SectionsContent();
-        ct.setSection(sc);
-
-        int oi = (r.getOrderIndex() == null)
-                ? Math.toIntExact(contentRepo.countBySection_Id(sectionId))
-                : r.getOrderIndex();
-        ct.setOrderIndex(oi);
-
-        ct.setContentFormat(r.getContentFormat() == null ? ContentFormat.ASSET : r.getContentFormat());
-        ct.setPrimaryContent(r.isPrimaryContent());
-        ct.setAssetId(r.getAssetId());
-        ct.setRichText(r.getRichText());
-        ct.setQuizId(r.getQuizId());
-        ct.setFlashcardSetId(r.getFlashcardSetId());
-
-        SectionsContent saved = contentRepo.save(ct);
-        return toContentRes(saved);
-    }
-
-// ===== Lightweight mappers (local) =====
-
-    private ChapterRes toChapterRes(Chapter ch) {
-        return new ChapterRes(
-                ch.getId(),
-                ch.getTitle(),
-                ch.getOrderIndex(),
-                ch.getSummary(),
-                ch.getLessons() == null ? List.of() :
-                        ch.getLessons().stream().sorted(Comparator.comparing(Lesson::getOrderIndex))
-                                .map(this::toLessonRes).toList()
+    private CourseRes toCourseResLite(Course c) {
+        return new CourseRes(
+                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
+                c.getDescription(), c.getLevel(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                List.of()
         );
     }
 
-    private LessonRes toLessonRes(Lesson ls) {
-        return new LessonRes(
-                ls.getId(),
-                ls.getTitle(),
-                ls.getOrderIndex(),
-                ls.getTotalDurationSec(),
-                ls.getSections() == null ? List.of() :
-                        ls.getSections().stream().sorted(Comparator.comparing(Section::getOrderIndex))
-                                .map(this::toSectionRes).toList()
+    private CourseRes toCourseResFull(Course c) {
+        List<ChapterRes> chapters = c.getChapters().stream()
+                .sorted(Comparator.comparing(Chapter::getOrderIndex))
+                .map(ch -> new ChapterRes(
+                        ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(),
+                        ch.getLessons().stream()
+                                .sorted(Comparator.comparing(Lesson::getOrderIndex))
+                                .map(ls -> new LessonRes(
+                                        ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(),
+                                        ls.getSections().stream()
+                                                .sorted(Comparator.comparing(Section::getOrderIndex))
+                                                .map(this::toSectionResFull)
+                                                .collect(Collectors.toList())
+                                )).collect(Collectors.toList())
+                )).collect(Collectors.toList());
+
+        return new CourseRes(
+                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
+                c.getDescription(), c.getLevel(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                chapters
         );
     }
 
-    private SectionRes toSectionRes(Section s) {
-        return new SectionRes(
-                s.getId(),
-                s.getTitle(),
-                s.getOrderIndex(),
-                s.getStudyType(),
-                s.getFlashcardSetId(),
-                s.getContents() == null ? List.of() :
-                        s.getContents().stream().sorted(Comparator.comparing(SectionsContent::getOrderIndex))
-                                .map(this::toContentRes).toList()
+    private CourseRes toCourseResWithChapters(Course c, List<Chapter> include) {
+        List<ChapterRes> chapters = include.stream()
+                .sorted(Comparator.comparing(Chapter::getOrderIndex))
+                .map(ch -> new ChapterRes(
+                        ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(),
+                        ch.getLessons().stream()
+                                .sorted(Comparator.comparing(Lesson::getOrderIndex))
+                                .map(this::toLessonResFull)
+                                .collect(Collectors.toList())
+                )).collect(Collectors.toList());
+
+        return new CourseRes(
+                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
+                c.getDescription(), c.getLevel(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                chapters
         );
+    }
+
+    private ChapterRes toChapterResShallow(Chapter ch) {
+        return new ChapterRes(ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), List.of());
+    }
+
+    private LessonRes toLessonResShallow(Lesson ls) {
+        return new LessonRes(ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(), List.of());
+    }
+
+    private SectionRes toSectionResShallow(Section s) {
+        return new SectionRes(s.getId(), s.getTitle(), s.getOrderIndex(), s.getStudyType(), s.getFlashcardSetId(), List.of());
+    }
+
+    private SectionRes toSectionResFull(Section s) {
+        List<ContentRes> contents = s.getContents().stream()
+                .sorted(Comparator.comparing(SectionsContent::getOrderIndex))
+                .map(this::toContentRes)
+                .collect(Collectors.toList());
+        return new SectionRes(s.getId(), s.getTitle(), s.getOrderIndex(), s.getStudyType(), s.getFlashcardSetId(), contents);
+    }
+
+    private LessonRes toLessonResFull(Lesson ls) {
+        List<SectionRes> sections = ls.getSections().stream()
+                .sorted(Comparator.comparing(Section::getOrderIndex))
+                .map(this::toSectionResFull)
+                .collect(Collectors.toList());
+        return new LessonRes(ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(), sections);
     }
 
     private ContentRes toContentRes(SectionsContent c) {
@@ -336,70 +483,222 @@ public class CourseService {
         );
     }
 
-    // ===== Trial helpers =====
+    // CourseService.java  (bổ sung vào class hiện tại)
 
-    /** Đánh dấu/chuyển chapter học thử. Gỡ cờ cái cũ (nếu khác) rồi set cho chapterId truyền vào. */
-    public ChapterRes markTrialChapter(Long chapterId, Long teacherUserId) {
+    // =========================
+    // COURSE DETAIL (metadata only)
+    // =========================
+    @Transactional(readOnly = true)
+    public CourseRes getDetail(Long id, Long teacherUserId) {
+        Course c = getOwned(id, teacherUserId);
+        return toCourseResLite(c);
+    }
+
+    // =========================
+    // CHAPTER: update / delete / reorder
+    // =========================
+    public ChapterRes updateChapter(Long chapterId, Long teacherUserId, ChapterUpsertReq r) {
         Chapter ch = chapterRepo.findById(chapterId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
-        Course c = getOwned(ch.getCourse().getId(), teacherUserId);
+        assertOwner(ch.getCourse().getId(), teacherUserId);
 
-        chapterRepo.findByCourse_IdAndIsTrialTrue(c.getId()).ifPresent(old -> {
-            if (!old.getId().equals(ch.getId())) old.setTrial(false);
-        });
-
-        ch.setTrial(true);
-        return CourseMapper.toChapterRes(ch);
-    }
-
-    // ===== Rules & validate =====
-
-    private void validateSectionByStudyType(Section s) {
-        if (s.getStudyType() == ContentType.VOCABULARY && s.getFlashcardSetId() == null) {
-            throw bad("VOCABULARY section requires flashcardSetId");
+        if (r.getTitle() != null) ch.setTitle(r.getTitle());
+        ch.setSummary(r.getSummary());
+        if (Boolean.TRUE.equals(r.getIsTrial())) {
+            // set trial duy nhất trong course
+            chapterRepo.findByCourse_IdAndIsTrialTrue(ch.getCourse().getId()).ifPresent(old -> {
+                if (!old.getId().equals(ch.getId())) old.setTrial(false);
+            });
+            ch.setTrial(true);
         }
+        return toChapterResShallow(ch);
     }
 
-    private void validateContentPayload(Section section, ContentUpsertReq r) {
-        ContentFormat fmt = r.getContentFormat();
-        if (fmt == null || fmt == ContentFormat.ASSET) {
-            if (r.getAssetId() == null) throw bad("assetId is required for ASSET");
+    public void deleteChapter(Long chapterId, Long teacherUserId) {
+        Chapter ch = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        assertOwner(ch.getCourse().getId(), teacherUserId);
 
-            if (section.getStudyType() == ContentType.GRAMMAR && r.isPrimaryContent()) {
-                long primaryCount = section.getContents().stream()
-                        .filter(SectionsContent::isPrimaryContent).count();
-                if (primaryCount >= 1) throw bad("GRAMMAR requires exactly ONE primary video (already set)");
-            }
+        Long courseId = ch.getCourse().getId();
+        chapterRepo.delete(ch);
+        renormalizeChapterOrder(courseId);
+    }
 
-        } else if (fmt == ContentFormat.RICH_TEXT) {
-            if (r.getRichText() == null || r.getRichText().isBlank()) throw bad("richText is required for RICH_TEXT");
-            if (r.isPrimaryContent()) throw bad("primaryContent must be false for RICH_TEXT");
+    public ChapterRes reorderChapter(Long chapterId, Long teacherUserId, int newIndex) {
+        Chapter ch = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        assertOwner(ch.getCourse().getId(), teacherUserId);
 
-        } else if (fmt == ContentFormat.FLASHCARD_SET) {
-            if (section.getStudyType() != ContentType.VOCABULARY)
-                throw bad("FLASHCARD_SET only allowed in VOCAB sections");
-            if (r.getFlashcardSetId() == null) throw bad("flashcardSetId required for FLASHCARD_SET");
+        List<Chapter> list = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(ch.getCourse().getId());
+        applyReorder(list, chapterId, newIndex, (it, idx) -> it.setOrderIndex(idx));
+        return toChapterResShallow(ch);
+    }
 
-        } else if (fmt == ContentFormat.QUIZ_REF) {
-            if (r.getQuizId() == null) throw bad("quizId required for QUIZ_REF");
+    // =========================
+    // LESSON: update / delete / reorder
+    // =========================
+    public LessonRes updateLesson(Long lessonId, Long teacherUserId, LessonUpsertReq r) {
+        Lesson ls = lessonRepo.findById(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+        assertOwner(ls.getChapter().getCourse().getId(), teacherUserId);
+
+        if (r.getTitle() != null) ls.setTitle(r.getTitle());
+        if (r.getTotalDurationSec() != null) ls.setTotalDurationSec(r.getTotalDurationSec());
+        return toLessonResShallow(ls);
+    }
+
+    public void deleteLesson(Long lessonId, Long teacherUserId) {
+        Lesson ls = lessonRepo.findById(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+        Long courseId = ls.getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+
+        Long chapterId = ls.getChapter().getId();
+        lessonRepo.delete(ls);
+        renormalizeLessonOrder(chapterId);
+    }
+
+    public LessonRes reorderLesson(Long lessonId, Long teacherUserId, int newIndex) {
+        Lesson ls = lessonRepo.findById(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+        assertOwner(ls.getChapter().getCourse().getId(), teacherUserId);
+
+        List<Lesson> list = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(ls.getChapter().getId());
+        applyReorder(list, lessonId, newIndex, (it, idx) -> it.setOrderIndex(idx));
+        return toLessonResShallow(ls);
+    }
+
+    // =========================
+    // SECTION: update / delete / reorder
+    // =========================
+    public SectionRes updateSection(Long sectionId, Long teacherUserId, SectionUpsertReq r) {
+        Section s = sectionRepo.findById(sectionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
+        assertOwner(s.getLesson().getChapter().getCourse().getId(), teacherUserId);
+
+        if (r.getTitle() != null) s.setTitle(r.getTitle());
+        if (r.getStudyType() != null) s.setStudyType(r.getStudyType());
+        if (r.getFlashcardSetId() != null) s.setFlashcardSetId(r.getFlashcardSetId());
+        validateSectionByStudyType(s);
+
+        return toSectionResShallow(s);
+    }
+
+    public void deleteSection(Long sectionId, Long teacherUserId) {
+        Section s = sectionRepo.findById(sectionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
+        Long courseId = s.getLesson().getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+
+        Long lessonId = s.getLesson().getId();
+        sectionRepo.delete(s);
+        renormalizeSectionOrder(lessonId);
+    }
+
+    public SectionRes reorderSection(Long sectionId, Long teacherUserId, int newIndex) {
+        Section s = sectionRepo.findById(sectionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
+        assertOwner(s.getLesson().getChapter().getCourse().getId(), teacherUserId);
+
+        List<Section> list = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(s.getLesson().getId());
+        applyReorder(list, sectionId, newIndex, (it, idx) -> it.setOrderIndex(idx));
+        return toSectionResShallow(s);
+    }
+
+    // =========================
+    // CONTENT: update / delete / reorder
+    // =========================
+    public ContentRes updateContent(Long contentId, Long teacherUserId, ContentUpsertReq r) {
+        SectionsContent c = contentRepo.findById(contentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Content not found"));
+
+        Long courseId = c.getSection().getLesson().getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+
+        // validate theo section hiện tại
+        validateContentPayload(c.getSection(), r);
+
+        if (r.getContentFormat() != null) c.setContentFormat(r.getContentFormat());
+        c.setPrimaryContent(r.isPrimaryContent());
+        c.setAssetId(r.getAssetId());
+        c.setRichText(r.getRichText());
+        c.setQuizId(r.getQuizId());
+        c.setFlashcardSetId(r.getFlashcardSetId());
+
+        return toContentRes(c);
+    }
+
+    public void deleteContent(Long contentId, Long teacherUserId) {
+        SectionsContent c = contentRepo.findById(contentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Content not found"));
+        Long courseId = c.getSection().getLesson().getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+
+        Long sectionId = c.getSection().getId();
+        contentRepo.delete(c);
+        renormalizeContentOrder(sectionId);
+    }
+
+    public ContentRes reorderContent(Long contentId, Long teacherUserId, int newIndex) {
+        SectionsContent c = contentRepo.findById(contentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Content not found"));
+        assertOwner(c.getSection().getLesson().getChapter().getCourse().getId(), teacherUserId);
+
+        List<SectionsContent> list = contentRepo.findBySection_IdOrderByOrderIndexAsc(c.getSection().getId());
+        applyReorder(list, contentId, newIndex, (it, idx) -> it.setOrderIndex(idx));
+        return toContentRes(c);
+    }
+
+    // =========================
+    // REORDER HELPERS
+    // =========================
+    private <T> void applyReorder(List<T> ordered,
+                                  Long targetId,
+                                  int newIndex,
+                                  java.util.function.BiConsumer<T, Integer> setIndex) {
+        if (ordered.isEmpty()) return;
+
+        // clamp
+        int max = ordered.size() - 1;
+        int idx = Math.max(0, Math.min(newIndex, max));
+
+        // tách target
+        T target = null;
+        Iterator<T> it = ordered.iterator();
+        while (it.hasNext()) {
+            T cur = it.next();
+            Long id = extractId(cur);
+            if (Objects.equals(id, targetId)) { target = cur; it.remove(); break; }
         }
+        if (target == null) throw bad("Target not in list");
+
+        ordered.add(idx, target);
+        for (int i = 0; i < ordered.size(); i++) setIndex.accept(ordered.get(i), i);
     }
 
-    private void validateSectionBeforePublish(Section s) {
-        if (s.getStudyType() == ContentType.VOCABULARY) {
-            if (s.getFlashcardSetId() == null) throw bad("VOCAB section must link a flashcard set");
-
-        } else if (s.getStudyType() == ContentType.GRAMMAR) {
-            long primary = s.getContents().stream().filter(SectionsContent::isPrimaryContent).count();
-            if (primary != 1) throw bad("GRAMMAR section requires exactly ONE primary video");
-
-        } else if (s.getStudyType() == ContentType.KANJI) {
-            long primary = s.getContents().stream().filter(SectionsContent::isPrimaryContent).count();
-            if (primary < 1) throw bad("KANJI section requires at least ONE primary content (video or doc)");
-        }
+    private Long extractId(Object o) {
+        if (o instanceof Chapter ch) return ch.getId();
+        if (o instanceof Lesson ls) return ls.getId();
+        if (o instanceof Section s) return s.getId();
+        if (o instanceof SectionsContent c) return c.getId();
+        return null;
     }
 
-    private ResponseStatusException bad(String m) {
-        return new ResponseStatusException(HttpStatus.BAD_REQUEST, m);
+    private void renormalizeChapterOrder(Long courseId) {
+        List<Chapter> list = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
+        for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
     }
+    private void renormalizeLessonOrder(Long chapterId) {
+        List<Lesson> list = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(chapterId);
+        for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
+    }
+    private void renormalizeSectionOrder(Long lessonId) {
+        List<Section> list = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId);
+        for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
+    }
+    private void renormalizeContentOrder(Long sectionId) {
+        List<SectionsContent> list = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId);
+        for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
+    }
+
 }

@@ -170,4 +170,121 @@ public class TeacherCourseController {
                                  @Valid @RequestBody ContentUpsertReq req) {
         return courseService.createContent(sectionId, currentUserIdOrThrow(), req);
     }
+    
+
+    // ===== Course detail (metadata) =====
+    @Operation(summary = "Chi tiết khoá học (metadata)")
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('TEACHER')")
+    public CourseRes detail(@PathVariable Long id) {
+        return courseService.getDetail(id, currentUserIdOrThrow());
+    }
+
+    // ====== DTO nhỏ cho PATCH reorder ======
+    public record ReorderReq(Integer orderIndex) {}
+
+    // ===== Chapter: update / delete / reorder =====
+    @Operation(summary = "Cập nhật Chapter")
+    @PutMapping("/chapters/{chapterId}")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ChapterRes updateChapter(@PathVariable Long chapterId,
+                                    @Valid @RequestBody ChapterUpsertReq req) {
+        return courseService.updateChapter(chapterId, currentUserIdOrThrow(), req);
+    }
+
+    @Operation(summary = "Xoá Chapter", description = "Xoá cứng; tự chuẩn hoá lại orderIndex.")
+    @DeleteMapping("/chapters/{chapterId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('TEACHER')")
+    public void deleteChapter(@PathVariable Long chapterId) {
+        courseService.deleteChapter(chapterId, currentUserIdOrThrow());
+    }
+
+    @Operation(summary = "Đổi thứ tự Chapter")
+    @PatchMapping("/chapters/{chapterId}/reorder")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ChapterRes reorderChapter(@PathVariable Long chapterId,
+                                     @RequestBody ReorderReq req) {
+        return courseService.reorderChapter(chapterId, currentUserIdOrThrow(),
+                req.orderIndex() == null ? 0 : req.orderIndex());
+    }
+
+    // ===== Lesson: update / delete / reorder =====
+    @Operation(summary = "Cập nhật Lesson")
+    @PutMapping("/lessons/{lessonId}")
+    @PreAuthorize("hasRole('TEACHER')")
+    public LessonRes updateLesson(@PathVariable Long lessonId,
+                                  @Valid @RequestBody LessonUpsertReq req) {
+        return courseService.updateLesson(lessonId, currentUserIdOrThrow(), req);
+    }
+
+    @Operation(summary = "Xoá Lesson", description = "Xoá cứng; tự chuẩn hoá lại orderIndex.")
+    @DeleteMapping("/lessons/{lessonId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('TEACHER')")
+    public void deleteLesson(@PathVariable Long lessonId) {
+        courseService.deleteLesson(lessonId, currentUserIdOrThrow());
+    }
+
+    @Operation(summary = "Đổi thứ tự Lesson")
+    @PatchMapping("/lessons/{lessonId}/reorder")
+    @PreAuthorize("hasRole('TEACHER')")
+    public LessonRes reorderLesson(@PathVariable Long lessonId,
+                                   @RequestBody ReorderReq req) {
+        return courseService.reorderLesson(lessonId, currentUserIdOrThrow(),
+                req.orderIndex() == null ? 0 : req.orderIndex());
+    }
+
+    // ===== Section: update / delete / reorder =====
+    @Operation(summary = "Cập nhật Section")
+    @PutMapping("/sections/{sectionId}")
+    @PreAuthorize("hasRole('TEACHER')")
+    public SectionRes updateSection(@PathVariable Long sectionId,
+                                    @Valid @RequestBody SectionUpsertReq req) {
+        return courseService.updateSection(sectionId, currentUserIdOrThrow(), req);
+    }
+
+    @Operation(summary = "Xoá Section", description = "Xoá cứng; tự chuẩn hoá lại orderIndex.")
+    @DeleteMapping("/sections/{sectionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('TEACHER')")
+    public void deleteSection(@PathVariable Long sectionId) {
+        courseService.deleteSection(sectionId, currentUserIdOrThrow());
+    }
+
+    @Operation(summary = "Đổi thứ tự Section")
+    @PatchMapping("/sections/{sectionId}/reorder")
+    @PreAuthorize("hasRole('TEACHER')")
+    public SectionRes reorderSection(@PathVariable Long sectionId,
+                                     @RequestBody ReorderReq req) {
+        return courseService.reorderSection(sectionId, currentUserIdOrThrow(),
+                req.orderIndex() == null ? 0 : req.orderIndex());
+    }
+
+    // ===== Content: update / delete / reorder =====
+    @Operation(summary = "Cập nhật Content trong Section")
+    @PutMapping("/sections/contents/{contentId}")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ContentRes updateContent(@PathVariable Long contentId,
+                                    @Valid @RequestBody ContentUpsertReq req) {
+        return courseService.updateContent(contentId, currentUserIdOrThrow(), req);
+    }
+
+    @Operation(summary = "Xoá Content", description = "Xoá cứng; tự chuẩn hoá lại orderIndex.")
+    @DeleteMapping("/sections/contents/{contentId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('TEACHER')")
+    public void deleteContent(@PathVariable Long contentId) {
+        courseService.deleteContent(contentId, currentUserIdOrThrow());
+    }
+
+    @Operation(summary = "Đổi thứ tự Content trong Section")
+    @PatchMapping("/sections/contents/{contentId}/reorder")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ContentRes reorderContent(@PathVariable Long contentId,
+                                     @RequestBody ReorderReq req) {
+        return courseService.reorderContent(contentId, currentUserIdOrThrow(),
+                req.orderIndex() == null ? 0 : req.orderIndex());
+    }
+
 }
