@@ -33,7 +33,11 @@ public class CurrentUserService {
         if (auth == null || auth.getPrincipal() == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
         }
-        return String.valueOf(auth.getPrincipal()); // bạn đang dùng email làm principal
+        // Nếu SecurityConfig set principal là email, dùng getName() là an toàn hơn:
+        String name = auth.getName();
+        return (name != null && !name.isBlank())
+                ? name
+                : String.valueOf(auth.getPrincipal());
     }
 
     /** Lấy User hiện tại (Optional). */
@@ -51,7 +55,7 @@ public class CurrentUserService {
         String email = principalOrThrow();
         User u = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
-        if (Boolean.FALSE.equals(u.getIsActive())) {
+        if (u.getIsActive() != null && !u.getIsActive()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is disabled");
         }
         return u;
@@ -62,9 +66,14 @@ public class CurrentUserService {
         return getCurrentUser().map(User::getId).orElse(null);
     }
 
-    /** Trả về userId hoặc throw – dùng đúng với chỗ bạn gọi. */
+    /** Trả về userId hoặc throw – dùng cho các service cần bắt buộc đăng nhập. */
     public Long getUserIdOrThrow() {
         return getCurrentUserOrThrow().getId();
+    }
+
+    /** Alias để khớp chữ ký đang dùng trong CartService. */
+    public Long getCurrentUserId() {
+        return getUserIdOrThrow();
     }
 
     /** Kiểm tra role từ authorities; fallback sang field User.role nếu có. */
@@ -72,7 +81,8 @@ public class CurrentUserService {
         Authentication auth = authOrNull();
         if (auth != null) {
             Collection<? extends GrantedAuthority> authorities = auth.getAuthorities();
-            if (authorities != null && authorities.stream().anyMatch(a -> a.getAuthority().equals("ROLE_" + roleName))) {
+            if (authorities != null && authorities.stream()
+                    .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_" + roleName))) {
                 return true;
             }
         }
