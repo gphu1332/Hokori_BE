@@ -22,4 +22,16 @@ public abstract class BaseEntity {
 
     @Column(nullable = false)
     private boolean deletedFlag = false;
+
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) createdAt = Instant.now();
+        if (updatedAt == null) updatedAt = createdAt;
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = Instant.now();
+    }
+
 }

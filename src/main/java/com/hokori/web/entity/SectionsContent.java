@@ -23,4 +23,7 @@ public class SectionsContent extends BaseEntity {
     @Column(columnDefinition="TEXT") private String richText; // RICH_TEXT
     private Long quizId;                          // QUIZ_REF (nếu dùng)
     private Long flashcardSetId;                  // chỉ dùng nếu bạn chọn phương án B
+
+    @Column(name = "is_trackable", nullable = false)
+    private Boolean isTrackable = true;
 }
