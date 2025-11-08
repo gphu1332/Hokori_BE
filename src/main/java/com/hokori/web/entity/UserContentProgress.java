@@ -14,20 +14,14 @@ import java.time.Instant;
         )
 )
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class UserContentProgress {
+public class UserContentProgress extends BaseEntity { // dùng created_at/updated_at từ BaseEntity
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    // Enrollment (user + course)
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "enrollment_id", nullable = false,
             foreignKey = @ForeignKey(name = "fk_ucp_enrollment"))
     private Enrollment enrollment;
 
-    // Content cụ thể trong section
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "content_id", nullable = false,
             foreignKey = @ForeignKey(name = "fk_ucp_content"))
     private SectionsContent content;
@@ -42,26 +36,4 @@ public class UserContentProgress {
 
     @Column(name = "completed_at")
     private Instant completedAt;
-
-    @Builder.Default
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
-
-    @Builder.Default
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt = Instant.now();
-
-    @PrePersist
-    void onCreate() {
-        // Phòng khi object tạo bằng constructor thường, hoặc builder set null
-        if (createdAt == null) createdAt = Instant.now();
-        if (updatedAt == null) updatedAt = createdAt;
-        if (lastPositionSec == null) lastPositionSec = 0L;
-        if (isCompleted == null) isCompleted = false;
-    }
-
-    @PreUpdate
-    void onUpdate() {
-        updatedAt = Instant.now();
-    }
 }

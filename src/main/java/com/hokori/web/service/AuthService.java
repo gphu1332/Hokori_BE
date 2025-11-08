@@ -3,6 +3,8 @@ package com.hokori.web.service;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
+import com.hokori.web.Enum.ApprovalStatus;
+import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.config.JwtConfig;
 import com.hokori.web.dto.auth.AuthResponse;
 import com.hokori.web.dto.auth.LoginRequest;
@@ -136,7 +138,7 @@ public class AuthService {
         u.setIsActive(true);
         u.setIsVerified(true);
         u.setLearningLanguage("Japanese");
-        u.setCurrentJlptLevel(User.JLPTLevel.N5);
+        u.setCurrentJlptLevel(JLPTLevel.N5);
         u.setRole(getDefaultRole()); // LEARNER mặc định
         return userRepository.save(u);
     }
@@ -232,7 +234,7 @@ public class AuthService {
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
         u.setFirebaseUid(uid);
 
-        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), User.JLPTLevel.N5));
+        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), JLPTLevel.N5));
         u.setIsActive(true);
         u.setIsVerified(false);
 
@@ -265,7 +267,7 @@ public class AuthService {
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
         u.setFirebaseUid(uid);
 
-        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), User.JLPTLevel.N5));
+        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), JLPTLevel.N5));
         u.setIsActive(true);
         u.setIsVerified(false);
 
@@ -302,7 +304,7 @@ public class AuthService {
                 (req.getLastName()!= null ? " " + req.getLastName() : ""));
         u.setHeadline(req.getHeadline());
         u.setBio(req.getBio());
-        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), User.JLPTLevel.N2));
+        u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), JLPTLevel.N2));
         u.setLearningLanguage("Japanese");
         u.setIsActive(true);
         u.setIsVerified(false);
@@ -317,7 +319,7 @@ public class AuthService {
         u.setYoutube(req.getYoutube());
 
         // trạng thái duyệt mặc định
-        u.setApprovedStatus(User.ApproveStatus.NONE);
+        u.setApprovalStatus(ApprovalStatus.NONE);
 
         // UID giả cho tài khoản username/password
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
@@ -343,9 +345,9 @@ public class AuthService {
     }
 
     /* ===================== Helpers ===================== */
-    private User.JLPTLevel parseJlptOrDefault(String s, User.JLPTLevel def) {
+    private JLPTLevel parseJlptOrDefault(String s, JLPTLevel def) {
         if (s == null || s.isBlank()) return def;
-        try { return User.JLPTLevel.valueOf(s.toUpperCase()); }
+        try { return JLPTLevel.valueOf(s.toUpperCase()); }
         catch (IllegalArgumentException e) { return def; }
     }
 }

@@ -1,5 +1,6 @@
 package com.hokori.web.controller;
 
+import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.dto.*;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
@@ -245,7 +246,7 @@ public class AdminController {
 
             // JLPT level distribution
             Map<String, Long> jlptDistribution = new HashMap<>();
-            for (User.JLPTLevel level : User.JLPTLevel.values()) {
+            for (JLPTLevel level : JLPTLevel.values()) {
                 long count = allUsers.stream()
                         .filter(u -> u.getCurrentJlptLevel() == level)
                         .count();
@@ -485,7 +486,7 @@ public class AdminController {
 
 
             Map<String, Long> jlptStats = new HashMap<>();
-            for (User.JLPTLevel level : User.JLPTLevel.values()) {
+            for (JLPTLevel level : JLPTLevel.values()) {
                 long count = allUsers.stream()
                         .filter(u -> u.getCurrentJlptLevel() == level)
                         .count();
