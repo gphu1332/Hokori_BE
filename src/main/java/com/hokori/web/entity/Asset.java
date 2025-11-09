@@ -81,6 +81,7 @@ public class Asset {
     private Instant updatedAt;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean deletedFlag = false;
 
     @PrePersist

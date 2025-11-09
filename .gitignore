@@ -44,11 +44,26 @@ Thumbs.db
 ### AIGUIDE ###
 AIGUIDE/
 
+### Railway Deployment Guides (local only, don't commit to master) ###
+RAILWAY_*.md
+RAILWAY_*.txt
+NGROK_AND_RAILWAY_GUIDE.md
+GIT_IGNORE_AND_SECRETS_EXPLAINED.md
+RAILWAY_CONSOLE_SETUP_GUIDE.md
+RAILWAY_DEPLOYMENT_CHECKLIST.md
+RAILWAY_HOBBY_QUICK_START.md
+RAILWAY_ENV_VALUES.txt
+
+### JWT Secret Generation Scripts (local only) ###
+generate-jwt-secret.bat
+generate-jwt-secret.sh
+JWT_SECRET_GENERATED.txt
+JWT_SECRET_*.txt
+
 ### Sensitive Files ###
 firebase-service-account.json
 hokori-web-firebase-adminsdk-*.json
 application-dev.properties
-application-prod.properties
 google-cloud-service-account.json
 *.key
 *.pem
@@ -56,6 +71,14 @@ google-cloud-service-account.json
 *.jks
 ngrok.exe
 ngrok
+
+### Environment Files ###
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+!.env.template
 
 ### Template Files (keep these) ###
 !application-dev.properties.template

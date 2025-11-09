@@ -1,9 +1,9 @@
 package com.hokori.web.dto.asset;
 
-import com.google.firebase.database.annotations.NotNull;
 import com.hokori.web.Enum.AssetType;
 import com.hokori.web.Enum.AssetVisibility;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 

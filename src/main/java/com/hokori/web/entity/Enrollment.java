@@ -19,6 +19,7 @@ public class Enrollment {
     private Long userId;
 
     @Column(name = "progress_percent", nullable = false)
+    @Builder.Default
     private Integer progressPercent = 0;
 
     @Column(name = "started_at")
@@ -31,9 +32,11 @@ public class Enrollment {
     private Instant lastAccessAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
+    @Builder.Default
     private Instant createdAt = Instant.now();
 
     @Column(name = "updated_at", nullable = false)
+    @Builder.Default
     private Instant updatedAt = Instant.now();
 
     @PreUpdate
