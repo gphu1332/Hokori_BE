@@ -64,6 +64,14 @@ public class AuthService {
             if (sp != null) provider = String.valueOf(sp);
         }
 
+        // ===== CHẶN TỰ TẠO USER (JIT) KHI CHƯA ĐĂNG KÝ =====
+        Optional<User> existedByUid   = userRepository.findByFirebaseUid(firebaseUid);
+        Optional<User> existedByEmail = (email != null) ? userRepository.findByEmail(email) : Optional.empty();
+        if (existedByUid.isEmpty() && existedByEmail.isEmpty()) {
+            throw new RuntimeException("ACCOUNT_NOT_REGISTERED");
+        }
+        // =====================================================
+
         User user = findOrCreateUser(firebaseUid, email, displayName, photoUrl);
 
         boolean updated = false;
@@ -80,6 +88,61 @@ public class AuthService {
         userRepository.save(user); // lưu một lần là đủ (kể cả có updated hay không)
         return createAuthResponse(user, "firebase");
     }
+
+    // ===================== FIREBASE REGISTER (Google Sign-Up) =====================
+// [CHANGED] Không merge; nếu đã tồn tại thì báo lỗi 409 ở Controller.
+    public AuthResponse authenticateUserForRegistration(String idToken) throws FirebaseAuthException {
+        if (firebaseAuth == null) {
+            throw new RuntimeException("Firebase authentication is not configured. Please set firebase.enabled=true");
+        }
+        FirebaseToken decoded = firebaseAuth.verifyIdToken(idToken);
+
+        String firebaseUid = decoded.getUid();
+        String email       = decoded.getEmail();
+        String displayName = decoded.getName();
+        String photoUrl    = decoded.getPicture();
+
+        Boolean emailVerified = decoded.isEmailVerified();
+        String provider = null;
+        Object firebaseClaim = decoded.getClaims().get("firebase");
+        if (firebaseClaim instanceof Map<?, ?> map) {
+            Object sp = map.get("sign_in_provider");
+            if (sp != null) provider = String.valueOf(sp);
+        }
+
+        // [CHANGED] Bắt buộc Google phải có email
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException("GOOGLE_EMAIL_REQUIRED");
+        }
+
+        // [CHANGED] Không cho đăng ký nếu đã tồn tại theo UID hoặc EMAIL
+        if (userRepository.findByFirebaseUid(firebaseUid).isPresent()
+                || userRepository.findByEmail(email).isPresent()) {
+            throw new RuntimeException("EMAIL_ALREADY_EXISTS");
+        }
+
+        // [CHANGED] Tạo user MỚI (không merge)
+        User u = new User();
+        u.setFirebaseUid(firebaseUid);
+        u.setEmail(email);
+        u.setDisplayName(displayName);
+        u.setAvatarUrl(photoUrl);
+        u.setIsActive(true);
+        u.setIsVerified(Boolean.TRUE.equals(emailVerified));
+        u.setLearningLanguage("Japanese");
+        u.setCurrentJlptLevel(JLPTLevel.N5);
+        u.setRole(getDefaultRole()); // LEARNER mặc định
+
+        // provider & last login
+        if (provider != null) u.setFirebaseProvider(provider);
+        u.setFirebaseEmailVerified(Boolean.TRUE.equals(emailVerified));
+        u.setLastLoginAt(LocalDateTime.now());
+
+        u = userRepository.save(u);
+        return createAuthResponse(u, "firebase_register");
+    }
+
+    // ============================================================================
 
     /* ===================== REFRESH TOKEN ===================== */
     public AuthResponse refreshToken(String refreshToken) {
@@ -129,7 +192,7 @@ public class AuthService {
             }
         }
 
-        // 3) Tạo user mới
+        // 3) Tạo user mới (JIT)
         User u = new User();
         u.setFirebaseUid(firebaseUid);
         u.setEmail(email);
@@ -156,9 +219,13 @@ public class AuthService {
         userRepository.save(user);
     }
 
+    // AuthService
     public boolean userHasRole(User user, String roleName) {
-        return user.getRole() != null && roleName.equals(user.getRole().getRoleName());
+        return user.getRole() != null
+                && user.getRole().getRoleName() != null
+                && user.getRole().getRoleName().equalsIgnoreCase(roleName);
     }
+
     public boolean isAdmin(User user) { return userHasRole(user, "ADMIN"); }
     public boolean isStaffOrAdmin(User user) { return userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
     public boolean canCreateContent(User user) { return userHasRole(user, "TEACHER") || userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
@@ -183,9 +250,7 @@ public class AuthService {
         String accessToken  = jwtTokenService.generateAccessToken(user, loginType, roles);
         String refreshToken = jwtTokenService.generateRefreshToken(user);
 
-        // jwtTokenService.getTokenExpiration() trả về Long (epoch millis hoặc epoch seconds)
         Long exp = jwtTokenService.getTokenExpiration();
-        // Nếu lớn hơn ~ 3e9 thì coi là milliseconds, ngược lại là seconds
         Instant expiresAt = (exp != null)
                 ? (exp > 3_000_000_000L ? Instant.ofEpochMilli(exp) : Instant.ofEpochSecond(exp))
                 : null;
@@ -204,14 +269,21 @@ public class AuthService {
         User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElseGet(() -> userRepository.findByEmail(loginRequest.getUsername())
                         .orElseThrow(() -> new RuntimeException("Invalid username/email or password")));
-        if (Boolean.FALSE.equals(user.getIsActive())) throw new RuntimeException("User account is deactivated");
-        if (user.getPasswordHash() == null || !passwordEncoder.matches(loginRequest.getPassword(), user.getPasswordHash()))
+
+        if (Boolean.FALSE.equals(user.getIsActive()))
+            throw new RuntimeException("User account is deactivated");
+
+        // [FIX] đúng cú pháp: phải gọi getPasswordHash() và đủ dấu ngoặc
+        if (user.getPasswordHash() == null
+                || !passwordEncoder.matches(loginRequest.getPassword(), user.getPasswordHash())) {
             throw new RuntimeException("Invalid username/email or password");
+        }
 
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
         return createAuthResponse(user, "password");
     }
+
 
     /* ===================== OLD COMBINED REGISTER (giữ tương thích) ===================== */
     public AuthResponse registerUser(RegisterRequest req) {

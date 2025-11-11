@@ -15,4 +15,12 @@ public interface LessonRepository extends JpaRepository<Lesson, Long> {
     Optional<Long> findCourseIdByLessonId(@Param("lessonId") Long lessonId);
 
     List<Lesson> findByChapter_IdOrderByOrderIndexAsc(Long chapterId);
+
+    // Lấy owner userId của course chứa lesson này (JPQL dùng field userId)
+    @Query("""
+           select l.chapter.course.userId
+           from Lesson l
+           where l.id = :lessonId
+           """)
+    Optional<Long> findCourseOwnerIdByLessonId(@Param("lessonId") Long lessonId);
 }

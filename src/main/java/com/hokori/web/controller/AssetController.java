@@ -24,7 +24,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Assets", description = "Manage course/media assets (image, video, audio, pdf...)")
-@SecurityRequirement(name = "bearerAuth") // tên security scheme trong openapi config
+@SecurityRequirement(name = "Bearer Authentication") // tên security scheme trong openapi config
 @CrossOrigin(origins = "*")               // tùy chỉnh CORS theo môi trường của bạn
 @RestController
 @RequestMapping(value = "/api/assets", produces = MediaType.APPLICATION_JSON_VALUE)
