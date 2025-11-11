@@ -17,9 +17,13 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "users",
         indexes = {
+                // Giữ các index này để Hibernate tạo index; với SQL Server, UNIQUE trên nullable vẫn chỉ cho 1 NULL.
+                // Khuyến nghị: với SQL Server, tạo UNIQUE FILTERED INDEX qua migration: WHERE username IS NOT NULL / firebase_uid IS NOT NULL.
                 @Index(name = "idx_users_email", columnList = "email", unique = true),
-                @Index(name = "idx_users_username", columnList = "username", unique = true),
-                @Index(name = "idx_users_firebase_uid", columnList = "firebase_uid", unique = true)
+                @Index(name = "idx_users_username", columnList = "username" /*, unique = true*/), // [CHANGED] bỏ unique ở đây để tránh "1 NULL duy nhất" trên SQL Server
+                @Index(name = "idx_users_firebase_uid", columnList = "firebase_uid" /*, unique = true*/ ), // [CHANGED]
+                @Index(name = "idx_users_role_id", columnList = "role_id"), // [CHANGED] thêm index thực dụng
+                @Index(name = "idx_users_approval_status", columnList = "approval_status") // [CHANGED] thêm index thực dụng
         })
 @ToString(exclude = {"role", "currentApproveRequest"})
 public class User {
@@ -30,7 +34,7 @@ public class User {
     private Long id;
 
     @Size(max = 128)
-    @Column(name = "firebase_uid", unique = true)
+    @Column(name = "firebase_uid" /*, unique = true*/) // [CHANGED] bỏ unique ở level @Column (xem giải thích trên)
     private String firebaseUid;
 
     @Size(max = 50)
@@ -48,7 +52,7 @@ public class User {
     private String email;
 
     @Size(max = 100)
-    @Column(name = "username", unique = true, length = 100)
+    @Column(name = "username", length = 100 /*, unique = true*/) // [CHANGED] bỏ unique ở level @Column (xem giải thích trên)
     private String username;
 
     /** Hash mật khẩu cho luồng đăng nhập “tự quản” */
@@ -57,11 +61,20 @@ public class User {
     private String passwordHash;
 
     /** Hoạt động / bị khoá */
-    @Column(name = "is_active", nullable = false)
+    @Column(
+            name = "is_active",
+            nullable = false
+            // Với SQL Server: nên để mặc định = 1. Nếu bạn dùng MySQL có thể bỏ columnDefinition.
+            , columnDefinition = "bit not null default 1" // [CHANGED]
+    )
     private Boolean isActive = true;
 
     /** Đã xác minh danh tính (KYC/Email) */
-    @Column(name = "is_verified", nullable = false)
+    @Column(
+            name = "is_verified",
+            nullable = false
+            , columnDefinition = "bit not null default 0" // [CHANGED]
+    )
     private Boolean isVerified = false;
 
     // ===== Profile =====
@@ -140,7 +153,12 @@ public class User {
 
     // ===== Approval (luồng duyệt teacher) =====
     @Enumerated(EnumType.STRING)
-    @Column(name = "approval_status", length = 20, nullable = false)
+    @Column(
+            name = "approval_status",
+            length = 20,
+            nullable = false,
+            columnDefinition = "varchar(20) not null default 'NONE'" // [CHANGED] default NONE để tránh lỗi khi add cột trên bảng có data (SQL Server)
+    )
     private ApprovalStatus approvalStatus = ApprovalStatus.NONE; // NONE/PENDING/APPROVED/REJECTED
 
     @Column(name = "approved_at")
@@ -175,7 +193,11 @@ public class User {
     private LocalDateTime updatedAt;
 
     /** Xoá mềm để giữ toàn vẹn dữ liệu */
-    @Column(name = "deleted_flag", nullable = false)
+    @Column(
+            name = "deleted_flag",
+            nullable = false,
+            columnDefinition = "bit not null default 0" // [CHANGED] thêm DEFAULT để tránh lỗi khi migrate trên bảng đã có dữ liệu (SQL Server)
+    )
     private Boolean deletedFlag = false;
 
     // ===== Relationship =====

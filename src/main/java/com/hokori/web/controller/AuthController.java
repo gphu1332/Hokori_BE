@@ -13,6 +13,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+// (Không đổi import)
+import org.springframework.http.HttpStatus; // [CHANGED]
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -45,9 +47,15 @@ public class AuthController {
             response.put("message", "Registration successful");
             response.put("role", "LEARNER");
 
-            return ResponseEntity.ok(ApiResponse.success("User registered successfully", response));
+            return ResponseEntity.status(HttpStatus.CREATED) // [CHANGED]
+                    .body(ApiResponse.success("User registered successfully", response));
         } catch (Exception e) {
-            return ResponseEntity.ok(ApiResponse.error("Registration failed: " + e.getMessage()));
+            String msg = e.getMessage() != null ? e.getMessage() : "Registration failed"; // [CHANGED]
+            if (msg.contains("Email already exists") || msg.contains("Username already exists")) { // [CHANGED]
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(msg)); // [CHANGED]
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                    .body(ApiResponse.error("Registration failed: " + msg)); // [CHANGED]
         }
     }
 
@@ -69,9 +77,15 @@ public class AuthController {
             response.put("message", "Registration successful");
             response.put("role", "TEACHER");
 
-            return ResponseEntity.ok(ApiResponse.success("User registered successfully", response));
+            return ResponseEntity.status(HttpStatus.CREATED) // [CHANGED]
+                    .body(ApiResponse.success("User registered successfully", response));
         } catch (Exception e) {
-            return ResponseEntity.ok(ApiResponse.error("Registration failed: " + e.getMessage()));
+            String msg = e.getMessage() != null ? e.getMessage() : "Registration failed"; // [CHANGED]
+            if (msg.contains("Email already exists") || msg.contains("Username already exists")) { // [CHANGED]
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(msg)); // [CHANGED]
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                    .body(ApiResponse.error("Registration failed: " + msg)); // [CHANGED]
         }
     }
 
@@ -84,24 +98,29 @@ public class AuthController {
             description = "Vui lòng dùng /register/learner hoặc /register/teacher")
     public ResponseEntity<ApiResponse<Map<String, Object>>> register(@RequestBody RegisterRequest registerRequest) {
         try {
-            // Validate cơ bản
             if (registerRequest.getUsername() == null || registerRequest.getUsername().trim().isEmpty()) {
-                return ResponseEntity.ok(ApiResponse.error("Username is required"));
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                        .body(ApiResponse.error("Username is required"));
             }
             if (registerRequest.getEmail() == null || registerRequest.getEmail().trim().isEmpty()) {
-                return ResponseEntity.ok(ApiResponse.error("Email is required"));
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                        .body(ApiResponse.error("Email is required"));
             }
             if (registerRequest.getPassword() == null || registerRequest.getPassword().trim().isEmpty()) {
-                return ResponseEntity.ok(ApiResponse.error("Password is required"));
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                        .body(ApiResponse.error("Password is required"));
             }
             if (registerRequest.getConfirmPassword() == null || registerRequest.getConfirmPassword().trim().isEmpty()) {
-                return ResponseEntity.ok(ApiResponse.error("Password confirmation is required"));
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                        .body(ApiResponse.error("Password confirmation is required"));
             }
             if (!registerRequest.isPasswordConfirmed()) {
-                return ResponseEntity.ok(ApiResponse.error("Password and confirmation do not match"));
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                        .body(ApiResponse.error("Password and confirmation do not match"));
             }
             if (!registerRequest.isValidRole()) {
-                return ResponseEntity.ok(ApiResponse.error("Invalid role selected. Available roles: LEARNER, TEACHER, STAFF, ADMIN"));
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                        .body(ApiResponse.error("Invalid role selected. Available roles: LEARNER, TEACHER, STAFF, ADMIN"));
             }
 
             // Delegate sang 2 luồng mới nếu là learner/teacher
@@ -119,7 +138,6 @@ public class AuthController {
             }
             if ("TEACHER".equalsIgnoreCase(role)) {
                 RegisterTeacherRequest req = new RegisterTeacherRequest();
-                // Chỉ map các trường có thật trong DTO
                 req.setUsername(registerRequest.getUsername());
                 req.setEmail(registerRequest.getEmail());
                 req.setPassword(registerRequest.getPassword());
@@ -129,12 +147,10 @@ public class AuthController {
                         ? registerRequest.getDisplayName()
                         : registerRequest.getUsername();
 
-                req.setFirstName(display);   // fallback
-                req.setLastName("");         // fallback
-                req.setHeadline("Teacher");  // fallback
-
+                req.setFirstName(display);
+                req.setLastName("");
+                req.setHeadline("Teacher");
                 req.setCurrentJlptLevel(registerRequest.getCurrentJlptLevel());
-                // Socials/website: để null nếu form cũ không có
 
                 return registerTeacher(req);
             }
@@ -149,9 +165,15 @@ public class AuthController {
             response.put("message", "Registration successful");
             response.put("role", registerRequest.getRoleName());
 
-            return ResponseEntity.ok(ApiResponse.success("User registered successfully", response));
+            return ResponseEntity.status(HttpStatus.CREATED) // [CHANGED]
+                    .body(ApiResponse.success("User registered successfully", response));
         } catch (Exception e) {
-            return ResponseEntity.ok(ApiResponse.error("Registration failed: " + e.getMessage()));
+            String msg = e.getMessage() != null ? e.getMessage() : "Registration failed"; // [CHANGED]
+            if (msg.contains("Email already exists") || msg.contains("Username already exists")) { // [CHANGED]
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(msg)); // [CHANGED]
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
+                    .body(ApiResponse.error("Registration failed: " + msg)); // [CHANGED]
         }
     }
 
@@ -168,7 +190,9 @@ public class AuthController {
             response.put("roles", authResponse.getRoles());
             return ResponseEntity.ok(ApiResponse.success("Login successful", response));
         } catch (Exception e) {
-            return ResponseEntity.ok(ApiResponse.error("Login failed: " + e.getMessage()));
+            String msg = e.getMessage() != null ? e.getMessage() : "Login failed"; // [CHANGED]
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED) // [CHANGED]
+                    .body(ApiResponse.error("Login failed: " + msg)); // [CHANGED]
         }
     }
 
@@ -186,7 +210,38 @@ public class AuthController {
             response.put("roles", authResponse.getRoles());
             return ResponseEntity.ok(ApiResponse.success("Firebase authentication successful", response));
         } catch (Exception e) {
-            return ResponseEntity.ok(ApiResponse.error("Firebase authentication failed: " + e.getMessage()));
+            String msg = e.getMessage() != null ? e.getMessage() : "Firebase authentication failed"; // [CHANGED]
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED) // [CHANGED]
+                    .body(ApiResponse.error(msg)); // [CHANGED]
+        }
+    }
+
+    // ===========================
+    // NEW: Firebase Register (Google Sign-Up)
+    // ===========================
+    @PostMapping("/firebase/register") // [ADDED]
+    @Operation(summary = "Firebase register", description = "Register user with Firebase token (Google Sign-Up)") // [ADDED]
+    public ResponseEntity<ApiResponse<Map<String, Object>>> firebaseRegister( // [ADDED]
+                                                                              @Valid @RequestBody FirebaseAuthRequest firebaseRequest) { // [ADDED]
+        try {
+            AuthResponse authResponse = authService.authenticateUserForRegistration(firebaseRequest.getFirebaseToken()); // [ADDED]
+            Map<String, Object> response = new HashMap<>(); // [ADDED]
+            response.put("user", authResponse.getUser()); // [ADDED]
+            response.put("accessToken", authResponse.getAccessToken()); // [ADDED]
+            response.put("refreshToken", authResponse.getRefreshToken()); // [ADDED]
+            response.put("message", "Registration successful"); // [ADDED]
+            response.put("roles", authResponse.getRoles()); // [ADDED]
+            return ResponseEntity.status(HttpStatus.CREATED) // [ADDED]
+                    .body(ApiResponse.success("Firebase registration successful", response)); // [ADDED]
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Firebase registration failed";
+            if (msg.contains("EMAIL_ALREADY_EXISTS")) { // [CHANGED]
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("Email already exists"));
+            }
+            if (msg.contains("GOOGLE_EMAIL_REQUIRED")) { // [CHANGED]
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("Google account has no email"));
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(msg));
         }
     }
 
