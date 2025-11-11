@@ -2,27 +2,66 @@ package com.hokori.web.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
-import io.swagger.v3.oas.models.info.Contact;
-import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.servers.Server;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Configuration
 public class SwaggerConfig {
 
+    @Value("${spring.profiles.active:dev}")
+    private String activeProfile;
+
     @Bean
     public OpenAPI customOpenAPI() {
+        List<Server> servers = new ArrayList<>();
+        
+        // Production: Use Railway URL or environment variable
+        if ("prod".equals(activeProfile)) {
+            String railwayUrl = System.getenv("RAILWAY_PUBLIC_DOMAIN");
+            if (railwayUrl != null && !railwayUrl.isEmpty()) {
+                servers.add(new Server()
+                    .url("https://" + railwayUrl)
+                    .description("Railway Production"));
+            } else {
+                // Fallback: Use default Railway pattern
+                servers.add(new Server()
+                    .url("https://hokori-web-production.up.railway.app")
+                    .description("Railway Production (default)"));
+            }
+        } else {
+            // Development: Use ngrok or localhost
+            String ngrokUrl = System.getenv("NGROK_URL");
+            if (ngrokUrl != null && !ngrokUrl.isEmpty()) {
+                servers.add(new Server()
+                    .url(ngrokUrl)
+                    .description("Ngrok Tunnel"));
+            } else {
+                servers.add(new Server()
+                    .url("http://localhost:8080")
+                    .description("Local Development"));
+            }
+        }
+        
         return new OpenAPI()
                 .info(new Info()
                         .title("Hokori API")
                         .version("1.0.0")
-                        .description("Japanese Learning Platform API - Content-Based Learning + JLPT Mock Tests")
-                        .contact(new Contact()
-                                .name("Hokori Team")
-                                .email("contact@hokori.com")
-                                .url("https://github.com/gphu1332/Hokori_BE"))
-                        .license(new License()
-                                .name("MIT License")
-                                .url("https://opensource.org/licenses/MIT")));
+                        .description("Japanese Learning Platform API"))
+                .servers(servers)
+                .addSecurityItem(new SecurityRequirement().addList("Bearer Authentication"))
+                .components(new io.swagger.v3.oas.models.Components()
+                        .addSecuritySchemes("Bearer Authentication", 
+                                new SecurityScheme()
+                                        .type(SecurityScheme.Type.HTTP)
+                                        .scheme("bearer")
+                                        .bearerFormat("JWT")
+                                        .description("Enter JWT token")));
     }
 }
