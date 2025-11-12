@@ -1,5 +1,6 @@
 package com.hokori.web.service;
 
+import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.entity.Role;
 import com.hokori.web.repository.RoleRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,26 +17,19 @@ public class RoleService {
     
     /**
      * Initialize default roles if they don't exist.
+     * Uses RoleConstants to avoid hardcoding role names and descriptions.
      * Ensures role names are normalized to uppercase for consistency (PostgreSQL is case-sensitive).
      */
     public void initializeDefaultRoles() {
-        String[] roleNames = {"LEARNER", "TEACHER", "STAFF", "ADMIN"};
-        String[] descriptions = {
-            "Regular student/learner",
-            "Teacher who can create content", 
-            "Staff member with limited admin access",
-            "Full system administrator"
-        };
-        
-        for (int i = 0; i < roleNames.length; i++) {
+        for (String roleName : RoleConstants.DEFAULT_ROLE_NAMES) {
             // Normalize role name to uppercase for consistency
-            String normalizedRoleName = roleNames[i].trim().toUpperCase();
+            String normalizedRoleName = roleName.trim().toUpperCase();
             
             // Check if role exists (case-insensitive check via repository)
             if (!roleRepository.findByRoleName(normalizedRoleName).isPresent()) {
                 Role role = new Role();
                 role.setRoleName(normalizedRoleName); // Always store uppercase
-                role.setDescription(descriptions[i]);
+                role.setDescription(RoleConstants.getDescription(normalizedRoleName));
                 roleRepository.save(role);
             }
         }
@@ -139,7 +133,7 @@ public class RoleService {
      * Always returns LEARNER role (uppercase, normalized).
      */
     public Role getDefaultRole() {
-        return roleRepository.findByRoleName("LEARNER")
-                .orElseThrow(() -> new RuntimeException("Default role LEARNER not found. Please run initializeDefaultRoles() first."));
+        return roleRepository.findByRoleName(RoleConstants.LEARNER)
+                .orElseThrow(() -> new RuntimeException("Default role " + RoleConstants.LEARNER + " not found. Please run initializeDefaultRoles() first."));
     }
 }

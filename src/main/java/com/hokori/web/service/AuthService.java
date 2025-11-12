@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseToken;
 import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.config.JwtConfig;
+import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.dto.auth.AuthResponse;
 import com.hokori.web.dto.auth.LoginRequest;
 import com.hokori.web.dto.auth.RegisterLearnerRequest;
@@ -212,8 +213,8 @@ public class AuthService {
 
     /* ===================== ROLE HELPERS ===================== */
     private Role getDefaultRole() {
-        return roleRepository.findByRoleName("LEARNER")
-                .orElseThrow(() -> new RuntimeException("Default role LEARNER not found"));
+        return roleRepository.findByRoleName(RoleConstants.LEARNER)
+                .orElseThrow(() -> new RuntimeException("Default role " + RoleConstants.LEARNER + " not found"));
     }
 
     public void assignRoleToUser(User user, String roleName) {
@@ -230,9 +231,9 @@ public class AuthService {
                 && user.getRole().getRoleName().equalsIgnoreCase(roleName);
     }
 
-    public boolean isAdmin(User user) { return userHasRole(user, "ADMIN"); }
-    public boolean isStaffOrAdmin(User user) { return userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
-    public boolean canCreateContent(User user) { return userHasRole(user, "TEACHER") || userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
+    public boolean isAdmin(User user) { return userHasRole(user, RoleConstants.ADMIN); }
+    public boolean isStaffOrAdmin(User user) { return userHasRole(user, RoleConstants.STAFF) || userHasRole(user, RoleConstants.ADMIN); }
+    public boolean canCreateContent(User user) { return userHasRole(user, RoleConstants.TEACHER) || userHasRole(user, RoleConstants.STAFF) || userHasRole(user, RoleConstants.ADMIN); }
     /**
      * Get user roles as a normalized list.
      * Always returns uppercase role names for consistency (PostgreSQL is case-sensitive).
@@ -367,7 +368,7 @@ public class AuthService {
         u.setIsActive(true);
         u.setIsVerified(false);
 
-        String roleName = (req.getRoleName() != null) ? req.getRoleName() : "LEARNER";
+        String roleName = (req.getRoleName() != null) ? req.getRoleName() : RoleConstants.LEARNER;
         Role role = roleRepository.findByRoleName(roleName)
                 .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
         u.setRole(role);
@@ -400,8 +401,8 @@ public class AuthService {
         u.setIsActive(true);
         u.setIsVerified(false);
 
-        Role learner = roleRepository.findByRoleName("LEARNER")
-                .orElseThrow(() -> new RuntimeException("Role LEARNER not found"));
+        Role learner = roleRepository.findByRoleName(RoleConstants.LEARNER)
+                .orElseThrow(() -> new RuntimeException("Role " + RoleConstants.LEARNER + " not found"));
         u.setRole(learner);
 
         u = userRepository.save(u);
@@ -454,8 +455,8 @@ public class AuthService {
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
         u.setFirebaseUid(uid);
 
-        Role teacher = roleRepository.findByRoleName("TEACHER")
-                .orElseThrow(() -> new RuntimeException("Role TEACHER not found"));
+        Role teacher = roleRepository.findByRoleName(RoleConstants.TEACHER)
+                .orElseThrow(() -> new RuntimeException("Role " + RoleConstants.TEACHER + " not found"));
         u.setRole(teacher);
 
         u = userRepository.save(u);
