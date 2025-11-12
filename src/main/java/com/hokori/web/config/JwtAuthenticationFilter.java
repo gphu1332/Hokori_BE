@@ -168,54 +168,50 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     } else {
                         logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
                     }
-                            
-                            // Convert roles to authorities (normalize role name to uppercase)
-                            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                            try {
-                                authorities = roles.stream()
-                                        .map(role -> role.toUpperCase().trim()) // Normalize role name
-                                        .filter(role -> !role.isEmpty()) // Filter out empty roles
-                                        .map(role -> {
-                                            // Remove ROLE_ prefix if already present, then add it
-                                            String normalizedRole = role.startsWith("ROLE_") ? role.substring(5) : role;
-                                            return new SimpleGrantedAuthority("ROLE_" + normalizedRole);
-                                        })
-                                        .collect(Collectors.toList());
-                            } catch (Exception e) {
-                                logger.error("❌ Error converting roles to authorities: " + e.getMessage(), e);
-                            }
-                            
-                            if (authorities.isEmpty()) {
-                                logger.error("❌ User " + email + " has NO authorities! User will be authenticated but cannot access role-protected endpoints!");
-                                logger.error("   User role_id: " + (user.getRole() != null ? user.getRole().getId() : "null"));
-                                logger.error("   User role_name: " + (user.getRole() != null ? user.getRole().getRoleName() : "null"));
-                                logger.error("   Roles extracted: " + roles);
-                                // Still set authentication with empty authorities - allows authenticated() endpoints to work
-                                // But role-protected endpoints (hasRole) will fail
-                            } else {
-                                logger.info("✅ User " + email + " authorities: " + authorities.stream()
-                                        .map(a -> a.getAuthority())
-                                        .collect(Collectors.joining(", ")));
-                            }
+                    
+                    // Convert roles to authorities (normalize role name to uppercase)
+                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                    try {
+                        authorities = roles.stream()
+                                .map(role -> role.toUpperCase().trim()) // Normalize role name
+                                .filter(role -> !role.isEmpty()) // Filter out empty roles
+                                .map(role -> {
+                                    // Remove ROLE_ prefix if already present, then add it
+                                    String normalizedRole = role.startsWith("ROLE_") ? role.substring(5) : role;
+                                    return new SimpleGrantedAuthority("ROLE_" + normalizedRole);
+                                })
+                                .collect(Collectors.toList());
+                    } catch (Exception e) {
+                        logger.error("❌ Error converting roles to authorities: " + e.getMessage(), e);
+                    }
+                    
+                    if (authorities.isEmpty()) {
+                        logger.error("❌ User " + email + " has NO authorities! User will be authenticated but cannot access role-protected endpoints!");
+                        logger.error("   Roles extracted: " + roles);
+                        // Still set authentication with empty authorities - allows authenticated() endpoints to work
+                        // But role-protected endpoints (hasRole) will fail
+                    } else {
+                        logger.info("✅ User " + email + " authorities: " + authorities.stream()
+                                .map(a -> a.getAuthority())
+                                .collect(Collectors.joining(", ")));
+                    }
 
-                            // IMPORTANT: Always set authentication, even with empty authorities
-                            // This allows endpoints with .authenticated() to work
-                            // But endpoints with hasRole() will fail if authorities are empty
-                            try {
-                                UsernamePasswordAuthenticationToken authToken = 
-                                        new UsernamePasswordAuthenticationToken(email, null, authorities);
-                                
-                                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                                
-                                SecurityContextHolder.getContext().setAuthentication(authToken);
-                                logger.info("✅ Authentication SET for user: " + email + " with " + authorities.size() + " authorities");
-                                logger.info("   Authorities: " + authorities.stream()
-                                        .map(a -> a.getAuthority())
-                                        .collect(Collectors.joining(", ")));
-                            } catch (Exception e) {
-                                logger.error("❌ CRITICAL: Failed to set authentication for user " + email + ": " + e.getMessage(), e);
-                            }
-                        }
+                    // IMPORTANT: Always set authentication, even with empty authorities
+                    // This allows endpoints with .authenticated() to work
+                    // But endpoints with hasRole() will fail if authorities are empty
+                    try {
+                        UsernamePasswordAuthenticationToken authToken = 
+                                new UsernamePasswordAuthenticationToken(email, null, authorities);
+                        
+                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                        logger.info("✅ Authentication SET for user: " + email + " with " + authorities.size() + " authorities");
+                        logger.info("   Authorities: " + authorities.stream()
+                                .map(a -> a.getAuthority())
+                                .collect(Collectors.joining(", ")));
+                    } catch (Exception e) {
+                        logger.error("❌ CRITICAL: Failed to set authentication for user " + email + ": " + e.getMessage(), e);
                     }
                 } catch (Exception e) {
                     logger.error("❌ CRITICAL: Cannot set user authentication for email: " + email, e);
