@@ -119,20 +119,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     // Check user exists and is active (simple JPQL query - no LOB fields)
                     // This works for both SQL Server and PostgreSQL
                     // is_active is boolean (true/false) in database
+                    // NOTE: PostgreSQL sometimes returns nested Object[] arrays
                     boolean userExistsAndActive = false;
                     try {
                         logger.debug("Checking user active status for email: " + email);
                         var statusOpt = userRepository.findUserActiveStatusByEmail(email);
                         if (statusOpt.isPresent()) {
                             Object[] status = statusOpt.get();
+                            
+                            // Handle nested array case (PostgreSQL returns Object[] inside Object[])
+                            Object[] actualStatus = status;
+                            if (status.length == 1 && status[0] instanceof Object[]) {
+                                actualStatus = (Object[]) status[0];
+                                logger.info("Unwrapped nested array: outer length=" + status.length + ", inner length=" + actualStatus.length);
+                            }
+                            
                             // JPQL query returns: [id, isActive]
-                            logger.info("User status query result: length=" + status.length + ", types=" + 
-                                java.util.Arrays.stream(status)
+                            logger.info("User status query result: length=" + actualStatus.length + ", types=" + 
+                                java.util.Arrays.stream(actualStatus)
                                     .map(obj -> obj != null ? obj.getClass().getName() + "=" + obj : "null")
                                     .collect(java.util.stream.Collectors.joining(", ")));
                             
-                            if (status.length >= 2) {
-                                Object isActiveObj = status[1];
+                            if (actualStatus.length >= 2) {
+                                Object isActiveObj = actualStatus[1];
                                 if (isActiveObj == null) {
                                     logger.warn("⚠️ User " + email + " has null isActive - treating as inactive");
                                     userExistsAndActive = false;
@@ -151,7 +160,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 }
                                 logger.info("✅ User " + email + " active status check: " + userExistsAndActive);
                             } else {
-                                logger.warn("⚠️ User status query returned insufficient data: length=" + status.length);
+                                logger.warn("⚠️ User status query returned insufficient data: length=" + actualStatus.length);
                             }
                         } else {
                             logger.warn("⚠️ User not found in database for email: " + email);
