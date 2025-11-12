@@ -56,19 +56,21 @@ public class SecurityConfig {
                 // ============================================
                 // ROLE-BASED ENDPOINTS
                 // ============================================
+                // NOTE: Spring Security requires string literals here (cannot use constants).
+                // Role names reference: RoleConstants.LEARNER, RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN
                 
                 // Admin-only endpoints
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN") // RoleConstants.ADMIN
                 
                 // Staff and Admin endpoints
-                .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN")
+                .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN") // RoleConstants.STAFF, RoleConstants.ADMIN
                 
                 // Teacher, Staff, and Admin endpoints
                 // Note: Individual methods may have stricter @PreAuthorize annotations
-                .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN")
+                .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN") // RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN
                 
                 // Learner-only endpoints
-                .requestMatchers("/api/learner/**").hasRole("LEARNER")
+                .requestMatchers("/api/learner/**").hasRole("LEARNER") // RoleConstants.LEARNER
                 
                 // ============================================
                 // AUTHENTICATED ENDPOINTS - Any authenticated user

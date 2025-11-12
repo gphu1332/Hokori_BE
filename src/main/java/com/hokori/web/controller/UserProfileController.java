@@ -1,6 +1,7 @@
 package com.hokori.web.controller;
 
 import com.hokori.web.Enum.ApprovalStatus;
+import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.dto.*;
 import com.hokori.web.entity.User;
 import com.hokori.web.service.CurrentUserService;
@@ -432,7 +433,7 @@ public class UserProfileController {
         m.put("role", roleName);
 
         // trả teacher section nếu là teacher hoặc có flow duyệt
-        boolean isTeacherRole = "TEACHER".equals(roleName);
+        boolean isTeacherRole = RoleConstants.TEACHER.equals(roleName);
         boolean hasTeacherFlow = user.getApprovalStatus() != null && user.getApprovalStatus() != ApprovalStatus.NONE;
 
         if (isTeacherRole || hasTeacherFlow) {

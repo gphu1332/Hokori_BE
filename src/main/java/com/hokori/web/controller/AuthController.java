@@ -8,6 +8,7 @@ import com.hokori.web.dto.auth.RegisterRequest;
 import com.hokori.web.dto.auth.RegisterLearnerRequest;
 import com.hokori.web.dto.auth.RegisterTeacherRequest;
 import com.hokori.web.service.AuthService;
+import com.hokori.web.constants.RoleConstants;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -45,7 +46,7 @@ public class AuthController {
             response.put("accessToken", authResponse.getAccessToken());
             response.put("refreshToken", authResponse.getRefreshToken());
             response.put("message", "Registration successful");
-            response.put("role", "LEARNER");
+            response.put("role", RoleConstants.LEARNER);
 
             return ResponseEntity.status(HttpStatus.CREATED) // [CHANGED]
                     .body(ApiResponse.success("User registered successfully", response));
@@ -75,7 +76,7 @@ public class AuthController {
             response.put("accessToken", authResponse.getAccessToken());
             response.put("refreshToken", authResponse.getRefreshToken());
             response.put("message", "Registration successful");
-            response.put("role", "TEACHER");
+            response.put("role", RoleConstants.TEACHER);
 
             return ResponseEntity.status(HttpStatus.CREATED) // [CHANGED]
                     .body(ApiResponse.success("User registered successfully", response));
@@ -120,12 +121,14 @@ public class AuthController {
             }
             if (!registerRequest.isValidRole()) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST) // [CHANGED]
-                        .body(ApiResponse.error("Invalid role selected. Available roles: LEARNER, TEACHER, STAFF, ADMIN"));
+                        .body(ApiResponse.error("Invalid role selected. Available roles: " + 
+                            RoleConstants.LEARNER + ", " + RoleConstants.TEACHER + ", " + 
+                            RoleConstants.STAFF + ", " + RoleConstants.ADMIN));
             }
 
             // Delegate sang 2 luồng mới nếu là learner/teacher
             String role = registerRequest.getRoleName();
-            if ("LEARNER".equalsIgnoreCase(role)) {
+            if (RoleConstants.LEARNER.equalsIgnoreCase(role)) {
                 RegisterLearnerRequest req = new RegisterLearnerRequest();
                 req.setUsername(registerRequest.getUsername());
                 req.setEmail(registerRequest.getEmail());
@@ -136,7 +139,7 @@ public class AuthController {
                 req.setCurrentJlptLevel(registerRequest.getCurrentJlptLevel());
                 return registerLearner(req);
             }
-            if ("TEACHER".equalsIgnoreCase(role)) {
+            if (RoleConstants.TEACHER.equalsIgnoreCase(role)) {
                 RegisterTeacherRequest req = new RegisterTeacherRequest();
                 req.setUsername(registerRequest.getUsername());
                 req.setEmail(registerRequest.getEmail());
@@ -249,11 +252,12 @@ public class AuthController {
     @Operation(summary = "Get available roles", description = "Get list of available roles for registration")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAvailableRoles() {
         try {
+            // Use RoleConstants to avoid hardcoding
             List<Map<String, Object>> roles = List.of(
-                    Map.of("roleName", "LEARNER", "description", "Regular student/learner"),
-                    Map.of("roleName", "TEACHER", "description", "Teacher who can create content"),
-                    Map.of("roleName", "STAFF", "description", "Staff member with limited admin access"),
-                    Map.of("roleName", "ADMIN", "description", "Full system administrator")
+                    Map.of("roleName", RoleConstants.LEARNER, "description", RoleConstants.getDescription(RoleConstants.LEARNER)),
+                    Map.of("roleName", RoleConstants.TEACHER, "description", RoleConstants.getDescription(RoleConstants.TEACHER)),
+                    Map.of("roleName", RoleConstants.STAFF, "description", RoleConstants.getDescription(RoleConstants.STAFF)),
+                    Map.of("roleName", RoleConstants.ADMIN, "description", RoleConstants.getDescription(RoleConstants.ADMIN))
             );
             return ResponseEntity.ok(ApiResponse.success("Available roles retrieved successfully", roles));
         } catch (Exception e) {

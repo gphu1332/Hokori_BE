@@ -26,6 +26,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+/**
+ * Teacher Course Controller.
+ * NOTE: @PreAuthorize annotations use string literals (Spring Security requirement).
+ * Role names reference: RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN
+ */
 @RestController
 @RequestMapping("/api/teacher/courses")
 @RequiredArgsConstructor

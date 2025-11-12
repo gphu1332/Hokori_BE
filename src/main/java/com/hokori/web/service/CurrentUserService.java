@@ -1,5 +1,6 @@
 package com.hokori.web.service;
 
+import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.entity.User;
 import com.hokori.web.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -91,7 +92,7 @@ public class CurrentUserService {
                 .orElse(false);
     }
 
-    public boolean isAdmin()   { return hasRole("ADMIN"); }
-    public boolean isTeacher() { return hasRole("TEACHER"); }
-    public boolean isLearner() { return hasRole("LEARNER"); }
+    public boolean isAdmin()   { return hasRole(RoleConstants.ADMIN); }
+    public boolean isTeacher() { return hasRole(RoleConstants.TEACHER); }
+    public boolean isLearner() { return hasRole(RoleConstants.LEARNER); }
 }

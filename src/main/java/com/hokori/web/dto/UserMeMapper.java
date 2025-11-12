@@ -1,5 +1,6 @@
 package com.hokori.web.dto;
 
+import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.entity.User;
 
 // mapper/UserMeMapper.java
@@ -22,7 +23,7 @@ public final class UserMeMapper {
         r.setRole(u.getRole()!=null ? u.getRole().getRoleName() : null);
 
         // Case-insensitive check for PostgreSQL compatibility
-        boolean isTeacher = u.getRole()!=null && "TEACHER".equalsIgnoreCase(u.getRole().getRoleName());
+        boolean isTeacher = u.getRole()!=null && RoleConstants.TEACHER.equalsIgnoreCase(u.getRole().getRoleName());
         boolean hasTeacherFlow = u.getApprovalStatus()!=null && u.getApprovalStatus()!=com.hokori.web.Enum.ApprovalStatus.NONE;
 
         if (isTeacher || hasTeacherFlow) {
