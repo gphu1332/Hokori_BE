@@ -490,8 +490,157 @@ public class CourseService {
     // =========================
     @Transactional(readOnly = true)
     public CourseRes getDetail(Long id, Long teacherUserId) {
-        Course c = getOwned(id, teacherUserId);
-        return toCourseResLite(c);
+        // Check if we're using PostgreSQL (which has LOB stream issues)
+        // SQL Server doesn't have this issue, so we can use entity directly
+        boolean isPostgreSQL = isPostgreSQLDatabase();
+        
+        if (isPostgreSQL) {
+            // Use native query to avoid LOB stream error (PostgreSQL only)
+            var metadataOpt = courseRepo.findCourseMetadataById(id);
+            if (metadataOpt.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+            }
+            
+            Object[] metadata = metadataOpt.get();
+            
+            // Verify ownership
+            Long courseUserId = null;
+            Object userIdObj = metadata[11]; // user_id is at index 11
+            if (userIdObj instanceof Number) {
+                courseUserId = ((Number) userIdObj).longValue();
+            } else if (userIdObj != null) {
+                try {
+                    courseUserId = Long.parseLong(userIdObj.toString());
+                } catch (NumberFormatException e) {
+                    throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Invalid user_id in course");
+                }
+            }
+            
+            if (!Objects.equals(courseUserId, teacherUserId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
+            }
+            
+            // Build CourseRes from metadata (without description to avoid LOB)
+            return buildCourseResFromMetadata(metadata);
+        } else {
+            // SQL Server: Use entity directly (no LOB stream issues)
+            Course c = getOwned(id, teacherUserId);
+            return toCourseResLite(c);
+        }
+    }
+    
+    /**
+     * Detect if current database is PostgreSQL.
+     * SQL Server doesn't have LOB stream issues, so we can use entity directly.
+     */
+    private boolean isPostgreSQLDatabase() {
+        try {
+            // Check active profile first (most reliable)
+            String activeProfile = System.getProperty("spring.profiles.active", 
+                    System.getenv("SPRING_PROFILES_ACTIVE"));
+            if ("prod".equals(activeProfile)) {
+                return true; // Production uses PostgreSQL on Railway
+            }
+            
+            // Check DATABASE_URL (Railway PostgreSQL)
+            String databaseUrl = System.getenv("DATABASE_URL");
+            if (databaseUrl != null && (databaseUrl.contains("postgresql://") || databaseUrl.contains("postgres://"))) {
+                return true;
+            }
+            
+            // Check JDBC URL from system properties
+            String datasourceUrl = System.getProperty("spring.datasource.url");
+            if (datasourceUrl != null) {
+                return datasourceUrl.contains("postgresql") || datasourceUrl.contains("postgres");
+            }
+            
+            // Default: assume dev (SQL Server) unless explicitly PostgreSQL
+            return false;
+        } catch (Exception e) {
+            // If detection fails, default to false (SQL Server) for safety
+            return false;
+        }
+    }
+    
+    private CourseRes buildCourseResFromMetadata(Object[] metadata) {
+        // [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
+        Long id = extractLong(metadata[0]);
+        String title = metadata[1] != null ? metadata[1].toString() : null;
+        String slug = metadata[2] != null ? metadata[2].toString() : null;
+        String subtitle = metadata[3] != null ? metadata[3].toString() : null;
+        
+        // Level enum
+        com.hokori.web.Enum.JLPTLevel level = com.hokori.web.Enum.JLPTLevel.N5;
+        if (metadata[4] != null) {
+            try {
+                level = com.hokori.web.Enum.JLPTLevel.valueOf(metadata[4].toString().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                level = com.hokori.web.Enum.JLPTLevel.N5;
+            }
+        }
+        
+        Long priceCents = extractLong(metadata[5]);
+        Long discountedPriceCents = extractLong(metadata[6]);
+        String currency = metadata[7] != null ? metadata[7].toString() : "VND";
+        Long coverAssetId = extractLong(metadata[8]);
+        
+        // Status enum
+        com.hokori.web.Enum.CourseStatus status = com.hokori.web.Enum.CourseStatus.DRAFT;
+        if (metadata[9] != null) {
+            try {
+                status = com.hokori.web.Enum.CourseStatus.valueOf(metadata[9].toString().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                status = com.hokori.web.Enum.CourseStatus.DRAFT;
+            }
+        }
+        
+        // PublishedAt (Instant)
+        java.time.Instant publishedAt = null;
+        if (metadata[10] != null) {
+            try {
+                if (metadata[10] instanceof java.sql.Timestamp) {
+                    publishedAt = ((java.sql.Timestamp) metadata[10]).toInstant();
+                } else if (metadata[10] instanceof java.time.Instant) {
+                    publishedAt = (java.time.Instant) metadata[10];
+                } else {
+                    // Try to parse as string
+                    publishedAt = java.time.Instant.parse(metadata[10].toString());
+                }
+            } catch (Exception e) {
+                // Ignore, keep as null
+            }
+        }
+        
+        Long userId = extractLong(metadata[11]);
+        
+        return new CourseRes(
+                id, 
+                title, 
+                slug, 
+                subtitle,
+                null, // description = null (avoid LOB, can be loaded separately if needed)
+                level,
+                priceCents, 
+                discountedPriceCents, 
+                currency, 
+                coverAssetId,
+                status, 
+                publishedAt, 
+                userId,
+                Collections.emptyList() // Empty chapters list for lite version
+        );
+    }
+    
+    private Long extractLong(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof Number) {
+            return ((Number) obj).longValue();
+        }
+        try {
+            return Long.parseLong(obj.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     // =========================

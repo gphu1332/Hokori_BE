@@ -85,31 +85,45 @@ public class UserProfileController {
                             
                             // Safely extract userId
                             Long userId = null;
-                            Object userIdObj = info[0];
-                            if (userIdObj instanceof Number) {
-                                userId = ((Number) userIdObj).longValue();
-                            } else if (userIdObj != null) {
+                            if (info.length > 0 && info[0] != null) {
+                                Object userIdObj = info[0];
                                 try {
-                                    userId = Long.parseLong(userIdObj.toString());
-                                } catch (NumberFormatException ex) {
-                                    // Ignore
+                                    if (userIdObj instanceof Number) {
+                                        userId = ((Number) userIdObj).longValue();
+                                    } else {
+                                        userId = Long.parseLong(userIdObj.toString());
+                                    }
+                                } catch (Exception ex) {
+                                    debugInfo.put("userIdError", "Failed to parse userId: " + userIdObj + " (" + userIdObj.getClass().getName() + ")");
                                 }
                             }
                             
                             // Handle isActive
                             Boolean isActive = null;
-                            Object isActiveObj = info.length > 2 ? info[2] : null;
-                            if (isActiveObj instanceof Boolean) {
-                                isActive = (Boolean) isActiveObj;
-                            } else if (isActiveObj instanceof Number) {
-                                isActive = ((Number) isActiveObj).intValue() != 0;
-                            } else if (isActiveObj != null) {
-                                String isActiveStr = isActiveObj.toString().toLowerCase();
-                                isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                            if (info.length > 2 && info[2] != null) {
+                                Object isActiveObj = info[2];
+                                try {
+                                    if (isActiveObj instanceof Boolean) {
+                                        isActive = (Boolean) isActiveObj;
+                                    } else if (isActiveObj instanceof Number) {
+                                        isActive = ((Number) isActiveObj).intValue() != 0;
+                                    } else {
+                                        String isActiveStr = isActiveObj.toString().toLowerCase();
+                                        isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                                    }
+                                } catch (Exception ex) {
+                                    debugInfo.put("isActiveError", "Failed to parse isActive: " + isActiveObj + " (" + isActiveObj.getClass().getName() + ")");
+                                }
                             }
                             
                             debugInfo.put("userId", userId);
                             debugInfo.put("isActive", isActive);
+                            debugInfo.put("queryResultLength", info.length);
+                            if (info.length > 0) {
+                                debugInfo.put("queryResultTypes", java.util.Arrays.stream(info)
+                                    .map(obj -> obj != null ? obj.getClass().getName() : "null")
+                                    .collect(java.util.stream.Collectors.toList()));
+                            }
                             
                             // Get role info using native query (avoids LOB fields)
                             if (userId != null) {

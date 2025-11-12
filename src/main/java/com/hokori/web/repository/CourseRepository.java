@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
@@ -31,4 +32,16 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     Page<Course> findPublishedByLevel(JLPTLevel lvl, Pageable pageable);
 
     boolean existsByIdAndUserIdAndDeletedFlagFalse(Long id, Long userId);
+    
+    /**
+     * Get course metadata without LOB fields (avoids LOB stream error).
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
+     */
+    @Query(value = """
+        SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
+               c.currency, c.cover_asset_id, c.status, c.published_at, c.user_id, c.deleted_flag
+        FROM course c
+        WHERE c.id = :id AND c.deleted_flag = false
+        """, nativeQuery = true)
+    Optional<Object[]> findCourseMetadataById(@Param("id") Long id);
 }
