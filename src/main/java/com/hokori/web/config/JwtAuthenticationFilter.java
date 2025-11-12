@@ -51,22 +51,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // Once we get the token validate it.
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            logger.debug("Processing JWT token for email: " + email);
 
             // Validate token
             if (jwtConfig.validateToken(jwtToken, email)) {
+                logger.debug("JWT token validated successfully for: " + email);
                 
                 try {
                     // Get user from repository WITH role (using fetch join to avoid lazy loading issues)
                     var userOpt = userRepository.findByEmailWithRole(email);
                     if (userOpt.isEmpty()) {
+                        logger.debug("findByEmailWithRole returned empty, trying findByEmail");
                         // Fallback to regular findByEmail if findByEmailWithRole not available
                         userOpt = userRepository.findByEmail(email);
                     }
                     
                     if (userOpt.isPresent()) {
                         var user = userOpt.get();
+                        logger.debug("User found: id=" + user.getId() + ", email=" + user.getEmail() + ", role_id=" + (user.getRole() != null ? user.getRole().getId() : "null"));
                         
                         // Check if user is active (null-safe check)
+                        if (user.getIsActive() != null && user.getIsActive()) {
+                            logger.debug("User is active, processing roles...");
+                        } else {
+                            logger.warn("⚠️ User " + email + " is NOT active! is_active=" + user.getIsActive());
+                        }
+                        
                         if (user.getIsActive() != null && user.getIsActive()) {
                             // Extract roles from JWT claims (fallback to database)
                             List<String> roles = List.of();
@@ -83,11 +93,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             
                             // Fallback to database roles if token doesn't have roles or roles are empty
                             if (roles.isEmpty()) {
-                                if (user.getRole() != null && user.getRole().getRoleName() != null) {
-                                    roles = List.of(user.getRole().getRoleName());
-                                    logger.info("✅ Using database role for user " + email + ": " + user.getRole().getRoleName());
+                                logger.debug("Roles from token are empty, checking database...");
+                                if (user.getRole() != null) {
+                                    String roleName = user.getRole().getRoleName();
+                                    if (roleName != null && !roleName.isEmpty()) {
+                                        roles = List.of(roleName);
+                                        logger.info("✅ Using database role for user " + email + ": role_id=" + user.getRole().getId() + ", role_name=" + roleName);
+                                    } else {
+                                        logger.warn("⚠️ User " + email + " role exists but role_name is null or empty! role_id=" + user.getRole().getId());
+                                    }
                                 } else {
-                                    logger.warn("⚠️ User " + email + " has no role assigned! role_id=" + (user.getRole() != null ? user.getRole().getId() : "null"));
+                                    logger.warn("⚠️ User " + email + " has no role assigned! role_id=null");
                                 }
                             } else {
                                 logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
