@@ -124,10 +124,19 @@ public class CourseService {
         }
         
         Object[] metadata = metadataOpt.get();
+        // Handle empty array case
+        if (metadata.length == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+        }
+        
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
+            // Check if inner array is also empty
+            if (actualMetadata.length == 0) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+            }
         }
         
         // Build CourseRes from metadata (without description to avoid LOB)
@@ -201,10 +210,19 @@ public class CourseService {
         }
         
         Object[] metadata = metadataOpt.get();
+        // Handle empty array case
+        if (metadata.length == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+        }
+        
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
+            // Check if inner array is also empty
+            if (actualMetadata.length == 0) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+            }
         }
         
         // Build CourseRes from metadata (without description to avoid LOB)
