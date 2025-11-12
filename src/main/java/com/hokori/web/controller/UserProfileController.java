@@ -77,55 +77,87 @@ public class UserProfileController {
                 String email = auth.getPrincipal() != null ? auth.getPrincipal().toString() : null;
                 debugInfo.put("email", email);
                 
-                // Get user basic info from database (without LOB fields)
-                if (email != null) {
-                    try {
-                        var statusOpt = userRepository.findUserActiveStatusByEmail(email);
-                        if (statusOpt.isPresent()) {
-                            Object[] status = statusOpt.get();
-                            // JPQL query returns: [id, isActive]
-                            
-                            // Safely extract userId
-                            Long userId = null;
-                            if (status.length > 0 && status[0] != null) {
-                                Object userIdObj = status[0];
-                                try {
-                                    if (userIdObj instanceof Number) {
-                                        userId = ((Number) userIdObj).longValue();
-                                    } else {
-                                        userId = Long.parseLong(userIdObj.toString());
-                                    }
-                                } catch (Exception ex) {
-                                    debugInfo.put("userIdError", "Failed to parse userId: " + userIdObj + " (" + userIdObj.getClass().getName() + ")");
+                    // Get user basic info from database (without LOB fields)
+                    if (email != null) {
+                        try {
+                            var statusOpt = userRepository.findUserActiveStatusByEmail(email);
+                            if (statusOpt.isPresent()) {
+                                Object[] status = statusOpt.get();
+                                
+                                // Handle nested array case (PostgreSQL returns Object[] inside Object[])
+                                Object[] actualStatus = status;
+                                if (status.length == 1 && status[0] instanceof Object[]) {
+                                    actualStatus = (Object[]) status[0];
+                                    debugInfo.put("nestedArrayUnwrapped", true);
+                                    debugInfo.put("outerLength", status.length);
+                                    debugInfo.put("innerLength", actualStatus.length);
                                 }
-                            }
-                            
-                            // Handle isActive
-                            Boolean isActive = null;
-                            if (status.length > 1 && status[1] != null) {
-                                Object isActiveObj = status[1];
-                                try {
-                                    if (isActiveObj instanceof Boolean) {
-                                        isActive = (Boolean) isActiveObj;
-                                    } else if (isActiveObj instanceof Number) {
-                                        isActive = ((Number) isActiveObj).intValue() != 0;
-                                    } else {
-                                        String isActiveStr = isActiveObj.toString().toLowerCase();
-                                        isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                                
+                                // JPQL query returns: [id, isActive]
+
+                                // Safely extract userId
+                                Long userId = null;
+                                if (actualStatus.length > 0 && actualStatus[0] != null) {
+                                    Object userIdObj = actualStatus[0];
+                                    try {
+                                        if (userIdObj instanceof Number) {
+                                            userId = ((Number) userIdObj).longValue();
+                                        } else if (userIdObj instanceof Object[]) {
+                                            // Handle double-nested array
+                                            Object[] nestedUserId = (Object[]) userIdObj;
+                                            if (nestedUserId.length > 0 && nestedUserId[0] instanceof Number) {
+                                                userId = ((Number) nestedUserId[0]).longValue();
+                                            } else if (nestedUserId.length > 0) {
+                                                userId = Long.parseLong(nestedUserId[0].toString());
+                                            }
+                                        } else {
+                                            userId = Long.parseLong(userIdObj.toString());
+                                        }
+                                    } catch (Exception ex) {
+                                        debugInfo.put("userIdError", "Failed to parse userId: " + userIdObj + " (" + userIdObj.getClass().getName() + ")");
                                     }
-                                } catch (Exception ex) {
-                                    debugInfo.put("isActiveError", "Failed to parse isActive: " + isActiveObj + " (" + isActiveObj.getClass().getName() + ")");
                                 }
-                            }
-                            
-                            debugInfo.put("userId", userId);
-                            debugInfo.put("isActive", isActive);
-                            debugInfo.put("queryResultLength", status.length);
-                            if (status.length > 0) {
-                                debugInfo.put("queryResultTypes", java.util.Arrays.stream(status)
-                                    .map(obj -> obj != null ? obj.getClass().getName() : "null")
-                                    .collect(java.util.stream.Collectors.toList()));
-                            }
+                                
+                                // Handle isActive
+                                Boolean isActive = null;
+                                if (actualStatus.length > 1 && actualStatus[1] != null) {
+                                    Object isActiveObj = actualStatus[1];
+                                    try {
+                                        if (isActiveObj instanceof Boolean) {
+                                            isActive = (Boolean) isActiveObj;
+                                        } else if (isActiveObj instanceof Number) {
+                                            isActive = ((Number) isActiveObj).intValue() != 0;
+                                        } else if (isActiveObj instanceof Object[]) {
+                                            // Handle nested array for isActive
+                                            Object[] nestedIsActive = (Object[]) isActiveObj;
+                                            if (nestedIsActive.length > 0) {
+                                                Object nestedValue = nestedIsActive[0];
+                                                if (nestedValue instanceof Boolean) {
+                                                    isActive = (Boolean) nestedValue;
+                                                } else if (nestedValue instanceof Number) {
+                                                    isActive = ((Number) nestedValue).intValue() != 0;
+                                                } else {
+                                                    String isActiveStr = nestedValue.toString().toLowerCase();
+                                                    isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                                                }
+                                            }
+                                        } else {
+                                            String isActiveStr = isActiveObj.toString().toLowerCase();
+                                            isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                                        }
+                                    } catch (Exception ex) {
+                                        debugInfo.put("isActiveError", "Failed to parse isActive: " + isActiveObj + " (" + isActiveObj.getClass().getName() + ")");
+                                    }
+                                }
+                                
+                                debugInfo.put("userId", userId);
+                                debugInfo.put("isActive", isActive);
+                                debugInfo.put("queryResultLength", actualStatus.length);
+                                if (actualStatus.length > 0) {
+                                    debugInfo.put("queryResultTypes", java.util.Arrays.stream(actualStatus)
+                                        .map(obj -> obj != null ? obj.getClass().getName() : "null")
+                                        .collect(java.util.stream.Collectors.toList()));
+                                }
                             
                             // Get role info using native query (avoids LOB fields)
                             if (userId != null) {
