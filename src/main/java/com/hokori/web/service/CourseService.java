@@ -600,11 +600,25 @@ public class CourseService {
      */
     @Transactional(readOnly = true)
     public CourseRes getDetail(Long id, Long teacherUserId) {
-        // Check ownership and get metadata in one call
-        Object[] metadata = checkOwnership(id, teacherUserId);
-        
-        // Build CourseRes from metadata (description is always null - no LOB loading)
-        return buildCourseResFromMetadata(metadata);
+        try {
+            // Check ownership and get metadata in one call (no Course entity loaded)
+            Object[] metadata = checkOwnership(id, teacherUserId);
+            
+            // Build CourseRes from metadata (description is always null - no LOB loading)
+            return buildCourseResFromMetadata(metadata);
+        } catch (ResponseStatusException e) {
+            // Re-throw as-is
+            throw e;
+        } catch (Exception e) {
+            // Log and wrap any unexpected errors
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && (errorMsg.contains("lob") || errorMsg.contains("LOB"))) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                    "Failed to load course data");
+            }
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Failed to load course: " + (errorMsg != null ? errorMsg : "Unknown error"));
+        }
     }
     
     /**

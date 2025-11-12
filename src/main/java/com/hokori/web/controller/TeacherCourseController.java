@@ -2,7 +2,6 @@ package com.hokori.web.controller;
 
 import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.dto.course.*;
-import com.hokori.web.entity.User;
 import com.hokori.web.repository.UserRepository;
 import com.hokori.web.service.CourseService;
 import jakarta.validation.Valid;
@@ -49,12 +48,51 @@ public class TeacherCourseController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
         }
         String email = String.valueOf(auth.getPrincipal());
-        User u = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
-        if (Boolean.FALSE.equals(u.getIsActive())) {
+        // Use native query to avoid loading User entity with LOB fields
+        var statusOpt = userRepository.findUserActiveStatusByEmail(email);
+        if (statusOpt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        }
+        
+        Object[] status = statusOpt.get();
+        // Handle nested array case (PostgreSQL)
+        Object[] actualStatus = status;
+        if (status.length == 1 && status[0] instanceof Object[]) {
+            actualStatus = (Object[]) status[0];
+        }
+        
+        if (actualStatus.length < 2) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid user data");
+        }
+        
+        Long userId = extractLong(actualStatus[0]);
+        Boolean isActive = extractBoolean(actualStatus[1]);
+        
+        if (userId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        }
+        if (Boolean.FALSE.equals(isActive)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is disabled");
         }
-        return u.getId();
+        return userId;
+    }
+    
+    private Long extractLong(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof Number) return ((Number) obj).longValue();
+        try {
+            return Long.parseLong(obj.toString());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    private Boolean extractBoolean(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof Boolean) return (Boolean) obj;
+        if (obj instanceof Number) return ((Number) obj).intValue() != 0;
+        String str = obj.toString().toLowerCase().trim();
+        return "true".equals(str) || "1".equals(str) || "t".equals(str);
     }
 
     // ===== Course =====

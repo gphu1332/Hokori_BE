@@ -17,7 +17,9 @@ public class Course extends BaseEntity {
     @Column(nullable=false, unique=true, length=180) private String slug;
     private String subtitle;
 
-    @Column(columnDefinition="TEXT") private String description;
+    @Column(columnDefinition="TEXT") 
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors
+    private String description;
 
     @Enumerated(EnumType.STRING) @Column(nullable=false)
     private JLPTLevel level = JLPTLevel.N5;
