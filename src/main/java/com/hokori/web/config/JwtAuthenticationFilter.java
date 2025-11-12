@@ -64,7 +64,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 
                 try {
                     // First, extract roles from JWT token (preferred - avoids database LOB issues)
-                    List<String> roles = List.of();
+                    List<String> roles = new ArrayList<>();
                     try {
                         var claims = jwtConfig.extractAllClaims(jwtToken);
                         Object rolesObj = claims.get("roles");
@@ -77,18 +77,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 @SuppressWarnings("unchecked")
                                 List<Object> rolesList = (List<Object>) rolesObj;
                                 roles = rolesList.stream()
-                                        .map(r -> r != null ? r.toString() : null)
+                                        .map(r -> {
+                                            if (r == null) return null;
+                                            String roleStr = r.toString().trim();
+                                            return roleStr.isEmpty() ? null : roleStr;
+                                        })
                                         .filter(r -> r != null && !r.isEmpty())
                                         .collect(Collectors.toList());
                             } else if (rolesObj instanceof Object[]) {
                                 Object[] rolesArray = (Object[]) rolesObj;
                                 roles = java.util.Arrays.stream(rolesArray)
-                                        .map(r -> r != null ? r.toString() : null)
+                                        .map(r -> {
+                                            if (r == null) return null;
+                                            String roleStr = r.toString().trim();
+                                            return roleStr.isEmpty() ? null : roleStr;
+                                        })
                                         .filter(r -> r != null && !r.isEmpty())
                                         .collect(Collectors.toList());
                             } else {
                                 // Single role as string
-                                String roleStr = rolesObj.toString();
+                                String roleStr = rolesObj.toString().trim();
                                 if (!roleStr.isEmpty()) {
                                     roles = List.of(roleStr);
                                 }
@@ -96,10 +104,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             
                             if (!roles.isEmpty()) {
                                 logger.info("✅ Extracted roles from token: " + roles);
+                            } else {
+                                logger.warn("⚠️ Roles object found in token but resulted in empty list: " + rolesObj);
                             }
+                        } else {
+                            logger.warn("⚠️ No 'roles' claim found in JWT token for user: " + email);
                         }
                     } catch (Exception ex) {
-                        logger.warn("⚠️ Failed to extract roles from token: " + ex.getMessage());
+                        logger.error("❌ Failed to extract roles from token: " + ex.getMessage());
+                        logger.error("   Exception type: " + ex.getClass().getName());
+                        ex.printStackTrace();
                     }
                     
                     // Get user from repository - use simple findByEmail to avoid LOB issues
@@ -188,48 +202,66 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     
                     // Fallback to database roles if token doesn't have roles or roles are empty
                     if (roles.isEmpty() && needDatabaseCheck) {
-                        logger.debug("Roles from token are empty, checking database...");
+                        logger.warn("⚠️ Roles from token are empty, checking database as fallback...");
                         try {
                             // Try to get role from database (might fail due to LOB, but worth trying)
                             var user = userOpt.get();
                             if (user.getRole() != null) {
                                 String roleName = user.getRole().getRoleName();
-                                if (roleName != null && !roleName.isEmpty()) {
-                                    roles = List.of(roleName);
-                                    logger.info("✅ Using database role for user " + email + ": role_id=" + user.getRole().getId() + ", role_name=" + roleName);
+                                if (roleName != null && !roleName.trim().isEmpty()) {
+                                    // Normalize role name to uppercase for consistency
+                                    String normalizedRoleName = roleName.trim().toUpperCase();
+                                    roles = List.of(normalizedRoleName);
+                                    logger.info("✅ Using database role for user " + email + ": role_id=" + user.getRole().getId() + ", role_name=" + roleName + " (normalized: " + normalizedRoleName + ")");
                                 } else {
-                                    logger.warn("⚠️ User " + email + " role exists but role_name is null or empty!");
+                                    logger.error("❌ User " + email + " role exists but role_name is null or empty!");
                                 }
                             } else {
-                                logger.warn("⚠️ User " + email + " has no role assigned!");
+                                logger.error("❌ User " + email + " has no role assigned in database!");
                             }
                         } catch (Exception e) {
                             logger.error("❌ Could not load role from database (LOB issue): " + e.getMessage());
+                            logger.error("   Exception type: " + e.getClass().getName());
+                            e.printStackTrace();
                             // Continue without role - user will be authenticated but without authorities
                         }
                     } else if (!roles.isEmpty()) {
                         logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
+                    } else {
+                        logger.error("❌ CRITICAL: No roles found in token AND database check was skipped! User: " + email);
                     }
                     
                     // Convert roles to authorities (normalize role name to uppercase)
                     List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                     try {
                         authorities = roles.stream()
-                                .map(role -> role.toUpperCase().trim()) // Normalize role name
-                                .filter(role -> !role.isEmpty()) // Filter out empty roles
+                                .map(role -> {
+                                    if (role == null) {
+                                        logger.warn("⚠️ Found null role in roles list");
+                                        return null;
+                                    }
+                                    return role.toUpperCase().trim(); // Normalize role name
+                                })
+                                .filter(role -> role != null && !role.isEmpty()) // Filter out null and empty roles
                                 .map(role -> {
                                     // Remove ROLE_ prefix if already present, then add it
                                     String normalizedRole = role.startsWith("ROLE_") ? role.substring(5) : role;
-                                    return new SimpleGrantedAuthority("ROLE_" + normalizedRole);
+                                    String authority = "ROLE_" + normalizedRole;
+                                    logger.debug("   Converting role '" + role + "' to authority '" + authority + "'");
+                                    return new SimpleGrantedAuthority(authority);
                                 })
+                                .filter(auth -> auth != null) // Additional safety check
                                 .collect(Collectors.toList());
                     } catch (Exception e) {
                         logger.error("❌ Error converting roles to authorities: " + e.getMessage(), e);
+                        logger.error("   Roles list: " + roles);
+                        e.printStackTrace();
                     }
                     
                     if (authorities.isEmpty()) {
                         logger.error("❌ User " + email + " has NO authorities! User will be authenticated but cannot access role-protected endpoints!");
-                        logger.error("   Roles extracted: " + roles);
+                        logger.error("   Roles extracted from token: " + roles);
+                        logger.error("   This will cause 403 Forbidden errors on role-protected endpoints like /api/teacher/**");
                         // Still set authentication with empty authorities - allows authenticated() endpoints to work
                         // But role-protected endpoints (hasRole) will fail
                     } else {

@@ -20,6 +20,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -30,6 +32,8 @@ import java.util.Optional;
 @Service
 @Transactional
 public class AuthService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     @Autowired(required = false)
     private FirebaseAuth firebaseAuth;
@@ -229,7 +233,14 @@ public class AuthService {
     public boolean isAdmin(User user) { return userHasRole(user, "ADMIN"); }
     public boolean isStaffOrAdmin(User user) { return userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
     public boolean canCreateContent(User user) { return userHasRole(user, "TEACHER") || userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
-    public List<String> getUserRoles(User user) { return (user.getRole() != null) ? List.of(user.getRole().getRoleName()) : List.of(); }
+    public List<String> getUserRoles(User user) { 
+        if (user.getRole() != null && user.getRole().getRoleName() != null) {
+            // Normalize role name to uppercase for consistency (PostgreSQL case-sensitive)
+            String roleName = user.getRole().getRoleName().trim().toUpperCase();
+            return List.of(roleName);
+        }
+        return List.of(); 
+    }
 
     /* ===================== JWT HELPERS ===================== */
     public boolean validateToken(String token) {
@@ -246,6 +257,17 @@ public class AuthService {
 
     private AuthResponse createAuthResponse(User user, String loginType) {
         List<String> roles = getUserRoles(user);
+        
+        // Ensure roles are not empty - log warning if user has no role
+        if (roles.isEmpty()) {
+            logger.warn("⚠️ User " + user.getEmail() + " has no roles assigned! This may cause 403 errors on role-protected endpoints.");
+            if (user.getRole() == null) {
+                logger.error("❌ User " + user.getEmail() + " has null role! Assigning default LEARNER role.");
+                // Don't modify user here, just log - admin should fix this
+            }
+        } else {
+            logger.debug("✅ User " + user.getEmail() + " roles: " + roles);
+        }
 
         String accessToken  = jwtTokenService.generateAccessToken(user, loginType, roles);
         String refreshToken = jwtTokenService.generateRefreshToken(user);

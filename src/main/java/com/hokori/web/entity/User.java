@@ -218,7 +218,8 @@ public class User {
 
     // ===== Helpers =====
     public boolean hasRole(String roleName) {
-        return role != null && role.getRoleName().equals(roleName);
+        // Case-insensitive check for PostgreSQL compatibility
+        return role != null && role.getRoleName() != null && role.getRoleName().equalsIgnoreCase(roleName);
     }
 
     @Transient
