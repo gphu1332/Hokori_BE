@@ -118,6 +118,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     
                     // Check user exists and is active (simple JPQL query - no LOB fields)
                     // This works for both SQL Server and PostgreSQL
+                    // is_active is boolean (true/false) in database
                     boolean userExistsAndActive = false;
                     try {
                         var statusOpt = userRepository.findUserActiveStatusByEmail(email);
@@ -129,20 +130,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     .map(obj -> obj != null ? obj.getClass().getName() : "null")
                                     .collect(java.util.stream.Collectors.joining(", ")));
                             
-                            if (status.length >= 2 && status[1] != null) {
+                            if (status.length >= 2) {
                                 Object isActiveObj = status[1];
-                                if (isActiveObj instanceof Boolean) {
-                                    userExistsAndActive = Boolean.TRUE.equals(isActiveObj);
+                                if (isActiveObj == null) {
+                                    logger.warn("⚠️ User " + email + " has null isActive - treating as inactive");
+                                    userExistsAndActive = false;
+                                } else if (isActiveObj instanceof Boolean) {
+                                    userExistsAndActive = (Boolean) isActiveObj;
                                     logger.debug("isActive (Boolean): " + userExistsAndActive);
                                 } else if (isActiveObj instanceof Number) {
+                                    // Handle bit/boolean as number (SQL Server)
                                     userExistsAndActive = ((Number) isActiveObj).intValue() != 0;
                                     logger.debug("isActive (Number): " + userExistsAndActive + " (raw: " + isActiveObj + ")");
                                 } else {
-                                    // Handle different boolean representations
-                                    String isActiveStr = isActiveObj.toString().toLowerCase();
-                                    userExistsAndActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
-                                    logger.debug("isActive (String): " + userExistsAndActive + " (raw: " + isActiveStr + ")");
+                                    // Handle string representation
+                                    String isActiveStr = isActiveObj.toString().toLowerCase().trim();
+                                    userExistsAndActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr) || "yes".equals(isActiveStr);
+                                    logger.debug("isActive (String): " + userExistsAndActive + " (raw: '" + isActiveStr + "')");
                                 }
+                                logger.info("✅ User " + email + " active status check: " + userExistsAndActive);
                             } else {
                                 logger.warn("⚠️ User status query returned insufficient data: length=" + status.length);
                             }
