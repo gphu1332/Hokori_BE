@@ -61,8 +61,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (userOpt.isPresent()) {
                         var user = userOpt.get();
                         
-                        // Check if user is active
-                        if (user.getIsActive()) {
+                        // Check if user is active (null-safe check)
+                        if (user.getIsActive() != null && user.getIsActive()) {
                             // Extract roles from JWT claims (fallback to database)
                             List<String> roles = List.of();
                             try {
@@ -73,16 +73,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     roles = rolesFromToken;
                                 }
                             } catch (Exception ex) {
-                                // Fallback to database roles
-                                if (user.getRole() != null) {
-                                    roles = List.of(user.getRole().getRoleName());
-                                }
+                                logger.debug("Failed to extract roles from token, will use database roles: " + ex.getMessage());
                             }
                             
-                            // Convert roles to authorities
+                            // Fallback to database roles if token doesn't have roles or roles are empty
+                            if (roles.isEmpty() && user.getRole() != null && user.getRole().getRoleName() != null) {
+                                roles = List.of(user.getRole().getRoleName());
+                                logger.debug("Using database role for user " + email + ": " + user.getRole().getRoleName());
+                            }
+                            
+                            // Convert roles to authorities (normalize role name to uppercase)
                             var authorities = roles.stream()
-                                    .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                                    .map(role -> role.toUpperCase().trim()) // Normalize role name
+                                    .filter(role -> !role.isEmpty()) // Filter out empty roles
+                                    .map(role -> {
+                                        // Remove ROLE_ prefix if already present, then add it
+                                        String normalizedRole = role.startsWith("ROLE_") ? role.substring(5) : role;
+                                        return new SimpleGrantedAuthority("ROLE_" + normalizedRole);
+                                    })
                                     .collect(Collectors.toList());
+                            
+                            logger.debug("User " + email + " authorities: " + authorities);
 
                             UsernamePasswordAuthenticationToken authToken = 
                                     new UsernamePasswordAuthenticationToken(email, null, authorities);
