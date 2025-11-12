@@ -1,8 +1,7 @@
 package com.hokori.web.controller;
 
-import com.hokori.web.dto.ApiResponse;
-import com.hokori.web.dto.UserProfileUpdateRequest;
-import com.hokori.web.dto.ChangePasswordRequest;
+import com.hokori.web.Enum.ApprovalStatus;
+import com.hokori.web.dto.*;
 import com.hokori.web.entity.User;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.UserService;
@@ -12,8 +11,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -223,21 +227,120 @@ public class UserProfileController {
         }
     }
 
+    @GetMapping("/me/teacher")
+    @PreAuthorize("hasAnyRole('TEACHER','ADMIN')")
+    @Operation(summary = "Get current teacher section", description = "Return teacher-only profile fields")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getCurrentTeacherSection() {
+        User u = currentUserService.getCurrentUserOrThrow();
+        Map<String, Object> full = createProfileResponse(u);
+        Object teacher = full.get("teacher"); // null nếu không phải teacher
+        Map<String, Object> data = new HashMap<>();
+        data.put("teacher", teacher);
+        return ResponseEntity.ok(ApiResponse.success("OK", data));
+    }
+
+    @PutMapping("/me/teacher")
+    @PreAuthorize("hasRole('TEACHER')")
+    @Operation(summary = "Update current teacher section", description = "Update teacher-only profile fields")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateCurrentTeacherSection(
+            @Valid @RequestBody com.hokori.web.dto.TeacherProfileUpdateRequest req) {
+        User u = currentUserService.getCurrentUserOrThrow();
+
+        if (req.getYearsOfExperience()!=null) u.setYearsOfExperience(req.getYearsOfExperience());
+        if (req.getBio()!=null) u.setBio(req.getBio());
+        if (req.getTeachingStyles()!=null) u.setTeachingStyles(req.getTeachingStyles());
+
+        if (req.getWebsiteUrl()!=null) u.setWebsiteUrl(req.getWebsiteUrl());
+        if (req.getFacebook()!=null) u.setFacebook(req.getFacebook());
+        if (req.getInstagram()!=null) u.setInstagram(req.getInstagram());
+        if (req.getLinkedin()!=null) u.setLinkedin(req.getLinkedin());
+        if (req.getTiktok()!=null) u.setTiktok(req.getTiktok());
+        if (req.getX()!=null) u.setX(req.getX());
+        if (req.getYoutube()!=null) u.setYoutube(req.getYoutube());
+
+        if (req.getBankAccountNumber()!=null) u.setBankAccountNumber(req.getBankAccountNumber());
+        if (req.getBankAccountName()!=null) u.setBankAccountName(req.getBankAccountName());
+        if (req.getBankName()!=null) u.setBankName(req.getBankName());
+        if (req.getBankBranchName()!=null) u.setBankBranchName(req.getBankBranchName());
+
+        User saved = userService.updateUser(u);
+        return ResponseEntity.ok(ApiResponse.success("Teacher section updated", createProfileResponse(saved)));
+    }
+
+    @PostMapping("/me/teacher/submit-approval")
+    @PreAuthorize("hasRole('TEACHER')")
+    @Operation(summary = "Submit teacher approval request")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> submitTeacherApproval() {
+        User u = currentUserService.getCurrentUserOrThrow();
+        Map<String, Object> result = userService.submitTeacherApproval(u.getId());
+        return ResponseEntity.ok(ApiResponse.success("Submitted", result));
+    }
+
+
+
     private Map<String, Object> createProfileResponse(User user) {
-        Map<String, Object> profile = new HashMap<>();
-        profile.put("id", user.getId());
-        profile.put("email", user.getEmail());
-        profile.put("username", user.getUsername());
-        profile.put("displayName", user.getDisplayName());
-        profile.put("avatarUrl", user.getAvatarUrl());
-        profile.put("phoneNumber", user.getPhoneNumber());
-        profile.put("country", user.getCountry());
-        profile.put("isActive", user.getIsActive());
-        profile.put("isVerified", user.getIsVerified());
-        profile.put("lastLoginAt", user.getLastLoginAt());
-        profile.put("createdAt", user.getCreatedAt());
-        profile.put("status", "success");
-        profile.put("timestamp", LocalDateTime.now());
-        return profile;
+        Map<String, Object> m = new LinkedHashMap<>();
+        // base fields
+        m.put("id", user.getId());
+        m.put("email", user.getEmail());
+        m.put("username", user.getUsername());
+        m.put("displayName", user.getDisplayName());
+        m.put("avatarUrl", user.getAvatarUrl());
+        m.put("phoneNumber", user.getPhoneNumber());
+        m.put("country", user.getCountry());
+        m.put("isActive", user.getIsActive());
+        m.put("isVerified", user.getIsVerified());
+        m.put("lastLoginAt", user.getLastLoginAt());
+        m.put("createdAt", user.getCreatedAt());
+
+        // lấy role từ SecurityContext (tránh lazy load Role)
+        String roleName = null;
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null) {
+            roleName = auth.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority) // "ROLE_TEACHER"
+                    .filter(s -> s.startsWith("ROLE_"))
+                    .map(s -> s.substring(5))            // "TEACHER"
+                    .findFirst()
+                    .orElse(null);
+        }
+        m.put("role", roleName);
+
+        // trả teacher section nếu là teacher hoặc có flow duyệt
+        boolean isTeacherRole = "TEACHER".equals(roleName);
+        boolean hasTeacherFlow = user.getApprovalStatus() != null && user.getApprovalStatus() != ApprovalStatus.NONE;
+
+        if (isTeacherRole || hasTeacherFlow) {
+            Map<String, Object> t = new LinkedHashMap<>();
+            t.put("approvalStatus", user.getApprovalStatus());
+            t.put("approvedAt", user.getApprovedAt());
+            t.put("currentApproveRequestId",
+                    user.getCurrentApproveRequest() != null ? user.getCurrentApproveRequest().getId() : null);
+
+            t.put("yearsOfExperience", user.getYearsOfExperience());
+            t.put("bio", user.getBio());
+            t.put("teachingStyles", user.getTeachingStyles());
+
+            t.put("websiteUrl", user.getWebsiteUrl());
+            t.put("facebook", user.getFacebook());
+            t.put("instagram", user.getInstagram());
+            t.put("linkedin", user.getLinkedin());
+            t.put("tiktok", user.getTiktok());
+            t.put("x", user.getX());
+            t.put("youtube", user.getYoutube());
+
+            t.put("bankAccountNumber", user.getBankAccountNumber());
+            t.put("bankAccountName", user.getBankAccountName());
+            t.put("bankName", user.getBankName());
+            t.put("bankBranchName", user.getBankBranchName());
+            t.put("lastPayoutDate", user.getLastPayoutDate());
+
+            m.put("teacher", t);
+        }
+
+        // giữ key cho FE cũ
+        m.put("status", "success");
+        m.put("timestamp", java.time.LocalDateTime.now());
+        return m;
     }
 }
