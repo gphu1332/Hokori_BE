@@ -8,6 +8,7 @@ import com.hokori.web.dto.course.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
 import com.hokori.web.util.SlugUtil;
+import com.hokori.web.util.DatabaseUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
@@ -492,7 +493,7 @@ public class CourseService {
     public CourseRes getDetail(Long id, Long teacherUserId) {
         // Check if we're using PostgreSQL (which has LOB stream issues)
         // SQL Server doesn't have this issue, so we can use entity directly
-        boolean isPostgreSQL = isPostgreSQLDatabase();
+        boolean isPostgreSQL = DatabaseUtil.isPostgreSQLDatabase();
         
         if (isPostgreSQL) {
             // Use native query to avoid LOB stream error (PostgreSQL only)
@@ -529,38 +530,6 @@ public class CourseService {
         }
     }
     
-    /**
-     * Detect if current database is PostgreSQL.
-     * SQL Server doesn't have LOB stream issues, so we can use entity directly.
-     */
-    private boolean isPostgreSQLDatabase() {
-        try {
-            // Check active profile first (most reliable)
-            String activeProfile = System.getProperty("spring.profiles.active", 
-                    System.getenv("SPRING_PROFILES_ACTIVE"));
-            if ("prod".equals(activeProfile)) {
-                return true; // Production uses PostgreSQL on Railway
-            }
-            
-            // Check DATABASE_URL (Railway PostgreSQL)
-            String databaseUrl = System.getenv("DATABASE_URL");
-            if (databaseUrl != null && (databaseUrl.contains("postgresql://") || databaseUrl.contains("postgres://"))) {
-                return true;
-            }
-            
-            // Check JDBC URL from system properties
-            String datasourceUrl = System.getProperty("spring.datasource.url");
-            if (datasourceUrl != null) {
-                return datasourceUrl.contains("postgresql") || datasourceUrl.contains("postgres");
-            }
-            
-            // Default: assume dev (SQL Server) unless explicitly PostgreSQL
-            return false;
-        } catch (Exception e) {
-            // If detection fails, default to false (SQL Server) for safety
-            return false;
-        }
-    }
     
     private CourseRes buildCourseResFromMetadata(Object[] metadata) {
         // [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
