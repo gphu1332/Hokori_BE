@@ -20,22 +20,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmailWithRole(@Param("email") String email);
     
     /**
-     * Find user by email with role for authentication purposes.
-     * Only fetches essential fields (id, email, isActive, role) to avoid LOB stream issues.
-     * This query is optimized for JWT filter where we don't need full user details.
-     */
-    @Query("SELECT u FROM User u LEFT JOIN FETCH u.role WHERE u.email = :email")
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    Optional<User> findByEmailWithRoleForAuth(@Param("email") String email);
-    
-    /**
      * Check if user exists and is active by email (for authentication).
-     * Uses native query to avoid loading LOB fields.
-     * Returns: [id, email, is_active]
-     * Note: PostgreSQL may return results differently than SQL Server, so handle with care.
+     * Uses JPQL to select only non-LOB fields to avoid LOB stream issues.
+     * This is simpler and more reliable than native queries.
      */
-    @Query(value = "SELECT CAST(u.id AS BIGINT), CAST(u.email AS VARCHAR), CAST(u.is_active AS BOOLEAN) FROM users u WHERE u.email = :email LIMIT 1", nativeQuery = true)
-    Optional<Object[]> findUserBasicInfoByEmail(@Param("email") String email);
+    @Query("SELECT u.id, u.isActive FROM User u WHERE u.email = :email")
+    Optional<Object[]> findUserActiveStatusByEmail(@Param("email") String email);
     
     /**
      * Get role info by email (avoids LOB fields).

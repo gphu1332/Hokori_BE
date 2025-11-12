@@ -116,187 +116,61 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         ex.printStackTrace();
                     }
                     
-                    // Get user from repository - use simple findByEmail to avoid LOB issues
-                    // Only query database if we need to check isActive or get role from DB
-                    Optional<User> userOpt = Optional.empty();
-                    boolean needDatabaseCheck = roles.isEmpty(); // Only need DB if no roles in token
-                    
-                    if (needDatabaseCheck) {
-                        // Only query DB if token doesn't have roles (fallback case)
-                        try {
-                            userOpt = userRepository.findByEmailWithRoleForAuth(email);
-                            logger.debug("findByEmailWithRoleForAuth result: " + (userOpt.isPresent() ? "found" : "empty"));
-                        } catch (Exception e) {
-                            logger.warn("⚠️ findByEmailWithRoleForAuth failed, trying findByEmail: " + e.getMessage());
-                            userOpt = userRepository.findByEmail(email);
-                        }
-                    } else {
-                        // Token has roles, use native query to check user exists and is active (avoids LOB)
-                        try {
-                            var basicInfoOpt = userRepository.findUserBasicInfoByEmail(email);
-                            if (basicInfoOpt.isPresent()) {
-                                Object[] info = basicInfoOpt.get();
-                                
-                                // Log array length for debugging
-                                logger.debug("findUserBasicInfoByEmail returned array length: " + info.length);
-                                if (info.length > 0) {
-                                    logger.debug("Array types: " + java.util.Arrays.stream(info)
-                                        .map(obj -> obj != null ? obj.getClass().getName() : "null")
-                                        .collect(java.util.stream.Collectors.joining(", ")));
-                                }
-                                
-                                // Handle nested array case (PostgreSQL sometimes returns Object[] inside Object[])
-                                Object[] actualInfo = info;
-                                if (info.length == 1 && info[0] instanceof Object[]) {
-                                    // Unwrap nested array
-                                    actualInfo = (Object[]) info[0];
-                                    logger.debug("Unwrapped nested array, new length: " + actualInfo.length);
-                                }
-                                
-                                // Safely extract userId - handle different number types from PostgreSQL
-                                Long userId = null;
-                                if (actualInfo.length > 0 && actualInfo[0] != null) {
-                                    Object userIdObj = actualInfo[0];
-                                    // Handle nested array case
-                                    if (userIdObj instanceof Object[]) {
-                                        Object[] nested = (Object[]) userIdObj;
-                                        if (nested.length > 0 && nested[0] instanceof Number) {
-                                            userId = ((Number) nested[0]).longValue();
-                                        }
-                                    } else if (userIdObj instanceof Number) {
-                                        userId = ((Number) userIdObj).longValue();
-                                    } else {
-                                        try {
-                                            userId = Long.parseLong(userIdObj.toString());
-                                        } catch (NumberFormatException ex) {
-                                            logger.warn("⚠️ Could not parse userId: " + userIdObj + " (type: " + userIdObj.getClass().getName() + ")");
-                                        }
-                                    }
-                                }
-                                
-                                // Safely extract email - check array bounds
-                                String userEmail = null;
-                                if (actualInfo.length > 1 && actualInfo[1] != null) {
-                                    Object emailObj = actualInfo[1];
-                                    // Handle nested array case
-                                    if (emailObj instanceof Object[]) {
-                                        Object[] nested = (Object[]) emailObj;
-                                        if (nested.length > 0) {
-                                            userEmail = nested[0].toString();
-                                        }
-                                    } else {
-                                        userEmail = emailObj.toString();
-                                    }
-                                } else {
-                                    // Fallback: use email from principal if array doesn't have email
-                                    userEmail = email;
-                                    logger.debug("⚠️ Email not in query result, using principal email: " + email);
-                                }
-                                
-                                // Handle different boolean types from PostgreSQL (boolean, bit, etc.)
-                                Boolean isActive = null;
-                                Object isActiveObj = actualInfo.length > 2 ? actualInfo[2] : null;
-                                if (isActiveObj != null) {
-                                    // Handle nested array case
-                                    if (isActiveObj instanceof Object[]) {
-                                        Object[] nested = (Object[]) isActiveObj;
-                                        if (nested.length > 0) {
-                                            isActiveObj = nested[0];
-                                        } else {
-                                            isActiveObj = null;
-                                        }
-                                    }
-                                    
-                                    if (isActiveObj instanceof Boolean) {
-                                        isActive = (Boolean) isActiveObj;
-                                    } else if (isActiveObj instanceof Number) {
-                                        isActive = ((Number) isActiveObj).intValue() != 0;
-                                    } else {
-                                        // Try to parse as string
-                                        String isActiveStr = isActiveObj.toString().toLowerCase();
-                                        isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
-                                    }
-                                }
-                                
-                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive + " (array length: " + actualInfo.length + ")");
-                                
-                                // Check if user is active
-                                if (isActive == null || !isActive) {
-                                    logger.warn("⚠️ User " + email + " is NOT active! is_active=" + isActive);
-                                    filterChain.doFilter(request, response);
-                                    return;
-                                }
-                                
-                                // Create a minimal User object for authentication (we don't need full entity)
-                                // Since token has roles, we can proceed with authentication
-                                logger.debug("User is active, proceeding with authentication using roles from token");
-                            } else {
-                                logger.warn("⚠️ User not found for email: " + email);
-                                filterChain.doFilter(request, response);
-                                return;
+                    // Check user exists and is active (simple JPQL query - no LOB fields)
+                    // This works for both SQL Server and PostgreSQL
+                    boolean userExistsAndActive = false;
+                    try {
+                        var statusOpt = userRepository.findUserActiveStatusByEmail(email);
+                        if (statusOpt.isPresent()) {
+                            Object[] status = statusOpt.get();
+                            // JPQL query returns: [id, isActive]
+                            if (status.length >= 2 && status[1] instanceof Boolean) {
+                                userExistsAndActive = Boolean.TRUE.equals(status[1]);
+                            } else if (status.length >= 2 && status[1] != null) {
+                                // Handle different boolean representations
+                                String isActiveStr = status[1].toString().toLowerCase();
+                                userExistsAndActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
                             }
-                        } catch (Exception e) {
-                            logger.error("❌ Failed to check user basic info: " + e.getMessage(), e);
-                            logger.error("   Exception type: " + e.getClass().getName());
-                            logger.error("   Stack trace:", e);
-                            // Continue without user check - Spring Security will handle
-                            // But log warning that we're proceeding without verifying user exists
-                            logger.warn("⚠️ Proceeding with authentication without user verification due to error");
                         }
+                    } catch (Exception e) {
+                        logger.error("❌ Failed to check user active status: " + e.getMessage());
+                        logger.error("   Exception type: " + e.getClass().getName());
+                        // Continue - we'll proceed with authentication but log warning
+                        logger.warn("⚠️ Proceeding with authentication without verifying user active status");
                     }
                     
-                    // If we reach here and needDatabaseCheck is true, we have userOpt
-                    // If needDatabaseCheck is false, we've already validated user exists and is active
-                    if (needDatabaseCheck && userOpt.isEmpty()) {
-                        logger.warn("⚠️ User not found for email: " + email);
+                    // If user doesn't exist or is not active, reject authentication
+                    if (!userExistsAndActive) {
+                        logger.warn("⚠️ User " + email + " not found or not active");
                         filterChain.doFilter(request, response);
                         return;
                     }
                     
-                    // For database check path, we need full user entity
-                    if (needDatabaseCheck) {
-                        var user = userOpt.get();
-                        logger.debug("User found: id=" + user.getId() + ", email=" + user.getEmail());
-                        
-                        // Check if user is active (null-safe check)
-                        if (user.getIsActive() == null || !user.getIsActive()) {
-                            logger.warn("⚠️ User " + email + " is NOT active! is_active=" + user.getIsActive());
-                            filterChain.doFilter(request, response);
-                            return;
-                        }
-                    }
-                    
-                    logger.debug("User is active, processing roles...");
-                    
-                    // Fallback to database roles if token doesn't have roles or roles are empty
-                    if (roles.isEmpty() && needDatabaseCheck) {
+                    // Get roles from token (preferred) or from database (fallback)
+                    if (roles.isEmpty()) {
+                        // Token doesn't have roles, get from database
                         logger.warn("⚠️ Roles from token are empty, checking database as fallback...");
                         try {
-                            // Try to get role from database (might fail due to LOB, but worth trying)
-                            var user = userOpt.get();
-                            if (user.getRole() != null) {
-                                String roleName = user.getRole().getRoleName();
-                                if (roleName != null && !roleName.trim().isEmpty()) {
-                                    // Normalize role name to uppercase for consistency
-                                    String normalizedRoleName = roleName.trim().toUpperCase();
-                                    roles = List.of(normalizedRoleName);
-                                    logger.info("✅ Using database role for user " + email + ": role_id=" + user.getRole().getId() + ", role_name=" + roleName + " (normalized: " + normalizedRoleName + ")");
+                            Optional<User> userOpt = userRepository.findByEmailWithRole(email);
+                            if (userOpt.isPresent()) {
+                                User user = userOpt.get();
+                                if (user.getRole() != null && user.getRole().getRoleName() != null) {
+                                    String roleName = user.getRole().getRoleName().trim().toUpperCase();
+                                    roles = List.of(roleName);
+                                    logger.info("✅ Got role from database: " + roleName);
                                 } else {
-                                    logger.error("❌ User " + email + " role exists but role_name is null or empty!");
+                                    logger.error("❌ User " + email + " has no role assigned in database!");
                                 }
                             } else {
-                                logger.error("❌ User " + email + " has no role assigned in database!");
+                                logger.error("❌ User " + email + " not found in database!");
                             }
                         } catch (Exception e) {
-                            logger.error("❌ Could not load role from database (LOB issue): " + e.getMessage());
+                            logger.error("❌ Failed to get role from database: " + e.getMessage());
                             logger.error("   Exception type: " + e.getClass().getName());
-                            e.printStackTrace();
                             // Continue without role - user will be authenticated but without authorities
                         }
-                    } else if (!roles.isEmpty()) {
-                        logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
                     } else {
-                        logger.error("❌ CRITICAL: No roles found in token AND database check was skipped! User: " + email);
+                        logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
                     }
                     
                     // Convert roles to authorities (normalize role name to uppercase)
@@ -389,3 +263,4 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                path.equals("/health");
     }
 }
+
