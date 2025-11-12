@@ -19,6 +19,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.role WHERE u.email = :email")
     Optional<User> findByEmailWithRole(@Param("email") String email);
     
+    /**
+     * Find user by email with role for authentication purposes.
+     * Only fetches essential fields (id, email, isActive, role) to avoid LOB stream issues.
+     * This query is optimized for JWT filter where we don't need full user details.
+     */
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.role WHERE u.email = :email")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    Optional<User> findByEmailWithRoleForAuth(@Param("email") String email);
+    
     Optional<User> findByUsername(String username);
 
     boolean existsByEmail(String email);

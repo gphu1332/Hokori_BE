@@ -63,91 +63,111 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 logger.debug("JWT token validated successfully for: " + email);
                 
                 try {
-                    // Get user from repository WITH role (using fetch join to avoid lazy loading issues)
-                    Optional<User> userOpt = Optional.empty();
+                    // First, extract roles from JWT token (preferred - avoids database LOB issues)
+                    List<String> roles = List.of();
                     try {
-                        userOpt = userRepository.findByEmailWithRole(email);
-                        logger.debug("findByEmailWithRole result: " + (userOpt.isPresent() ? "found" : "empty"));
-                    } catch (Exception e) {
-                        logger.warn("⚠️ findByEmailWithRole failed, falling back to findByEmail: " + e.getMessage());
-                        logger.debug("Exception details: ", e);
-                        // Fallback to regular findByEmail if findByEmailWithRole fails
-                        userOpt = userRepository.findByEmail(email);
+                        var claims = jwtConfig.extractAllClaims(jwtToken);
+                        Object rolesObj = claims.get("roles");
+                        
+                        if (rolesObj != null) {
+                            logger.debug("Found roles in token: " + rolesObj.getClass().getName() + " = " + rolesObj);
+                            
+                            // Handle different types: List, ArrayList, Object[], String[]
+                            if (rolesObj instanceof List) {
+                                @SuppressWarnings("unchecked")
+                                List<Object> rolesList = (List<Object>) rolesObj;
+                                roles = rolesList.stream()
+                                        .map(r -> r != null ? r.toString() : null)
+                                        .filter(r -> r != null && !r.isEmpty())
+                                        .collect(Collectors.toList());
+                            } else if (rolesObj instanceof Object[]) {
+                                Object[] rolesArray = (Object[]) rolesObj;
+                                roles = java.util.Arrays.stream(rolesArray)
+                                        .map(r -> r != null ? r.toString() : null)
+                                        .filter(r -> r != null && !r.isEmpty())
+                                        .collect(Collectors.toList());
+                            } else {
+                                // Single role as string
+                                String roleStr = rolesObj.toString();
+                                if (!roleStr.isEmpty()) {
+                                    roles = List.of(roleStr);
+                                }
+                            }
+                            
+                            if (!roles.isEmpty()) {
+                                logger.info("✅ Extracted roles from token: " + roles);
+                            }
+                        }
+                    } catch (Exception ex) {
+                        logger.warn("⚠️ Failed to extract roles from token: " + ex.getMessage());
+                    }
+                    
+                    // Get user from repository - use simple findByEmail to avoid LOB issues
+                    // Only query database if we need to check isActive or get role from DB
+                    Optional<User> userOpt = Optional.empty();
+                    boolean needDatabaseCheck = roles.isEmpty(); // Only need DB if no roles in token
+                    
+                    if (needDatabaseCheck) {
+                        // Only query DB if token doesn't have roles (fallback case)
+                        try {
+                            userOpt = userRepository.findByEmailWithRoleForAuth(email);
+                            logger.debug("findByEmailWithRoleForAuth result: " + (userOpt.isPresent() ? "found" : "empty"));
+                        } catch (Exception e) {
+                            logger.warn("⚠️ findByEmailWithRoleForAuth failed, trying findByEmail: " + e.getMessage());
+                            userOpt = userRepository.findByEmail(email);
+                        }
+                    } else {
+                        // Token has roles, just check if user exists and is active (simple query)
+                        try {
+                            userOpt = userRepository.findByEmail(email);
+                        } catch (Exception e) {
+                            logger.warn("⚠️ findByEmail failed: " + e.getMessage());
+                        }
                     }
                     
                     if (userOpt.isEmpty()) {
-                        logger.debug("findByEmail also returned empty, user not found for email: " + email);
+                        logger.warn("⚠️ User not found for email: " + email);
+                        // Continue filter chain - Spring Security will handle unauthorized
+                        filterChain.doFilter(request, response);
+                        return;
                     }
                     
-                    if (userOpt.isPresent()) {
-                        var user = userOpt.get();
-                        logger.debug("User found: id=" + user.getId() + ", email=" + user.getEmail() + ", role_id=" + (user.getRole() != null ? user.getRole().getId() : "null"));
-                        
-                        // Check if user is active (null-safe check)
-                        if (user.getIsActive() != null && user.getIsActive()) {
-                            logger.debug("User is active, processing roles...");
-                        } else {
-                            logger.warn("⚠️ User " + email + " is NOT active! is_active=" + user.getIsActive());
-                        }
-                        
-                        if (user.getIsActive() != null && user.getIsActive()) {
-                            // Extract roles from JWT claims (fallback to database)
-                            List<String> roles = List.of();
-                            try {
-                                var claims = jwtConfig.extractAllClaims(jwtToken);
-                                Object rolesObj = claims.get("roles");
-                                
-                                if (rolesObj != null) {
-                                    logger.debug("Found roles in token: " + rolesObj.getClass().getName() + " = " + rolesObj);
-                                    
-                                    // Handle different types: List, ArrayList, Object[], String[]
-                                    if (rolesObj instanceof List) {
-                                        @SuppressWarnings("unchecked")
-                                        List<Object> rolesList = (List<Object>) rolesObj;
-                                        roles = rolesList.stream()
-                                                .map(r -> r != null ? r.toString() : null)
-                                                .filter(r -> r != null && !r.isEmpty())
-                                                .collect(Collectors.toList());
-                                    } else if (rolesObj instanceof Object[]) {
-                                        Object[] rolesArray = (Object[]) rolesObj;
-                                        roles = java.util.Arrays.stream(rolesArray)
-                                                .map(r -> r != null ? r.toString() : null)
-                                                .filter(r -> r != null && !r.isEmpty())
-                                                .collect(Collectors.toList());
-                                    } else {
-                                        // Single role as string
-                                        String roleStr = rolesObj.toString();
-                                        if (!roleStr.isEmpty()) {
-                                            roles = List.of(roleStr);
-                                        }
-                                    }
-                                    
-                                    if (!roles.isEmpty()) {
-                                        logger.info("✅ Extracted roles from token: " + roles);
-                                    }
-                                }
-                            } catch (Exception ex) {
-                                logger.warn("⚠️ Failed to extract roles from token, will use database roles: " + ex.getMessage());
-                                ex.printStackTrace();
-                            }
-                            
-                            // Fallback to database roles if token doesn't have roles or roles are empty
-                            if (roles.isEmpty()) {
-                                logger.debug("Roles from token are empty, checking database...");
-                                if (user.getRole() != null) {
-                                    String roleName = user.getRole().getRoleName();
-                                    if (roleName != null && !roleName.isEmpty()) {
-                                        roles = List.of(roleName);
-                                        logger.info("✅ Using database role for user " + email + ": role_id=" + user.getRole().getId() + ", role_name=" + roleName);
-                                    } else {
-                                        logger.warn("⚠️ User " + email + " role exists but role_name is null or empty! role_id=" + user.getRole().getId());
-                                    }
+                    var user = userOpt.get();
+                    logger.debug("User found: id=" + user.getId() + ", email=" + user.getEmail());
+                    
+                    // Check if user is active (null-safe check)
+                    if (user.getIsActive() == null || !user.getIsActive()) {
+                        logger.warn("⚠️ User " + email + " is NOT active! is_active=" + user.getIsActive());
+                        // Continue filter chain - Spring Security will handle unauthorized
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
+                    
+                    logger.debug("User is active, processing roles...");
+                    
+                    // Fallback to database roles if token doesn't have roles or roles are empty
+                    if (roles.isEmpty()) {
+                        logger.debug("Roles from token are empty, checking database...");
+                        try {
+                            // Try to get role from database (might fail due to LOB, but worth trying)
+                            if (user.getRole() != null) {
+                                String roleName = user.getRole().getRoleName();
+                                if (roleName != null && !roleName.isEmpty()) {
+                                    roles = List.of(roleName);
+                                    logger.info("✅ Using database role for user " + email + ": role_id=" + user.getRole().getId() + ", role_name=" + roleName);
                                 } else {
-                                    logger.warn("⚠️ User " + email + " has no role assigned! role_id=null");
+                                    logger.warn("⚠️ User " + email + " role exists but role_name is null or empty!");
                                 }
                             } else {
-                                logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
+                                logger.warn("⚠️ User " + email + " has no role assigned!");
                             }
+                        } catch (Exception e) {
+                            logger.error("❌ Could not load role from database (LOB issue): " + e.getMessage());
+                            // Continue without role - user will be authenticated but without authorities
+                        }
+                    } else {
+                        logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
+                    }
                             
                             // Convert roles to authorities (normalize role name to uppercase)
                             List<SimpleGrantedAuthority> authorities = new ArrayList<>();
