@@ -82,13 +82,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             List<String> roles = List.of();
                             try {
                                 var claims = jwtConfig.extractAllClaims(jwtToken);
-                                @SuppressWarnings("unchecked")
-                                var rolesFromToken = (List<String>) claims.get("roles");
-                                if (rolesFromToken != null && !rolesFromToken.isEmpty()) {
-                                    roles = rolesFromToken;
+                                Object rolesObj = claims.get("roles");
+                                
+                                if (rolesObj != null) {
+                                    logger.debug("Found roles in token: " + rolesObj.getClass().getName() + " = " + rolesObj);
+                                    
+                                    // Handle different types: List, ArrayList, Object[], String[]
+                                    if (rolesObj instanceof List) {
+                                        @SuppressWarnings("unchecked")
+                                        List<Object> rolesList = (List<Object>) rolesObj;
+                                        roles = rolesList.stream()
+                                                .map(r -> r != null ? r.toString() : null)
+                                                .filter(r -> r != null && !r.isEmpty())
+                                                .collect(Collectors.toList());
+                                    } else if (rolesObj instanceof Object[]) {
+                                        Object[] rolesArray = (Object[]) rolesObj;
+                                        roles = java.util.Arrays.stream(rolesArray)
+                                                .map(r -> r != null ? r.toString() : null)
+                                                .filter(r -> r != null && !r.isEmpty())
+                                                .collect(Collectors.toList());
+                                    } else {
+                                        // Single role as string
+                                        String roleStr = rolesObj.toString();
+                                        if (!roleStr.isEmpty()) {
+                                            roles = List.of(roleStr);
+                                        }
+                                    }
+                                    
+                                    if (!roles.isEmpty()) {
+                                        logger.info("✅ Extracted roles from token: " + roles);
+                                    }
                                 }
                             } catch (Exception ex) {
-                                logger.debug("Failed to extract roles from token, will use database roles: " + ex.getMessage());
+                                logger.warn("⚠️ Failed to extract roles from token, will use database roles: " + ex.getMessage());
+                                ex.printStackTrace();
                             }
                             
                             // Fallback to database roles if token doesn't have roles or roles are empty
