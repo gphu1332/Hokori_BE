@@ -11,6 +11,7 @@ import com.hokori.web.util.SlugUtil;
 import com.hokori.web.util.DatabaseUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -495,25 +497,49 @@ public class CourseService {
      * Check ownership without loading Course entity (avoids LOB fields).
      * Returns course metadata if owned, throws exception otherwise.
      */
+    /**
+     * Check ownership and return course metadata (avoids loading Course entity with LOB).
+     * Returns Object[] metadata array from native query.
+     * Expected metadata: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag] (13 fields)
+     */
     private Object[] checkOwnership(Long id, Long teacherUserId) {
         var metadataOpt = courseRepo.findCourseMetadataById(id);
         if (metadataOpt.isEmpty()) {
+            log.warn("⚠️ Course not found: id={}", id);
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
         }
         
         Object[] metadata = metadataOpt.get();
+        log.debug("📊 Course metadata query result: length={}, types={}", 
+            metadata.length, 
+            metadata.length > 0 ? java.util.Arrays.stream(metadata)
+                .map(obj -> obj != null ? obj.getClass().getSimpleName() : "null")
+                .collect(java.util.stream.Collectors.toList()) : "empty");
+        
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
+            log.debug("📦 Unwrapped nested array: outer length={}, inner length={}", metadata.length, actualMetadata.length);
         }
         
+        // Query returns 13 fields: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
         if (actualMetadata.length < 12) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Invalid course metadata");
+            log.error("❌ Invalid course metadata: expected at least 12 fields, got {}", actualMetadata.length);
+            log.error("   Course ID: {}", id);
+            log.error("   Metadata array length: {}", actualMetadata.length);
+            if (actualMetadata.length > 0) {
+                log.error("   First field type: {}", actualMetadata[0] != null ? actualMetadata[0].getClass().getName() : "null");
+            }
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course metadata: expected 13 fields, got " + actualMetadata.length);
         }
         
+        // userId is at index 11 (12th field, 0-indexed)
         Long courseUserId = safeExtractLong(actualMetadata[11]);
+        log.debug("🔍 Course userId: {}, Teacher userId: {}", courseUserId, teacherUserId);
         if (courseUserId == null || !courseUserId.equals(teacherUserId)) {
+            log.warn("⚠️ Ownership check failed: course userId={}, teacher userId={}", courseUserId, teacherUserId);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
         }
         
@@ -601,16 +627,24 @@ public class CourseService {
     @Transactional(readOnly = true)
     public CourseRes getDetail(Long id, Long teacherUserId) {
         try {
+            log.info("🔍 Getting course detail: id={}, teacherUserId={}", id, teacherUserId);
+            
             // Check ownership and get metadata in one call (no Course entity loaded)
             Object[] metadata = checkOwnership(id, teacherUserId);
             
+            log.debug("✅ Ownership check passed, building CourseRes from metadata");
+            
             // Build CourseRes from metadata (description is always null - no LOB loading)
-            return buildCourseResFromMetadata(metadata);
+            CourseRes result = buildCourseResFromMetadata(metadata);
+            log.info("✅ Course detail retrieved successfully: id={}, title={}", id, result.getTitle());
+            return result;
         } catch (ResponseStatusException e) {
-            // Re-throw as-is
+            // Re-throw as-is (404, 403, etc.)
+            log.warn("⚠️ ResponseStatusException: status={}, message={}", e.getStatusCode(), e.getReason());
             throw e;
         } catch (Exception e) {
             // Log and wrap any unexpected errors
+            log.error("❌ Unexpected error getting course detail: id={}, error={}", id, e.getMessage(), e);
             String errorMsg = e.getMessage();
             if (errorMsg != null && (errorMsg.contains("lob") || errorMsg.contains("LOB"))) {
                 throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
