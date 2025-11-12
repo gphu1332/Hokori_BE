@@ -17,7 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import java.util.List;
 
-@PreAuthorize("hasRole('TEACHER')")
+@PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
 @RestController
 @RequestMapping("/api/teacher/lessons/{lessonId}/quizzes")
 @RequiredArgsConstructor

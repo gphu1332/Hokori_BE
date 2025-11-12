@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@PreAuthorize("hasRole('TEACHER')")
+@PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
 @RestController
 @RequestMapping("/api/teacher/approval")
 @Tag(name = "Teacher: Approval", description = "Quản lý chứng chỉ & gửi yêu cầu duyệt hồ sơ mở bán khóa học (chỉ ROLE_TEACHER).")

@@ -354,7 +354,7 @@ public class UserProfileController {
     }
 
     @GetMapping("/me/teacher")
-    @PreAuthorize("hasAnyRole('TEACHER','ADMIN')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     @Operation(summary = "Get current teacher section", description = "Return teacher-only profile fields")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getCurrentTeacherSection() {
         User u = currentUserService.getCurrentUserOrThrow();
@@ -366,7 +366,7 @@ public class UserProfileController {
     }
 
     @PutMapping("/me/teacher")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     @Operation(summary = "Update current teacher section", description = "Update teacher-only profile fields")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateCurrentTeacherSection(
             @Valid @RequestBody com.hokori.web.dto.TeacherProfileUpdateRequest req) {
@@ -394,7 +394,7 @@ public class UserProfileController {
     }
 
     @PostMapping("/me/teacher/submit-approval")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     @Operation(summary = "Submit teacher approval request")
     public ResponseEntity<ApiResponse<Map<String, Object>>> submitTeacherApproval() {
         User u = currentUserService.getCurrentUserOrThrow();
