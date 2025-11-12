@@ -36,6 +36,9 @@ public class UserProfileController {
     
     @Autowired
     private CurrentUserService currentUserService;
+    
+    @Autowired
+    private com.hokori.web.repository.UserRepository userRepository;
 
     @GetMapping("/me")
     @Operation(summary = "Get current user profile", description = "Retrieve current authenticated user's profile")
@@ -50,43 +53,104 @@ public class UserProfileController {
     }
 
     @GetMapping("/debug/auth")
-    @Operation(summary = "Debug authentication info", description = "Debug endpoint to check user authorities and role")
+    @Operation(summary = "Debug authentication info", description = "Debug endpoint to check user authorities and role (avoids LOB fields)")
     public ResponseEntity<ApiResponse<Map<String, Object>>> debugAuth() {
         try {
-            User currentUser = currentUserService.getCurrentUserOrThrow();
             Map<String, Object> debugInfo = new HashMap<>();
             
-            // User info
-            debugInfo.put("userId", currentUser.getId());
-            debugInfo.put("email", currentUser.getEmail());
-            debugInfo.put("username", currentUser.getUsername());
-            debugInfo.put("isActive", currentUser.getIsActive());
-            
-            // Role info
-            if (currentUser.getRole() != null) {
-                Map<String, Object> roleInfo = new HashMap<>();
-                roleInfo.put("roleId", currentUser.getRole().getId());
-                roleInfo.put("roleName", currentUser.getRole().getRoleName());
-                roleInfo.put("description", currentUser.getRole().getDescription());
-                debugInfo.put("role", roleInfo);
-            } else {
-                debugInfo.put("role", "NULL - User has no role assigned!");
-            }
-            
-            // Spring Security authorities
+            // Spring Security authorities (from JWT token - no database query needed)
             org.springframework.security.core.Authentication auth = 
                 org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            
             if (auth != null) {
                 debugInfo.put("authenticated", true);
                 debugInfo.put("principal", auth.getPrincipal());
+                
                 List<String> authorities = auth.getAuthorities().stream()
                     .map(a -> a.getAuthority())
                     .collect(java.util.stream.Collectors.toList());
                 debugInfo.put("authorities", authorities);
                 debugInfo.put("authoritiesCount", authorities.size());
+                
+                // Extract email from principal
+                String email = auth.getPrincipal() != null ? auth.getPrincipal().toString() : null;
+                debugInfo.put("email", email);
+                
+                // Get user basic info from database (without LOB fields)
+                if (email != null) {
+                    try {
+                        var basicInfoOpt = userRepository.findUserBasicInfoByEmail(email);
+                        if (basicInfoOpt.isPresent()) {
+                            Object[] info = basicInfoOpt.get();
+                            
+                            // Safely extract userId
+                            Long userId = null;
+                            Object userIdObj = info[0];
+                            if (userIdObj instanceof Number) {
+                                userId = ((Number) userIdObj).longValue();
+                            } else if (userIdObj != null) {
+                                try {
+                                    userId = Long.parseLong(userIdObj.toString());
+                                } catch (NumberFormatException ex) {
+                                    // Ignore
+                                }
+                            }
+                            
+                            // Handle isActive
+                            Boolean isActive = null;
+                            Object isActiveObj = info.length > 2 ? info[2] : null;
+                            if (isActiveObj instanceof Boolean) {
+                                isActive = (Boolean) isActiveObj;
+                            } else if (isActiveObj instanceof Number) {
+                                isActive = ((Number) isActiveObj).intValue() != 0;
+                            } else if (isActiveObj != null) {
+                                String isActiveStr = isActiveObj.toString().toLowerCase();
+                                isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                            }
+                            
+                            debugInfo.put("userId", userId);
+                            debugInfo.put("isActive", isActive);
+                            
+                            // Get role info using native query (avoids LOB fields)
+                            if (userId != null) {
+                                try {
+                                    // Use native query to get role info without loading LOB fields
+                                    var roleInfoOpt = userRepository.findRoleInfoByEmail(email);
+                                    if (roleInfoOpt.isPresent()) {
+                                        Object[] roleData = roleInfoOpt.get();
+                                        Map<String, Object> roleInfo = new HashMap<>();
+                                        if (roleData[0] != null) {
+                                            roleInfo.put("roleId", roleData[0] instanceof Number ? ((Number) roleData[0]).longValue() : Long.parseLong(roleData[0].toString()));
+                                        }
+                                        if (roleData[1] != null) {
+                                            roleInfo.put("roleName", roleData[1].toString());
+                                        }
+                                        if (roleData.length > 2 && roleData[2] != null) {
+                                            roleInfo.put("description", roleData[2].toString());
+                                        }
+                                        debugInfo.put("role", roleInfo);
+                                    } else {
+                                        debugInfo.put("role", "NULL - User has no role assigned in database");
+                                    }
+                                } catch (Exception e) {
+                                    debugInfo.put("role", "Error loading role: " + e.getMessage());
+                                    debugInfo.put("roleError", e.getClass().getName());
+                                }
+                            }
+                        } else {
+                            debugInfo.put("userId", null);
+                            debugInfo.put("isActive", null);
+                            debugInfo.put("role", "User not found in database");
+                        }
+                    } catch (Exception e) {
+                        debugInfo.put("databaseError", "Failed to query user info: " + e.getMessage());
+                        debugInfo.put("databaseErrorType", e.getClass().getName());
+                    }
+                }
             } else {
                 debugInfo.put("authenticated", false);
                 debugInfo.put("authorities", List.of());
+                debugInfo.put("authoritiesCount", 0);
             }
             
             return ResponseEntity.ok(ApiResponse.success("Debug info retrieved", debugInfo));

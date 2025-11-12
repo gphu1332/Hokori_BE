@@ -35,6 +35,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query(value = "SELECT u.id, u.email, u.is_active FROM users u WHERE u.email = :email", nativeQuery = true)
     Optional<Object[]> findUserBasicInfoByEmail(@Param("email") String email);
     
+    /**
+     * Get role info by email (avoids LOB fields).
+     * Returns: [role_id, role_name, role_description]
+     */
+    @Query(value = "SELECT r.id, r.role_name, r.description FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = :email", nativeQuery = true)
+    Optional<Object[]> findRoleInfoByEmail(@Param("email") String email);
+    
     Optional<User> findByUsername(String username);
 
     boolean existsByEmail(String email);
