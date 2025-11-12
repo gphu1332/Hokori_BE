@@ -121,13 +121,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     // is_active is boolean (true/false) in database
                     boolean userExistsAndActive = false;
                     try {
+                        logger.debug("Checking user active status for email: " + email);
                         var statusOpt = userRepository.findUserActiveStatusByEmail(email);
                         if (statusOpt.isPresent()) {
                             Object[] status = statusOpt.get();
                             // JPQL query returns: [id, isActive]
-                            logger.debug("User status query result: length=" + status.length + ", types=" + 
+                            logger.info("User status query result: length=" + status.length + ", types=" + 
                                 java.util.Arrays.stream(status)
-                                    .map(obj -> obj != null ? obj.getClass().getName() : "null")
+                                    .map(obj -> obj != null ? obj.getClass().getName() + "=" + obj : "null")
                                     .collect(java.util.stream.Collectors.joining(", ")));
                             
                             if (status.length >= 2) {
@@ -137,23 +138,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     userExistsAndActive = false;
                                 } else if (isActiveObj instanceof Boolean) {
                                     userExistsAndActive = (Boolean) isActiveObj;
-                                    logger.debug("isActive (Boolean): " + userExistsAndActive);
+                                    logger.info("✅ isActive (Boolean): " + userExistsAndActive);
                                 } else if (isActiveObj instanceof Number) {
                                     // Handle bit/boolean as number (SQL Server)
                                     userExistsAndActive = ((Number) isActiveObj).intValue() != 0;
-                                    logger.debug("isActive (Number): " + userExistsAndActive + " (raw: " + isActiveObj + ")");
+                                    logger.info("✅ isActive (Number): " + userExistsAndActive + " (raw: " + isActiveObj + ")");
                                 } else {
                                     // Handle string representation
                                     String isActiveStr = isActiveObj.toString().toLowerCase().trim();
                                     userExistsAndActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr) || "yes".equals(isActiveStr);
-                                    logger.debug("isActive (String): " + userExistsAndActive + " (raw: '" + isActiveStr + "')");
+                                    logger.info("✅ isActive (String): " + userExistsAndActive + " (raw: '" + isActiveStr + "')");
                                 }
                                 logger.info("✅ User " + email + " active status check: " + userExistsAndActive);
                             } else {
                                 logger.warn("⚠️ User status query returned insufficient data: length=" + status.length);
                             }
                         } else {
-                            logger.warn("⚠️ User not found in database: " + email);
+                            logger.warn("⚠️ User not found in database for email: " + email);
+                            // Try to check if user exists at all
+                            boolean exists = userRepository.existsByEmail(email);
+                            logger.info("User exists check (existsByEmail): " + exists);
                         }
                     } catch (Exception e) {
                         logger.error("❌ Failed to check user active status: " + e.getMessage());
