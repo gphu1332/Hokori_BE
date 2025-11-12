@@ -91,10 +91,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (roles.isEmpty()) {
                         logger.warn("⚠️ Roles from token are empty, checking database as fallback...");
                         roles = extractRolesFromDatabase(email);
+                        
+                        // If still empty after database check, log warning but continue (user will have no authorities)
+                        if (roles.isEmpty()) {
+                            logger.error("❌ CRITICAL: User " + email + " has NO roles in token AND database!");
+                            logger.error("   This user will be authenticated but will get 403 on all role-protected endpoints!");
+                        }
                     }
                     
                     // Step 5: Convert roles to Spring Security authorities
-                    List<SimpleGrantedAuthority> authorities = convertRolesToAuthorities(roles, email);
+                    // Normalize all roles to uppercase for PostgreSQL compatibility
+                    List<String> normalizedRoles = roles.stream()
+                            .map(r -> r != null ? r.trim().toUpperCase() : null)
+                            .filter(r -> r != null && !r.isEmpty())
+                            .distinct()
+                            .collect(Collectors.toList());
+                    
+                    List<SimpleGrantedAuthority> authorities = convertRolesToAuthorities(normalizedRoles, email);
                     
                     // Step 6: Set authentication in SecurityContextHolder
                     setAuthentication(email, authorities, request);
@@ -239,23 +252,35 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     
     /**
      * Extract roles from database (fallback when token doesn't have roles).
-     * Uses findByEmailWithRole to avoid LOB issues.
+     * Uses native query to avoid LOB issues and ensure PostgreSQL compatibility.
      */
     private List<String> extractRolesFromDatabase(String email) {
         List<String> roles = new ArrayList<>();
         try {
-            Optional<User> userOpt = userRepository.findByEmailWithRole(email);
-            if (userOpt.isPresent()) {
-                User user = userOpt.get();
-                if (user.getRole() != null && user.getRole().getRoleName() != null) {
-                    String roleName = user.getRole().getRoleName().trim().toUpperCase();
+            logger.debug("🔍 Extracting role from database for email: " + email);
+            // Use native query to avoid LOB fields and ensure PostgreSQL compatibility
+            var roleInfoOpt = userRepository.findRoleInfoByEmail(email);
+            if (roleInfoOpt.isPresent()) {
+                Object[] roleData = roleInfoOpt.get();
+                
+                // Handle nested array case (PostgreSQL sometimes returns Object[] inside Object[])
+                Object[] actualRoleData = roleData;
+                if (roleData.length == 1 && roleData[0] instanceof Object[]) {
+                    actualRoleData = (Object[]) roleData[0];
+                    logger.debug("Unwrapped nested array for role data: outer length=" + roleData.length + ", inner length=" + actualRoleData.length);
+                }
+                
+                // Native query returns: [role_id, role_name, role_description]
+                if (actualRoleData.length >= 2 && actualRoleData[1] != null) {
+                    String roleName = actualRoleData[1].toString().trim().toUpperCase();
                     roles = List.of(roleName);
-                    logger.info("✅ Got role from database: " + roleName);
+                    logger.info("✅ Got role from database: " + roleName + " (normalized to uppercase for PostgreSQL compatibility)");
                 } else {
-                    logger.error("❌ User " + email + " has no role assigned in database!");
+                    logger.error("❌ User " + email + " has null or empty role_name in database!");
+                    logger.error("   Role data length: " + actualRoleData.length);
                 }
             } else {
-                logger.error("❌ User " + email + " not found in database!");
+                logger.error("❌ User " + email + " not found in database or has no role assigned!");
             }
         } catch (Exception e) {
             logger.error("❌ Failed to get role from database: " + e.getMessage());
