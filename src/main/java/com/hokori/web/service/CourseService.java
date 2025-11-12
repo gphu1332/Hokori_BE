@@ -510,17 +510,29 @@ public class CourseService {
         }
         
         Object[] metadata = metadataOpt.get();
-        log.debug("📊 Course metadata query result: length={}, types={}", 
+        log.info("📊 Course metadata query result: length={}, types={}", 
             metadata.length, 
             metadata.length > 0 ? java.util.Arrays.stream(metadata)
                 .map(obj -> obj != null ? obj.getClass().getSimpleName() : "null")
                 .collect(java.util.stream.Collectors.toList()) : "empty");
         
+        // Handle empty array case (should not happen, but PostgreSQL might return empty array)
+        if (metadata.length == 0) {
+            log.error("❌ Course metadata query returned empty array: id={}", id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+        }
+        
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
-            log.debug("📦 Unwrapped nested array: outer length={}, inner length={}", metadata.length, actualMetadata.length);
+            log.info("📦 Unwrapped nested array: outer length={}, inner length={}", metadata.length, actualMetadata.length);
+            
+            // Check if inner array is also empty
+            if (actualMetadata.length == 0) {
+                log.error("❌ Unwrapped nested array is empty: id={}", id);
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+            }
         }
         
         // Query returns 13 fields: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
@@ -528,6 +540,7 @@ public class CourseService {
             log.error("❌ Invalid course metadata: expected at least 12 fields, got {}", actualMetadata.length);
             log.error("   Course ID: {}", id);
             log.error("   Metadata array length: {}", actualMetadata.length);
+            log.error("   Metadata content: {}", java.util.Arrays.toString(actualMetadata));
             if (actualMetadata.length > 0) {
                 log.error("   First field type: {}", actualMetadata[0] != null ? actualMetadata[0].getClass().getName() : "null");
             }
