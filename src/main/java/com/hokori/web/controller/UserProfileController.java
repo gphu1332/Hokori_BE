@@ -45,6 +45,52 @@ public class UserProfileController {
         }
     }
 
+    @GetMapping("/debug/auth")
+    @Operation(summary = "Debug authentication info", description = "Debug endpoint to check user authorities and role")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> debugAuth() {
+        try {
+            User currentUser = currentUserService.getCurrentUserOrThrow();
+            Map<String, Object> debugInfo = new HashMap<>();
+            
+            // User info
+            debugInfo.put("userId", currentUser.getId());
+            debugInfo.put("email", currentUser.getEmail());
+            debugInfo.put("username", currentUser.getUsername());
+            debugInfo.put("isActive", currentUser.getIsActive());
+            
+            // Role info
+            if (currentUser.getRole() != null) {
+                Map<String, Object> roleInfo = new HashMap<>();
+                roleInfo.put("roleId", currentUser.getRole().getId());
+                roleInfo.put("roleName", currentUser.getRole().getRoleName());
+                roleInfo.put("description", currentUser.getRole().getDescription());
+                debugInfo.put("role", roleInfo);
+            } else {
+                debugInfo.put("role", "NULL - User has no role assigned!");
+            }
+            
+            // Spring Security authorities
+            org.springframework.security.core.Authentication auth = 
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                debugInfo.put("authenticated", true);
+                debugInfo.put("principal", auth.getPrincipal());
+                List<String> authorities = auth.getAuthorities().stream()
+                    .map(a -> a.getAuthority())
+                    .collect(java.util.stream.Collectors.toList());
+                debugInfo.put("authorities", authorities);
+                debugInfo.put("authoritiesCount", authorities.size());
+            } else {
+                debugInfo.put("authenticated", false);
+                debugInfo.put("authorities", List.of());
+            }
+            
+            return ResponseEntity.ok(ApiResponse.success("Debug info retrieved", debugInfo));
+        } catch (Exception e) {
+            return ResponseEntity.ok(ApiResponse.error("Failed to get debug info: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Get user profile by ID", description = "Retrieve user profile by ID")
     public ResponseEntity<Map<String, Object>> getUserProfile(

@@ -77,9 +77,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             }
                             
                             // Fallback to database roles if token doesn't have roles or roles are empty
-                            if (roles.isEmpty() && user.getRole() != null && user.getRole().getRoleName() != null) {
-                                roles = List.of(user.getRole().getRoleName());
-                                logger.debug("Using database role for user " + email + ": " + user.getRole().getRoleName());
+                            if (roles.isEmpty()) {
+                                if (user.getRole() != null && user.getRole().getRoleName() != null) {
+                                    roles = List.of(user.getRole().getRoleName());
+                                    logger.info("✅ Using database role for user " + email + ": " + user.getRole().getRoleName());
+                                } else {
+                                    logger.warn("⚠️ User " + email + " has no role assigned! role_id=" + (user.getRole() != null ? user.getRole().getId() : "null"));
+                                }
+                            } else {
+                                logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
                             }
                             
                             // Convert roles to authorities (normalize role name to uppercase)
@@ -93,7 +99,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     })
                                     .collect(Collectors.toList());
                             
-                            logger.debug("User " + email + " authorities: " + authorities);
+                            if (authorities.isEmpty()) {
+                                logger.error("❌ User " + email + " has NO authorities! This will cause 403 errors!");
+                            } else {
+                                logger.info("✅ User " + email + " authorities: " + authorities.stream()
+                                        .map(a -> a.getAuthority())
+                                        .collect(Collectors.joining(", ")));
+                            }
 
                             UsernamePasswordAuthenticationToken authToken = 
                                     new UsernamePasswordAuthenticationToken(email, null, authorities);
