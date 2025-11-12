@@ -117,39 +117,69 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             userOpt = userRepository.findByEmail(email);
                         }
                     } else {
-                        // Token has roles, just check if user exists and is active (simple query)
+                        // Token has roles, use native query to check user exists and is active (avoids LOB)
                         try {
-                            userOpt = userRepository.findByEmail(email);
+                            var basicInfoOpt = userRepository.findUserBasicInfoByEmail(email);
+                            if (basicInfoOpt.isPresent()) {
+                                Object[] info = basicInfoOpt.get();
+                                Long userId = ((Number) info[0]).longValue();
+                                String userEmail = (String) info[1];
+                                Boolean isActive = (Boolean) info[2];
+                                
+                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive);
+                                
+                                // Check if user is active
+                                if (isActive == null || !isActive) {
+                                    logger.warn("⚠️ User " + email + " is NOT active! is_active=" + isActive);
+                                    filterChain.doFilter(request, response);
+                                    return;
+                                }
+                                
+                                // Create a minimal User object for authentication (we don't need full entity)
+                                // Since token has roles, we can proceed with authentication
+                                logger.debug("User is active, proceeding with authentication using roles from token");
+                            } else {
+                                logger.warn("⚠️ User not found for email: " + email);
+                                filterChain.doFilter(request, response);
+                                return;
+                            }
                         } catch (Exception e) {
-                            logger.warn("⚠️ findByEmail failed: " + e.getMessage());
+                            logger.error("❌ Failed to check user basic info: " + e.getMessage(), e);
+                            // Continue without user check - Spring Security will handle
+                            filterChain.doFilter(request, response);
+                            return;
                         }
                     }
                     
-                    if (userOpt.isEmpty()) {
+                    // If we reach here and needDatabaseCheck is true, we have userOpt
+                    // If needDatabaseCheck is false, we've already validated user exists and is active
+                    if (needDatabaseCheck && userOpt.isEmpty()) {
                         logger.warn("⚠️ User not found for email: " + email);
-                        // Continue filter chain - Spring Security will handle unauthorized
                         filterChain.doFilter(request, response);
                         return;
                     }
                     
-                    var user = userOpt.get();
-                    logger.debug("User found: id=" + user.getId() + ", email=" + user.getEmail());
-                    
-                    // Check if user is active (null-safe check)
-                    if (user.getIsActive() == null || !user.getIsActive()) {
-                        logger.warn("⚠️ User " + email + " is NOT active! is_active=" + user.getIsActive());
-                        // Continue filter chain - Spring Security will handle unauthorized
-                        filterChain.doFilter(request, response);
-                        return;
+                    // For database check path, we need full user entity
+                    if (needDatabaseCheck) {
+                        var user = userOpt.get();
+                        logger.debug("User found: id=" + user.getId() + ", email=" + user.getEmail());
+                        
+                        // Check if user is active (null-safe check)
+                        if (user.getIsActive() == null || !user.getIsActive()) {
+                            logger.warn("⚠️ User " + email + " is NOT active! is_active=" + user.getIsActive());
+                            filterChain.doFilter(request, response);
+                            return;
+                        }
                     }
                     
                     logger.debug("User is active, processing roles...");
                     
                     // Fallback to database roles if token doesn't have roles or roles are empty
-                    if (roles.isEmpty()) {
+                    if (roles.isEmpty() && needDatabaseCheck) {
                         logger.debug("Roles from token are empty, checking database...");
                         try {
                             // Try to get role from database (might fail due to LOB, but worth trying)
+                            var user = userOpt.get();
                             if (user.getRole() != null) {
                                 String roleName = user.getRole().getRoleName();
                                 if (roleName != null && !roleName.isEmpty()) {
@@ -165,7 +195,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             logger.error("❌ Could not load role from database (LOB issue): " + e.getMessage());
                             // Continue without role - user will be authenticated but without authorities
                         }
-                    } else {
+                    } else if (!roles.isEmpty()) {
                         logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
                     }
                     

@@ -28,6 +28,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     Optional<User> findByEmailWithRoleForAuth(@Param("email") String email);
     
+    /**
+     * Check if user exists and is active by email (for authentication).
+     * Uses native query to avoid loading LOB fields.
+     */
+    @Query(value = "SELECT u.id, u.email, u.is_active FROM users u WHERE u.email = :email", nativeQuery = true)
+    Optional<Object[]> findUserBasicInfoByEmail(@Param("email") String email);
+    
     Optional<User> findByUsername(String username);
 
     boolean existsByEmail(String email);
