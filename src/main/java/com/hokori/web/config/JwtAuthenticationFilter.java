@@ -18,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Component
@@ -63,7 +64,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 
                 try {
                     // Get user from repository WITH role (using fetch join to avoid lazy loading issues)
-                    var userOpt = Optional.empty();
+                    Optional<User> userOpt = Optional.empty();
                     try {
                         userOpt = userRepository.findByEmailWithRole(email);
                         logger.debug("findByEmailWithRole result: " + (userOpt.isPresent() ? "found" : "empty"));
