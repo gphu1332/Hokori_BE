@@ -136,12 +136,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             var basicInfoOpt = userRepository.findUserBasicInfoByEmail(email);
                             if (basicInfoOpt.isPresent()) {
                                 Object[] info = basicInfoOpt.get();
-                                Long userId = ((Number) info[0]).longValue();
-                                String userEmail = (String) info[1];
+                                
+                                // Safely extract userId - handle different number types from PostgreSQL
+                                Long userId = null;
+                                Object userIdObj = info[0];
+                                if (userIdObj instanceof Number) {
+                                    userId = ((Number) userIdObj).longValue();
+                                } else if (userIdObj != null) {
+                                    try {
+                                        userId = Long.parseLong(userIdObj.toString());
+                                    } catch (NumberFormatException ex) {
+                                        logger.warn("⚠️ Could not parse userId: " + userIdObj);
+                                    }
+                                }
+                                
+                                String userEmail = info[1] != null ? info[1].toString() : null;
                                 
                                 // Handle different boolean types from PostgreSQL (boolean, bit, etc.)
                                 Boolean isActive = null;
-                                Object isActiveObj = info[2];
+                                Object isActiveObj = info.length > 2 ? info[2] : null;
                                 if (isActiveObj instanceof Boolean) {
                                     isActive = (Boolean) isActiveObj;
                                 } else if (isActiveObj instanceof Number) {
@@ -152,7 +165,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
                                 }
                                 
-                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive + " (raw=" + isActiveObj + ")");
+                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive + " (raw types: id=" + (userIdObj != null ? userIdObj.getClass().getName() : "null") + ", isActive=" + (isActiveObj != null ? isActiveObj.getClass().getName() : "null") + ")");
                                 
                                 // Check if user is active
                                 if (isActive == null || !isActive) {
@@ -171,9 +184,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             }
                         } catch (Exception e) {
                             logger.error("❌ Failed to check user basic info: " + e.getMessage(), e);
+                            logger.error("   Exception type: " + e.getClass().getName());
+                            logger.error("   Stack trace:", e);
                             // Continue without user check - Spring Security will handle
-                            filterChain.doFilter(request, response);
-                            return;
+                            // But log warning that we're proceeding without verifying user exists
+                            logger.warn("⚠️ Proceeding with authentication without user verification due to error");
                         }
                     }
                     
