@@ -124,24 +124,43 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         if (statusOpt.isPresent()) {
                             Object[] status = statusOpt.get();
                             // JPQL query returns: [id, isActive]
-                            if (status.length >= 2 && status[1] instanceof Boolean) {
-                                userExistsAndActive = Boolean.TRUE.equals(status[1]);
-                            } else if (status.length >= 2 && status[1] != null) {
-                                // Handle different boolean representations
-                                String isActiveStr = status[1].toString().toLowerCase();
-                                userExistsAndActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                            logger.debug("User status query result: length=" + status.length + ", types=" + 
+                                java.util.Arrays.stream(status)
+                                    .map(obj -> obj != null ? obj.getClass().getName() : "null")
+                                    .collect(java.util.stream.Collectors.joining(", ")));
+                            
+                            if (status.length >= 2 && status[1] != null) {
+                                Object isActiveObj = status[1];
+                                if (isActiveObj instanceof Boolean) {
+                                    userExistsAndActive = Boolean.TRUE.equals(isActiveObj);
+                                    logger.debug("isActive (Boolean): " + userExistsAndActive);
+                                } else if (isActiveObj instanceof Number) {
+                                    userExistsAndActive = ((Number) isActiveObj).intValue() != 0;
+                                    logger.debug("isActive (Number): " + userExistsAndActive + " (raw: " + isActiveObj + ")");
+                                } else {
+                                    // Handle different boolean representations
+                                    String isActiveStr = isActiveObj.toString().toLowerCase();
+                                    userExistsAndActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                                    logger.debug("isActive (String): " + userExistsAndActive + " (raw: " + isActiveStr + ")");
+                                }
+                            } else {
+                                logger.warn("⚠️ User status query returned insufficient data: length=" + status.length);
                             }
+                        } else {
+                            logger.warn("⚠️ User not found in database: " + email);
                         }
                     } catch (Exception e) {
                         logger.error("❌ Failed to check user active status: " + e.getMessage());
                         logger.error("   Exception type: " + e.getClass().getName());
+                        e.printStackTrace();
                         // Continue - we'll proceed with authentication but log warning
                         logger.warn("⚠️ Proceeding with authentication without verifying user active status");
+                        userExistsAndActive = true; // Allow authentication if query fails
                     }
                     
                     // If user doesn't exist or is not active, reject authentication
                     if (!userExistsAndActive) {
-                        logger.warn("⚠️ User " + email + " not found or not active");
+                        logger.warn("⚠️ User " + email + " not found or not active (userExistsAndActive=" + userExistsAndActive + ")");
                         filterChain.doFilter(request, response);
                         return;
                     }
