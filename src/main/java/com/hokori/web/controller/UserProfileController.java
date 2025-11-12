@@ -208,10 +208,26 @@ public class UserProfileController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get user profile by ID", description = "Retrieve user profile by ID")
+    @Operation(summary = "Get user profile by ID", description = "Retrieve user profile by ID. Users can only view their own profile unless they are ADMIN or STAFF.")
     public ResponseEntity<Map<String, Object>> getUserProfile(
             @Parameter(description = "User ID") @PathVariable Long id) {
         try {
+            User currentUser = currentUserService.getCurrentUserOrThrow();
+            Long currentUserId = currentUser.getId();
+            
+            // Check authorization: user can only view their own profile, unless ADMIN or STAFF
+            boolean isAdmin = currentUser.getRole() != null && 
+                             ("ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName()) ||
+                              "STAFF".equalsIgnoreCase(currentUser.getRole().getRoleName()));
+            
+            if (!currentUserId.equals(id) && !isAdmin) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("message", "You can only view your own profile");
+                errorResponse.put("status", "error");
+                errorResponse.put("timestamp", LocalDateTime.now());
+                return ResponseEntity.status(403).body(errorResponse);
+            }
+            
             Optional<User> userOpt = userService.getUserById(id);
             if (userOpt.isPresent()) {
                 User user = userOpt.get();
@@ -259,11 +275,26 @@ public class UserProfileController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update user profile by ID", description = "Update user profile information by ID")
+    @Operation(summary = "Update user profile by ID", description = "Update user profile information by ID. Users can only update their own profile unless they are ADMIN.")
     public ResponseEntity<Map<String, Object>> updateUserProfile(
             @Parameter(description = "User ID") @PathVariable Long id, 
             @RequestBody Map<String, Object> profileData) {
         try {
+            User currentUser = currentUserService.getCurrentUserOrThrow();
+            Long currentUserId = currentUser.getId();
+            
+            // Check authorization: user can only update their own profile, unless ADMIN
+            boolean isAdmin = currentUser.getRole() != null && 
+                             "ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName());
+            
+            if (!currentUserId.equals(id) && !isAdmin) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("message", "You can only update your own profile");
+                errorResponse.put("status", "error");
+                errorResponse.put("timestamp", LocalDateTime.now());
+                return ResponseEntity.status(403).body(errorResponse);
+            }
+            
             Optional<User> userOpt = userService.getUserById(id);
             if (!userOpt.isPresent()) {
                 Map<String, Object> errorResponse = new HashMap<>();
@@ -330,7 +361,8 @@ public class UserProfileController {
     }
 
     @PutMapping("/{id}/password")
-    @Operation(summary = "Change user password by ID", description = "Change user password by ID")
+    @PreAuthorize("hasRole('ADMIN')") // Only ADMIN can change other users' passwords
+    @Operation(summary = "Change user password by ID", description = "Change user password by ID. Only ADMIN can change other users' passwords.")
     public ResponseEntity<Map<String, Object>> changePassword(
             @Parameter(description = "User ID") @PathVariable Long id, 
             @RequestBody Map<String, String> passwordData) {
