@@ -145,25 +145,48 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                         .collect(java.util.stream.Collectors.joining(", ")));
                                 }
                                 
+                                // Handle nested array case (PostgreSQL sometimes returns Object[] inside Object[])
+                                Object[] actualInfo = info;
+                                if (info.length == 1 && info[0] instanceof Object[]) {
+                                    // Unwrap nested array
+                                    actualInfo = (Object[]) info[0];
+                                    logger.debug("Unwrapped nested array, new length: " + actualInfo.length);
+                                }
+                                
                                 // Safely extract userId - handle different number types from PostgreSQL
                                 Long userId = null;
-                                if (info.length > 0 && info[0] != null) {
-                                    Object userIdObj = info[0];
-                                    if (userIdObj instanceof Number) {
+                                if (actualInfo.length > 0 && actualInfo[0] != null) {
+                                    Object userIdObj = actualInfo[0];
+                                    // Handle nested array case
+                                    if (userIdObj instanceof Object[]) {
+                                        Object[] nested = (Object[]) userIdObj;
+                                        if (nested.length > 0 && nested[0] instanceof Number) {
+                                            userId = ((Number) nested[0]).longValue();
+                                        }
+                                    } else if (userIdObj instanceof Number) {
                                         userId = ((Number) userIdObj).longValue();
                                     } else {
                                         try {
                                             userId = Long.parseLong(userIdObj.toString());
                                         } catch (NumberFormatException ex) {
-                                            logger.warn("⚠️ Could not parse userId: " + userIdObj);
+                                            logger.warn("⚠️ Could not parse userId: " + userIdObj + " (type: " + userIdObj.getClass().getName() + ")");
                                         }
                                     }
                                 }
                                 
                                 // Safely extract email - check array bounds
                                 String userEmail = null;
-                                if (info.length > 1 && info[1] != null) {
-                                    userEmail = info[1].toString();
+                                if (actualInfo.length > 1 && actualInfo[1] != null) {
+                                    Object emailObj = actualInfo[1];
+                                    // Handle nested array case
+                                    if (emailObj instanceof Object[]) {
+                                        Object[] nested = (Object[]) emailObj;
+                                        if (nested.length > 0) {
+                                            userEmail = nested[0].toString();
+                                        }
+                                    } else {
+                                        userEmail = emailObj.toString();
+                                    }
                                 } else {
                                     // Fallback: use email from principal if array doesn't have email
                                     userEmail = email;
@@ -172,18 +195,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 
                                 // Handle different boolean types from PostgreSQL (boolean, bit, etc.)
                                 Boolean isActive = null;
-                                Object isActiveObj = info.length > 2 ? info[2] : null;
-                                if (isActiveObj instanceof Boolean) {
-                                    isActive = (Boolean) isActiveObj;
-                                } else if (isActiveObj instanceof Number) {
-                                    isActive = ((Number) isActiveObj).intValue() != 0;
-                                } else if (isActiveObj != null) {
-                                    // Try to parse as string
-                                    String isActiveStr = isActiveObj.toString().toLowerCase();
-                                    isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                                Object isActiveObj = actualInfo.length > 2 ? actualInfo[2] : null;
+                                if (isActiveObj != null) {
+                                    // Handle nested array case
+                                    if (isActiveObj instanceof Object[]) {
+                                        Object[] nested = (Object[]) isActiveObj;
+                                        if (nested.length > 0) {
+                                            isActiveObj = nested[0];
+                                        } else {
+                                            isActiveObj = null;
+                                        }
+                                    }
+                                    
+                                    if (isActiveObj instanceof Boolean) {
+                                        isActive = (Boolean) isActiveObj;
+                                    } else if (isActiveObj instanceof Number) {
+                                        isActive = ((Number) isActiveObj).intValue() != 0;
+                                    } else {
+                                        // Try to parse as string
+                                        String isActiveStr = isActiveObj.toString().toLowerCase();
+                                        isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                                    }
                                 }
                                 
-                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive + " (array length: " + info.length + ")");
+                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive + " (array length: " + actualInfo.length + ")");
                                 
                                 // Check if user is active
                                 if (isActive == null || !isActive) {

@@ -31,8 +31,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /**
      * Check if user exists and is active by email (for authentication).
      * Uses native query to avoid loading LOB fields.
+     * Returns: [id, email, is_active]
+     * Note: PostgreSQL may return results differently than SQL Server, so handle with care.
      */
-    @Query(value = "SELECT u.id, u.email, u.is_active FROM users u WHERE u.email = :email", nativeQuery = true)
+    @Query(value = "SELECT CAST(u.id AS BIGINT), CAST(u.email AS VARCHAR), CAST(u.is_active AS BOOLEAN) FROM users u WHERE u.email = :email LIMIT 1", nativeQuery = true)
     Optional<Object[]> findUserBasicInfoByEmail(@Param("email") String email);
     
     /**
