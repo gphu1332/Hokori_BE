@@ -21,6 +21,17 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * JWT Authentication Filter - Processes JWT tokens and sets Spring Security authentication context.
+ * 
+ * Flow:
+ * 1. Extract JWT token from Authorization header
+ * 2. Validate token and extract email
+ * 3. Extract roles from token claims (preferred) or database (fallback)
+ * 4. Check user active status
+ * 5. Convert roles to Spring Security authorities (ROLE_TEACHER, ROLE_ADMIN, etc.)
+ * 6. Set authentication in SecurityContextHolder
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -42,231 +53,52 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String email = null;
         String jwtToken = null;
 
-        // JWT Token is in the form "Bearer token". Remove Bearer word and get only the Token
+        // Extract JWT token from Authorization header
         if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")) {
             jwtToken = requestTokenHeader.substring(7);
             try {
                 email = jwtConfig.extractUsername(jwtToken);
             } catch (IllegalArgumentException e) {
-                logger.warn("Unable to get JWT Token");
+                logger.warn("⚠️ Unable to get JWT Token: " + e.getMessage());
             } catch (ExpiredJwtException e) {
-                logger.warn("JWT Token has expired");
+                logger.warn("⚠️ JWT Token has expired");
             }
         }
 
-        // Once we get the token validate it.
+        // Process authentication if token is valid and no authentication is set
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            logger.debug("Processing JWT token for email: " + email);
+            logger.debug("🔐 Processing JWT token for email: " + email);
 
             // Validate token
             if (jwtConfig.validateToken(jwtToken, email)) {
-                logger.debug("JWT token validated successfully for: " + email);
+                logger.debug("✅ JWT token validated successfully for: " + email);
                 
                 try {
-                    // First, extract roles from JWT token (preferred - avoids database LOB issues)
-                    List<String> roles = new ArrayList<>();
-                    try {
-                        var claims = jwtConfig.extractAllClaims(jwtToken);
-                        Object rolesObj = claims.get("roles");
-                        
-                        if (rolesObj != null) {
-                            logger.debug("Found roles in token: " + rolesObj.getClass().getName() + " = " + rolesObj);
-                            
-                            // Handle different types: List, ArrayList, Object[], String[]
-                            if (rolesObj instanceof List) {
-                                @SuppressWarnings("unchecked")
-                                List<Object> rolesList = (List<Object>) rolesObj;
-                                roles = rolesList.stream()
-                                        .map(r -> {
-                                            if (r == null) return null;
-                                            String roleStr = r.toString().trim();
-                                            return roleStr.isEmpty() ? null : roleStr;
-                                        })
-                                        .filter(r -> r != null && !r.isEmpty())
-                                        .collect(Collectors.toList());
-                            } else if (rolesObj instanceof Object[]) {
-                                Object[] rolesArray = (Object[]) rolesObj;
-                                roles = java.util.Arrays.stream(rolesArray)
-                                        .map(r -> {
-                                            if (r == null) return null;
-                                            String roleStr = r.toString().trim();
-                                            return roleStr.isEmpty() ? null : roleStr;
-                                        })
-                                        .filter(r -> r != null && !r.isEmpty())
-                                        .collect(Collectors.toList());
-                            } else {
-                                // Single role as string
-                                String roleStr = rolesObj.toString().trim();
-                                if (!roleStr.isEmpty()) {
-                                    roles = List.of(roleStr);
-                                }
-                            }
-                            
-                            if (!roles.isEmpty()) {
-                                logger.info("✅ Extracted roles from token: " + roles);
-                            } else {
-                                logger.warn("⚠️ Roles object found in token but resulted in empty list: " + rolesObj);
-                            }
-                        } else {
-                            logger.warn("⚠️ No 'roles' claim found in JWT token for user: " + email);
-                        }
-                    } catch (Exception ex) {
-                        logger.error("❌ Failed to extract roles from token: " + ex.getMessage());
-                        logger.error("   Exception type: " + ex.getClass().getName());
-                        ex.printStackTrace();
-                    }
+                    // Step 1: Extract roles from JWT token (preferred - avoids database LOB issues)
+                    List<String> roles = extractRolesFromToken(jwtToken, email);
                     
-                    // Check user exists and is active (simple JPQL query - no LOB fields)
-                    // This works for both SQL Server and PostgreSQL
-                    // is_active is boolean (true/false) in database
-                    // NOTE: PostgreSQL sometimes returns nested Object[] arrays
-                    boolean userExistsAndActive = false;
-                    try {
-                        logger.debug("Checking user active status for email: " + email);
-                        var statusOpt = userRepository.findUserActiveStatusByEmail(email);
-                        if (statusOpt.isPresent()) {
-                            Object[] status = statusOpt.get();
-                            
-                            // Handle nested array case (PostgreSQL returns Object[] inside Object[])
-                            Object[] actualStatus = status;
-                            if (status.length == 1 && status[0] instanceof Object[]) {
-                                actualStatus = (Object[]) status[0];
-                                logger.info("Unwrapped nested array: outer length=" + status.length + ", inner length=" + actualStatus.length);
-                            }
-                            
-                            // JPQL query returns: [id, isActive]
-                            logger.info("User status query result: length=" + actualStatus.length + ", types=" + 
-                                java.util.Arrays.stream(actualStatus)
-                                    .map(obj -> obj != null ? obj.getClass().getName() + "=" + obj : "null")
-                                    .collect(java.util.stream.Collectors.joining(", ")));
-                            
-                            if (actualStatus.length >= 2) {
-                                Object isActiveObj = actualStatus[1];
-                                if (isActiveObj == null) {
-                                    logger.warn("⚠️ User " + email + " has null isActive - treating as inactive");
-                                    userExistsAndActive = false;
-                                } else if (isActiveObj instanceof Boolean) {
-                                    userExistsAndActive = (Boolean) isActiveObj;
-                                    logger.info("✅ isActive (Boolean): " + userExistsAndActive);
-                                } else if (isActiveObj instanceof Number) {
-                                    // Handle bit/boolean as number (SQL Server)
-                                    userExistsAndActive = ((Number) isActiveObj).intValue() != 0;
-                                    logger.info("✅ isActive (Number): " + userExistsAndActive + " (raw: " + isActiveObj + ")");
-                                } else {
-                                    // Handle string representation
-                                    String isActiveStr = isActiveObj.toString().toLowerCase().trim();
-                                    userExistsAndActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr) || "yes".equals(isActiveStr);
-                                    logger.info("✅ isActive (String): " + userExistsAndActive + " (raw: '" + isActiveStr + "')");
-                                }
-                                logger.info("✅ User " + email + " active status check: " + userExistsAndActive);
-                            } else {
-                                logger.warn("⚠️ User status query returned insufficient data: length=" + actualStatus.length);
-                            }
-                        } else {
-                            logger.warn("⚠️ User not found in database for email: " + email);
-                            // Try to check if user exists at all
-                            boolean exists = userRepository.existsByEmail(email);
-                            logger.info("User exists check (existsByEmail): " + exists);
-                        }
-                    } catch (Exception e) {
-                        logger.error("❌ Failed to check user active status: " + e.getMessage());
-                        logger.error("   Exception type: " + e.getClass().getName());
-                        e.printStackTrace();
-                        // Continue - we'll proceed with authentication but log warning
-                        logger.warn("⚠️ Proceeding with authentication without verifying user active status");
-                        userExistsAndActive = true; // Allow authentication if query fails
-                    }
+                    // Step 2: Check user exists and is active
+                    boolean userExistsAndActive = checkUserActiveStatus(email);
                     
-                    // If user doesn't exist or is not active, reject authentication
+                    // Step 3: If user is not active, reject authentication
                     if (!userExistsAndActive) {
-                        logger.warn("⚠️ User " + email + " not found or not active (userExistsAndActive=" + userExistsAndActive + ")");
+                        logger.warn("⚠️ User " + email + " not found or not active - rejecting authentication");
                         filterChain.doFilter(request, response);
                         return;
                     }
                     
-                    // Get roles from token (preferred) or from database (fallback)
+                    // Step 4: Fallback to database if token doesn't have roles
                     if (roles.isEmpty()) {
-                        // Token doesn't have roles, get from database
                         logger.warn("⚠️ Roles from token are empty, checking database as fallback...");
-                        try {
-                            Optional<User> userOpt = userRepository.findByEmailWithRole(email);
-                            if (userOpt.isPresent()) {
-                                User user = userOpt.get();
-                                if (user.getRole() != null && user.getRole().getRoleName() != null) {
-                                    String roleName = user.getRole().getRoleName().trim().toUpperCase();
-                                    roles = List.of(roleName);
-                                    logger.info("✅ Got role from database: " + roleName);
-                                } else {
-                                    logger.error("❌ User " + email + " has no role assigned in database!");
-                                }
-                            } else {
-                                logger.error("❌ User " + email + " not found in database!");
-                            }
-                        } catch (Exception e) {
-                            logger.error("❌ Failed to get role from database: " + e.getMessage());
-                            logger.error("   Exception type: " + e.getClass().getName());
-                            // Continue without role - user will be authenticated but without authorities
-                        }
-                    } else {
-                        logger.info("✅ Using roles from JWT token for user " + email + ": " + roles);
+                        roles = extractRolesFromDatabase(email);
                     }
                     
-                    // Convert roles to authorities (normalize role name to uppercase)
-                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                    try {
-                        authorities = roles.stream()
-                                .map(role -> {
-                                    if (role == null) {
-                                        logger.warn("⚠️ Found null role in roles list");
-                                        return null;
-                                    }
-                                    return role.toUpperCase().trim(); // Normalize role name
-                                })
-                                .filter(role -> role != null && !role.isEmpty()) // Filter out null and empty roles
-                                .map(role -> {
-                                    // Remove ROLE_ prefix if already present, then add it
-                                    String normalizedRole = role.startsWith("ROLE_") ? role.substring(5) : role;
-                                    String authority = "ROLE_" + normalizedRole;
-                                    logger.debug("   Converting role '" + role + "' to authority '" + authority + "'");
-                                    return new SimpleGrantedAuthority(authority);
-                                })
-                                .filter(auth -> auth != null) // Additional safety check
-                                .collect(Collectors.toList());
-                    } catch (Exception e) {
-                        logger.error("❌ Error converting roles to authorities: " + e.getMessage(), e);
-                        logger.error("   Roles list: " + roles);
-                        e.printStackTrace();
-                    }
+                    // Step 5: Convert roles to Spring Security authorities
+                    List<SimpleGrantedAuthority> authorities = convertRolesToAuthorities(roles, email);
                     
-                    if (authorities.isEmpty()) {
-                        logger.error("❌ User " + email + " has NO authorities! User will be authenticated but cannot access role-protected endpoints!");
-                        logger.error("   Roles extracted from token: " + roles);
-                        logger.error("   This will cause 403 Forbidden errors on role-protected endpoints like /api/teacher/**");
-                        // Still set authentication with empty authorities - allows authenticated() endpoints to work
-                        // But role-protected endpoints (hasRole) will fail
-                    } else {
-                        logger.info("✅ User " + email + " authorities: " + authorities.stream()
-                                .map(a -> a.getAuthority())
-                                .collect(Collectors.joining(", ")));
-                    }
-
-                    // IMPORTANT: Always set authentication, even with empty authorities
-                    // This allows endpoints with .authenticated() to work
-                    // But endpoints with hasRole() will fail if authorities are empty
-                    try {
-                        UsernamePasswordAuthenticationToken authToken = 
-                                new UsernamePasswordAuthenticationToken(email, null, authorities);
-                        
-                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        
-                        SecurityContextHolder.getContext().setAuthentication(authToken);
-                        logger.info("✅ Authentication SET for user: " + email + " with " + authorities.size() + " authorities");
-                        logger.info("   Authorities: " + authorities.stream()
-                                .map(a -> a.getAuthority())
-                                .collect(Collectors.joining(", ")));
-                    } catch (Exception e) {
-                        logger.error("❌ CRITICAL: Failed to set authentication for user " + email + ": " + e.getMessage(), e);
-                    }
+                    // Step 6: Set authentication in SecurityContextHolder
+                    setAuthentication(email, authorities, request);
+                    
                 } catch (Exception e) {
                     logger.error("❌ CRITICAL: Cannot set user authentication for email: " + email, e);
                     logger.error("   Exception type: " + e.getClass().getName());
@@ -274,12 +106,232 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (e.getCause() != null) {
                         logger.error("   Cause: " + e.getCause().getMessage());
                     }
-                    // Print stack trace for debugging
                     e.printStackTrace();
                 }
+            } else {
+                logger.warn("⚠️ JWT token validation failed for email: " + email);
             }
         }
+        
         filterChain.doFilter(request, response);
+    }
+    
+    /**
+     * Extract roles from JWT token claims.
+     * Roles are stored as List<String> in the token (normalized uppercase, no ROLE_ prefix).
+     */
+    private List<String> extractRolesFromToken(String jwtToken, String email) {
+        List<String> roles = new ArrayList<>();
+        try {
+            var claims = jwtConfig.extractAllClaims(jwtToken);
+            Object rolesObj = claims.get("roles");
+            
+            if (rolesObj == null) {
+                logger.warn("⚠️ No 'roles' claim found in JWT token for user: " + email);
+                return roles;
+            }
+            
+            logger.debug("Found roles in token: " + rolesObj.getClass().getName() + " = " + rolesObj);
+            
+            // Handle different types: List, ArrayList, Object[], String[]
+            if (rolesObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Object> rolesList = (List<Object>) rolesObj;
+                roles = rolesList.stream()
+                        .map(r -> {
+                            if (r == null) return null;
+                            String roleStr = r.toString().trim().toUpperCase();
+                            return roleStr.isEmpty() ? null : roleStr;
+                        })
+                        .filter(r -> r != null && !r.isEmpty())
+                        .distinct()
+                        .collect(Collectors.toList());
+            } else if (rolesObj instanceof Object[]) {
+                Object[] rolesArray = (Object[]) rolesObj;
+                roles = java.util.Arrays.stream(rolesArray)
+                        .map(r -> {
+                            if (r == null) return null;
+                            String roleStr = r.toString().trim().toUpperCase();
+                            return roleStr.isEmpty() ? null : roleStr;
+                        })
+                        .filter(r -> r != null && !r.isEmpty())
+                        .distinct()
+                        .collect(Collectors.toList());
+            } else {
+                // Single role as string
+                String roleStr = rolesObj.toString().trim().toUpperCase();
+                if (!roleStr.isEmpty()) {
+                    roles = List.of(roleStr);
+                }
+            }
+            
+            if (!roles.isEmpty()) {
+                logger.info("✅ Extracted roles from token: " + roles);
+            } else {
+                logger.warn("⚠️ Roles object found in token but resulted in empty list: " + rolesObj);
+            }
+        } catch (Exception ex) {
+            logger.error("❌ Failed to extract roles from token: " + ex.getMessage());
+            logger.error("   Exception type: " + ex.getClass().getName());
+            ex.printStackTrace();
+        }
+        return roles;
+    }
+    
+    /**
+     * Check if user exists and is active using JPQL query (avoids LOB fields).
+     * Handles PostgreSQL nested array case.
+     */
+    private boolean checkUserActiveStatus(String email) {
+        try {
+            logger.debug("Checking user active status for email: " + email);
+            var statusOpt = userRepository.findUserActiveStatusByEmail(email);
+            
+            if (statusOpt.isEmpty()) {
+                logger.warn("⚠️ User not found in database for email: " + email);
+                return false;
+            }
+            
+            Object[] status = statusOpt.get();
+            
+            // Handle nested array case (PostgreSQL returns Object[] inside Object[])
+            Object[] actualStatus = status;
+            if (status.length == 1 && status[0] instanceof Object[]) {
+                actualStatus = (Object[]) status[0];
+                logger.debug("Unwrapped nested array: outer length=" + status.length + ", inner length=" + actualStatus.length);
+            }
+            
+            // JPQL query returns: [id, isActive]
+            if (actualStatus.length < 2) {
+                logger.warn("⚠️ User status query returned insufficient data: length=" + actualStatus.length);
+                return false;
+            }
+            
+            Object isActiveObj = actualStatus[1];
+            boolean isActive = false;
+            
+            if (isActiveObj == null) {
+                logger.warn("⚠️ User " + email + " has null isActive - treating as inactive");
+                return false;
+            } else if (isActiveObj instanceof Boolean) {
+                isActive = (Boolean) isActiveObj;
+            } else if (isActiveObj instanceof Number) {
+                // Handle bit/boolean as number (SQL Server)
+                isActive = ((Number) isActiveObj).intValue() != 0;
+            } else {
+                // Handle string representation
+                String isActiveStr = isActiveObj.toString().toLowerCase().trim();
+                isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || 
+                          "t".equals(isActiveStr) || "yes".equals(isActiveStr);
+            }
+            
+            logger.info("✅ User " + email + " active status: " + isActive);
+            return isActive;
+            
+        } catch (Exception e) {
+            logger.error("❌ Failed to check user active status: " + e.getMessage());
+            logger.error("   Exception type: " + e.getClass().getName());
+            e.printStackTrace();
+            // Fail secure: reject authentication if query fails
+            return false;
+        }
+    }
+    
+    /**
+     * Extract roles from database (fallback when token doesn't have roles).
+     * Uses findByEmailWithRole to avoid LOB issues.
+     */
+    private List<String> extractRolesFromDatabase(String email) {
+        List<String> roles = new ArrayList<>();
+        try {
+            Optional<User> userOpt = userRepository.findByEmailWithRole(email);
+            if (userOpt.isPresent()) {
+                User user = userOpt.get();
+                if (user.getRole() != null && user.getRole().getRoleName() != null) {
+                    String roleName = user.getRole().getRoleName().trim().toUpperCase();
+                    roles = List.of(roleName);
+                    logger.info("✅ Got role from database: " + roleName);
+                } else {
+                    logger.error("❌ User " + email + " has no role assigned in database!");
+                }
+            } else {
+                logger.error("❌ User " + email + " not found in database!");
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed to get role from database: " + e.getMessage());
+            logger.error("   Exception type: " + e.getClass().getName());
+            e.printStackTrace();
+        }
+        return roles;
+    }
+    
+    /**
+     * Convert roles to Spring Security authorities.
+     * Roles should be normalized (uppercase, no ROLE_ prefix).
+     * Authorities will have ROLE_ prefix (e.g., ROLE_TEACHER, ROLE_ADMIN).
+     */
+    private List<SimpleGrantedAuthority> convertRolesToAuthorities(List<String> roles, String email) {
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        try {
+            authorities = roles.stream()
+                    .map(role -> {
+                        if (role == null) {
+                            logger.warn("⚠️ Found null role in roles list");
+                            return null;
+                        }
+                        // Normalize: trim, uppercase, remove ROLE_ prefix if present
+                        String normalizedRole = role.trim().toUpperCase();
+                        if (normalizedRole.startsWith("ROLE_")) {
+                            normalizedRole = normalizedRole.substring(5);
+                        }
+                        // Add ROLE_ prefix for Spring Security
+                        String authority = "ROLE_" + normalizedRole;
+                        logger.debug("   Converting role '" + role + "' to authority '" + authority + "'");
+                        return new SimpleGrantedAuthority(authority);
+                    })
+                    .filter(auth -> auth != null)
+                    .distinct()
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            logger.error("❌ Error converting roles to authorities: " + e.getMessage(), e);
+            logger.error("   Roles list: " + roles);
+            e.printStackTrace();
+        }
+        
+        if (authorities.isEmpty()) {
+            logger.error("❌ User " + email + " has NO authorities! User will be authenticated but cannot access role-protected endpoints!");
+            logger.error("   Roles extracted: " + roles);
+            logger.error("   This will cause 403 Forbidden errors on role-protected endpoints like /api/teacher/**");
+        } else {
+            logger.info("✅ User " + email + " authorities: " + authorities.stream()
+                    .map(a -> a.getAuthority())
+                    .collect(Collectors.joining(", ")));
+        }
+        
+        return authorities;
+    }
+    
+    /**
+     * Set authentication in SecurityContextHolder.
+     * Always sets authentication, even with empty authorities (allows authenticated() endpoints to work).
+     */
+    private void setAuthentication(String email, List<SimpleGrantedAuthority> authorities, HttpServletRequest request) {
+        try {
+            UsernamePasswordAuthenticationToken authToken = 
+                    new UsernamePasswordAuthenticationToken(email, null, authorities);
+            
+            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            
+            SecurityContextHolder.getContext().setAuthentication(authToken);
+            logger.info("✅ Authentication SET for user: " + email + " with " + authorities.size() + " authorities");
+            if (!authorities.isEmpty()) {
+                logger.info("   Authorities: " + authorities.stream()
+                        .map(a -> a.getAuthority())
+                        .collect(Collectors.joining(", ")));
+            }
+        } catch (Exception e) {
+            logger.error("❌ CRITICAL: Failed to set authentication for user " + email + ": " + e.getMessage(), e);
+        }
     }
     
     @Override
@@ -301,4 +353,3 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                path.equals("/health");
     }
 }
-

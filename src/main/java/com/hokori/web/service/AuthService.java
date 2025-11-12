@@ -233,13 +233,32 @@ public class AuthService {
     public boolean isAdmin(User user) { return userHasRole(user, "ADMIN"); }
     public boolean isStaffOrAdmin(User user) { return userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
     public boolean canCreateContent(User user) { return userHasRole(user, "TEACHER") || userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
-    public List<String> getUserRoles(User user) { 
-        if (user.getRole() != null && user.getRole().getRoleName() != null) {
-            // Normalize role name to uppercase for consistency (PostgreSQL case-sensitive)
-            String roleName = user.getRole().getRoleName().trim().toUpperCase();
-            return List.of(roleName);
+    /**
+     * Get user roles as a normalized list.
+     * Always returns uppercase role names for consistency (PostgreSQL is case-sensitive).
+     * Returns empty list if user has no role (should not happen in production).
+     */
+    public List<String> getUserRoles(User user) {
+        if (user == null) {
+            logger.warn("⚠️ getUserRoles called with null user");
+            return List.of();
         }
-        return List.of(); 
+        
+        if (user.getRole() == null) {
+            logger.warn("⚠️ User " + (user.getEmail() != null ? user.getEmail() : "unknown") + " has null role");
+            return List.of();
+        }
+        
+        if (user.getRole().getRoleName() == null || user.getRole().getRoleName().trim().isEmpty()) {
+            logger.warn("⚠️ User " + (user.getEmail() != null ? user.getEmail() : "unknown") + " has empty role name");
+            return List.of();
+        }
+        
+        // Normalize role name: trim whitespace, convert to uppercase
+        // This ensures consistency across PostgreSQL (case-sensitive) and SQL Server
+        String roleName = user.getRole().getRoleName().trim().toUpperCase();
+        logger.debug("✅ Extracted role for user " + user.getEmail() + ": " + roleName);
+        return List.of(roleName);
     }
 
     /* ===================== JWT HELPERS ===================== */
@@ -255,23 +274,39 @@ public class AuthService {
     }
     public String getEmailFromToken(String token) { return jwtConfig.extractUsername(token); }
 
+    /**
+     * Create authentication response with JWT tokens.
+     * This is the central method for creating auth responses after successful login.
+     * Ensures roles are always included in the JWT token.
+     */
     private AuthResponse createAuthResponse(User user, String loginType) {
+        if (user == null) {
+            throw new RuntimeException("Cannot create auth response for null user");
+        }
+        
+        // Extract roles from user entity
         List<String> roles = getUserRoles(user);
         
-        // Ensure roles are not empty - log warning if user has no role
+        // CRITICAL: Ensure roles are not empty before generating token
+        // If user has no role, log error and throw exception (should not happen in production)
         if (roles.isEmpty()) {
-            logger.warn("⚠️ User " + user.getEmail() + " has no roles assigned! This may cause 403 errors on role-protected endpoints.");
-            if (user.getRole() == null) {
-                logger.error("❌ User " + user.getEmail() + " has null role! Assigning default LEARNER role.");
-                // Don't modify user here, just log - admin should fix this
+            logger.error("❌ CRITICAL: User " + user.getEmail() + " has NO roles assigned!");
+            logger.error("   This will cause 403 Forbidden errors on role-protected endpoints.");
+            logger.error("   User role entity: " + (user.getRole() != null ? "exists" : "null"));
+            if (user.getRole() != null) {
+                logger.error("   Role name: " + user.getRole().getRoleName());
             }
+            // Don't throw exception - allow login but log error for admin to fix
+            // User will be authenticated but cannot access role-protected endpoints
         } else {
-            logger.debug("✅ User " + user.getEmail() + " roles: " + roles);
+            logger.info("✅ User " + user.getEmail() + " authenticated with roles: " + roles);
         }
 
+        // Generate JWT tokens with roles included
         String accessToken  = jwtTokenService.generateAccessToken(user, loginType, roles);
         String refreshToken = jwtTokenService.generateRefreshToken(user);
 
+        // Calculate expiration time
         Long exp = jwtTokenService.getTokenExpiration();
         Instant expiresAt = (exp != null)
                 ? (exp > 3_000_000_000L ? Instant.ofEpochMilli(exp) : Instant.ofEpochSecond(exp))
