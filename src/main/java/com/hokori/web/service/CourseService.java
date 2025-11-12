@@ -58,7 +58,7 @@ public class CourseService {
     }
 
     public CourseRes updateCourse(Long id, Long teacherUserId, @Valid CourseUpsertReq r) {
-        Course c = getOwned(id, teacherUserId);
+        Course c = getOwnedForUpdate(id, teacherUserId);
         String old = c.getSlug();
         applyCourse(c, r);
         if (!SlugUtil.toSlug(r.getTitle()).equals(old)) {
@@ -71,16 +71,23 @@ public class CourseService {
     }
 
     public void softDelete(Long id, Long teacherUserId) {
-        getOwned(id, teacherUserId).setDeletedFlag(true);
+        Course c = getOwnedForUpdate(id, teacherUserId);
+        c.setDeletedFlag(true);
+        courseRepo.save(c);
     }
 
     public CourseRes publish(Long id, Long teacherUserId) {
-        Course c = getOwned(id, teacherUserId);
-
+        // Check ownership first without loading entity
+        checkOwnership(id, teacherUserId);
+        
         // Đúng 1 chapter học thử
         long trialCount = chapterRepo.countByCourse_IdAndIsTrialTrue(id);
         if (trialCount != 1) throw bad("Course must have exactly ONE trial chapter");
 
+        // Load entity only for validation and update
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
         // Validate cấu trúc
         c.getChapters().forEach(ch ->
                 ch.getLessons().forEach(ls ->
@@ -97,7 +104,7 @@ public class CourseService {
     }
 
     public CourseRes unpublish(Long id, Long teacherUserId) {
-        Course c = getOwned(id, teacherUserId);
+        Course c = getOwnedForUpdate(id, teacherUserId);
         c.setStatus(CourseStatus.DRAFT);
         c.setPublishedAt(null);
         courseRepo.save(c);
@@ -236,29 +243,67 @@ public class CourseService {
         );
     }
 
+    /**
+     * List courses for teacher - uses native query to avoid LOB fields.
+     * Simple and clean implementation for Railway PostgreSQL.
+     */
     @Transactional(readOnly = true)
     public Page<CourseRes> listMine(Long teacherUserId, int page, int size, String q, CourseStatus status) {
-        Pageable p = PageRequest.of(page, size, Sort.by("updatedAt").descending());
-        Specification<Course> spec = (root, cq, cb) -> {
-            List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deletedFlag")));
-            ps.add(cb.equal(root.get("userId"), teacherUserId));
-            if (status != null) ps.add(cb.equal(root.get("status"), status));
-            if (q != null && !q.isBlank()) {
-                String like = "%" + q.trim().toLowerCase() + "%";
-                ps.add(cb.or(cb.like(cb.lower(root.get("title")), like),
-                        cb.like(cb.lower(root.get("slug")), like)));
-            }
-            return cb.and(ps.toArray(new Predicate[0]));
-        };
-        return courseRepo.findAll(spec, p).map(this::toCourseResLite);
+        // Get all matching courses metadata (no LOB fields)
+        String statusStr = status != null ? status.name() : null;
+        String qStr = (q != null && !q.isBlank()) ? q.trim() : null;
+        List<Object[]> metadataList = courseRepo.findCourseMetadataByUserId(teacherUserId, statusStr, qStr);
+        
+        // Convert to CourseRes
+        List<CourseRes> courses = metadataList.stream()
+                .map(metadata -> {
+                    // Handle nested array case (PostgreSQL)
+                    Object[] actualMetadata = metadata;
+                    if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+                        actualMetadata = (Object[]) metadata[0];
+                    }
+                    return buildCourseResFromMetadata(actualMetadata);
+                })
+                .collect(Collectors.toList());
+        
+        // Manual pagination
+        int total = courses.size();
+        int start = page * size;
+        int end = Math.min(start + size, total);
+        List<CourseRes> pageContent = start < total ? courses.subList(start, end) : Collections.emptyList();
+        
+        return new PageImpl<>(pageContent, PageRequest.of(page, size), total);
     }
 
+    /**
+     * List published courses - uses native query to avoid LOB fields.
+     * Simple and clean implementation for Railway PostgreSQL.
+     */
     @Transactional(readOnly = true)
     public Page<CourseRes> listPublished(JLPTLevel level, int page, int size) {
-        return courseRepo.findPublishedByLevel(
-                level, PageRequest.of(page, size, Sort.by("publishedAt").descending())
-        ).map(this::toCourseResLite);
+        // Get all published courses metadata (no LOB fields)
+        String levelStr = level != null ? level.name() : null;
+        List<Object[]> metadataList = courseRepo.findPublishedCourseMetadata(levelStr);
+        
+        // Convert to CourseRes
+        List<CourseRes> courses = metadataList.stream()
+                .map(metadata -> {
+                    // Handle nested array case (PostgreSQL)
+                    Object[] actualMetadata = metadata;
+                    if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+                        actualMetadata = (Object[]) metadata[0];
+                    }
+                    return buildCourseResFromMetadata(actualMetadata);
+                })
+                .collect(Collectors.toList());
+        
+        // Manual pagination
+        int total = courses.size();
+        int start = page * size;
+        int end = Math.min(start + size, total);
+        List<CourseRes> pageContent = start < total ? courses.subList(start, end) : Collections.emptyList();
+        
+        return new PageImpl<>(pageContent, PageRequest.of(page, size), total);
     }
 
     // =========================
@@ -446,12 +491,45 @@ public class CourseService {
         return s;
     }
 
-    private Course getOwned(Long id, Long teacherUserId) {
-        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        if (!Objects.equals(c.getUserId(), teacherUserId)) {
+    /**
+     * Check ownership without loading Course entity (avoids LOB fields).
+     * Returns course metadata if owned, throws exception otherwise.
+     */
+    private Object[] checkOwnership(Long id, Long teacherUserId) {
+        var metadataOpt = courseRepo.findCourseMetadataById(id);
+        if (metadataOpt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+        }
+        
+        Object[] metadata = metadataOpt.get();
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+        
+        if (actualMetadata.length < 12) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Invalid course metadata");
+        }
+        
+        Long courseUserId = safeExtractLong(actualMetadata[11]);
+        if (courseUserId == null || !courseUserId.equals(teacherUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
         }
+        
+        return actualMetadata;
+    }
+    
+    /**
+     * Get Course entity for update operations (only when absolutely necessary).
+     * WARNING: This loads LOB fields - use only for update operations.
+     */
+    private Course getOwnedForUpdate(Long id, Long teacherUserId) {
+        // First check ownership without loading entity
+        checkOwnership(id, teacherUserId);
+        // Then load entity only if ownership check passes
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         return c;
     }
 
@@ -469,77 +547,8 @@ public class CourseService {
     // MAPPERS
     // =========================
 
-    /**
-     * Convert Course entity to CourseRes (lite version without chapters).
-     * NOTE: This method loads description field which is LOB - use with caution on PostgreSQL.
-     * For PostgreSQL, prefer using getDetail() which uses native query.
-     */
-    private CourseRes toCourseResLite(Course c) {
-        // Check if PostgreSQL - if yes, avoid loading description
-        boolean isPostgreSQL = DatabaseUtil.isPostgreSQLDatabase();
-        String description = isPostgreSQL ? null : c.getDescription();
-        
-        return new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
-                description, c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                List.of()
-        );
-    }
-
-    private CourseRes toCourseResFull(Course c) {
-        List<ChapterRes> chapters = c.getChapters().stream()
-                .sorted(Comparator.comparing(Chapter::getOrderIndex))
-                .map(ch -> new ChapterRes(
-                        ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(),
-                        ch.getLessons().stream()
-                                .sorted(Comparator.comparing(Lesson::getOrderIndex))
-                                .map(ls -> new LessonRes(
-                                        ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(),
-                                        ls.getSections().stream()
-                                                .sorted(Comparator.comparing(Section::getOrderIndex))
-                                                .map(this::toSectionResFull)
-                                                .collect(Collectors.toList())
-                                )).collect(Collectors.toList())
-                )).collect(Collectors.toList());
-
-        // Avoid loading description LOB field on PostgreSQL
-        boolean isPostgreSQL = DatabaseUtil.isPostgreSQLDatabase();
-        String description = isPostgreSQL ? null : c.getDescription();
-
-        return new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
-                description, c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                chapters
-        );
-    }
-
-    private CourseRes toCourseResWithChapters(Course c, List<Chapter> include) {
-        List<ChapterRes> chapters = include.stream()
-                .sorted(Comparator.comparing(Chapter::getOrderIndex))
-                .map(ch -> new ChapterRes(
-                        ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(),
-                        ch.getLessons().stream()
-                                .sorted(Comparator.comparing(Lesson::getOrderIndex))
-                                .map(this::toLessonResFull)
-                                .collect(Collectors.toList())
-                )).collect(Collectors.toList());
-
-        // Avoid loading description LOB field on PostgreSQL
-        boolean isPostgreSQL = DatabaseUtil.isPostgreSQLDatabase();
-        String description = isPostgreSQL ? null : c.getDescription();
-
-        return new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
-                description, c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                chapters
-        );
-    }
+    // Removed toCourseResLite, toCourseResFull, toCourseResWithChapters - not used
+    // Always use buildCourseResFromMetadata() with native query to avoid LOB issues
 
     private ChapterRes toChapterResShallow(Chapter ch) {
         return new ChapterRes(ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), List.of());
@@ -585,65 +594,57 @@ public class CourseService {
     // =========================
     // COURSE DETAIL (metadata only - avoids LOB fields)
     // =========================
+    /**
+     * Get course detail using native query (avoids LOB fields completely).
+     * Simple and clean implementation for Railway PostgreSQL.
+     */
     @Transactional(readOnly = true)
     public CourseRes getDetail(Long id, Long teacherUserId) {
-        // Always use native query to avoid LOB stream error
-        // Works for both PostgreSQL and SQL Server
-        var metadataOpt = courseRepo.findCourseMetadataById(id);
-        if (metadataOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-        }
+        // Check ownership and get metadata in one call
+        Object[] metadata = checkOwnership(id, teacherUserId);
         
-        Object[] metadata = metadataOpt.get();
-        
-        // Handle nested array case (PostgreSQL returns Object[] inside Object[])
-        Object[] actualMetadata = metadata;
-        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
-            actualMetadata = (Object[]) metadata[0];
-        }
-        
-        // Verify ownership - user_id is at index 11
-        if (actualMetadata.length < 12) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Invalid course metadata");
-        }
-        
-        Long courseUserId = safeExtractLong(actualMetadata[11]);
-        if (courseUserId == null || !courseUserId.equals(teacherUserId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
-        }
-        
-        // Build CourseRes from metadata (without description to avoid LOB)
-        return buildCourseResFromMetadata(actualMetadata);
+        // Build CourseRes from metadata (description is always null - no LOB loading)
+        return buildCourseResFromMetadata(metadata);
     }
     
     /**
      * Build CourseRes from native query metadata array.
+     * Simple and clean - no LOB fields, no complex logic.
      * Metadata array: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
      */
     private CourseRes buildCourseResFromMetadata(Object[] metadata) {
+        // Extract fields safely with null checks
         Long id = safeExtractLong(metadata[0]);
         String title = safeExtractString(metadata[1]);
         String slug = safeExtractString(metadata[2]);
         String subtitle = safeExtractString(metadata[3]);
-        
         JLPTLevel level = safeExtractEnum(metadata[4], JLPTLevel.class, JLPTLevel.N5);
         Long priceCents = safeExtractLong(metadata[5]);
         Long discountedPriceCents = safeExtractLong(metadata[6]);
         String currency = safeExtractString(metadata[7], "VND");
         Long coverAssetId = safeExtractLong(metadata[8]);
-        
         CourseStatus status = safeExtractEnum(metadata[9], CourseStatus.class, CourseStatus.DRAFT);
         Instant publishedAt = safeExtractInstant(metadata[10]);
         Long userId = safeExtractLong(metadata[11]);
         
-        return new CourseRes(
-                id, title, slug, subtitle,
-                null, // description = null (avoid LOB, can be loaded separately if needed)
-                level,
-                priceCents, discountedPriceCents, currency, coverAssetId,
-                status, publishedAt, userId,
-                Collections.emptyList() // Empty chapters list for metadata version
-        );
+        // Create CourseRes with description = null (never load LOB)
+        CourseRes result = new CourseRes();
+        result.setId(id);
+        result.setTitle(title);
+        result.setSlug(slug);
+        result.setSubtitle(subtitle);
+        result.setDescription(null); // Explicitly null - no LOB loading
+        result.setLevel(level);
+        result.setPriceCents(priceCents);
+        result.setDiscountedPriceCents(discountedPriceCents);
+        result.setCurrency(currency);
+        result.setCoverAssetId(coverAssetId);
+        result.setStatus(status);
+        result.setPublishedAt(publishedAt);
+        result.setUserId(userId);
+        result.setChapters(Collections.emptyList()); // Empty chapters for detail view
+        
+        return result;
     }
     
     // Helper methods for safe extraction

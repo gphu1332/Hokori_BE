@@ -39,11 +39,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleRuntimeException(
             RuntimeException ex, WebRequest request) {
         Map<String, Object> response = new HashMap<>();
-        response.put("message", ex.getMessage());
+        
+        // Handle LOB stream errors specifically
+        String message = ex.getMessage();
+        if (message != null && (message.contains("lob stream") || message.contains("LOB"))) {
+            response.put("message", "Unable to access lob stream");
+        } else {
+            response.put("message", message != null ? message : "An error occurred");
+        }
+        
         response.put("status", "error");
         response.put("timestamp", LocalDateTime.now());
         response.put("path", request.getDescription(false));
         
+        // Don't serialize exception details to avoid triggering LOB loading
         return ResponseEntity.badRequest().body(response);
     }
 

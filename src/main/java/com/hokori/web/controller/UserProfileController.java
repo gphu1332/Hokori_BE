@@ -166,23 +166,85 @@ public class UserProfileController {
                                     var roleInfoOpt = userRepository.findRoleInfoByEmail(email);
                                     if (roleInfoOpt.isPresent()) {
                                         Object[] roleData = roleInfoOpt.get();
+                                        
+                                        // Handle nested array case (PostgreSQL sometimes returns Object[] inside Object[])
+                                        Object[] actualRoleData = roleData;
+                                        if (roleData.length == 1 && roleData[0] instanceof Object[]) {
+                                            actualRoleData = (Object[]) roleData[0];
+                                            debugInfo.put("roleNestedArrayUnwrapped", true);
+                                            debugInfo.put("roleOuterLength", roleData.length);
+                                            debugInfo.put("roleInnerLength", actualRoleData.length);
+                                        }
+                                        
                                         Map<String, Object> roleInfo = new HashMap<>();
-                                        if (roleData[0] != null) {
-                                            roleInfo.put("roleId", roleData[0] instanceof Number ? ((Number) roleData[0]).longValue() : Long.parseLong(roleData[0].toString()));
+                                        
+                                        // Native query returns: [role_id, role_name, role_description]
+                                        // Safely extract roleId
+                                        if (actualRoleData.length > 0 && actualRoleData[0] != null) {
+                                            Object roleIdObj = actualRoleData[0];
+                                            try {
+                                                if (roleIdObj instanceof Number) {
+                                                    roleInfo.put("roleId", ((Number) roleIdObj).longValue());
+                                                } else if (roleIdObj instanceof Object[]) {
+                                                    // Handle double-nested array
+                                                    Object[] nestedRoleId = (Object[]) roleIdObj;
+                                                    if (nestedRoleId.length > 0 && nestedRoleId[0] instanceof Number) {
+                                                        roleInfo.put("roleId", ((Number) nestedRoleId[0]).longValue());
+                                                    } else if (nestedRoleId.length > 0) {
+                                                        roleInfo.put("roleId", Long.parseLong(nestedRoleId[0].toString()));
+                                                    }
+                                                } else {
+                                                    roleInfo.put("roleId", Long.parseLong(roleIdObj.toString()));
+                                                }
+                                            } catch (Exception ex) {
+                                                debugInfo.put("roleIdError", "Failed to parse roleId: " + roleIdObj + " (" + roleIdObj.getClass().getName() + ")");
+                                            }
                                         }
-                                        if (roleData[1] != null) {
-                                            roleInfo.put("roleName", roleData[1].toString());
+                                        
+                                        // Safely extract roleName
+                                        if (actualRoleData.length > 1 && actualRoleData[1] != null) {
+                                            Object roleNameObj = actualRoleData[1];
+                                            try {
+                                                if (roleNameObj instanceof Object[]) {
+                                                    // Handle nested array for roleName
+                                                    Object[] nestedRoleName = (Object[]) roleNameObj;
+                                                    if (nestedRoleName.length > 0) {
+                                                        roleInfo.put("roleName", nestedRoleName[0].toString());
+                                                    }
+                                                } else {
+                                                    roleInfo.put("roleName", roleNameObj.toString());
+                                                }
+                                            } catch (Exception ex) {
+                                                debugInfo.put("roleNameError", "Failed to parse roleName: " + roleNameObj + " (" + roleNameObj.getClass().getName() + ")");
+                                            }
                                         }
-                                        if (roleData.length > 2 && roleData[2] != null) {
-                                            roleInfo.put("description", roleData[2].toString());
+                                        
+                                        // Safely extract description
+                                        if (actualRoleData.length > 2 && actualRoleData[2] != null) {
+                                            Object descObj = actualRoleData[2];
+                                            try {
+                                                if (descObj instanceof Object[]) {
+                                                    Object[] nestedDesc = (Object[]) descObj;
+                                                    if (nestedDesc.length > 0) {
+                                                        roleInfo.put("description", nestedDesc[0].toString());
+                                                    }
+                                                } else {
+                                                    roleInfo.put("description", descObj.toString());
+                                                }
+                                            } catch (Exception ex) {
+                                                // Ignore description errors
+                                            }
                                         }
+                                        
                                         debugInfo.put("role", roleInfo);
+                                        debugInfo.put("roleQueryResultLength", actualRoleData.length);
                                     } else {
                                         debugInfo.put("role", "NULL - User has no role assigned in database");
                                     }
                                 } catch (Exception e) {
                                     debugInfo.put("role", "Error loading role: " + e.getMessage());
                                     debugInfo.put("roleError", e.getClass().getName());
+                                    e.printStackTrace();
                                 }
                             }
                         } else {
