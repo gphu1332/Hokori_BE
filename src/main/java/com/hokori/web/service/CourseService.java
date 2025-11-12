@@ -388,10 +388,19 @@ public class CourseService {
     // MAPPERS
     // =========================
 
+    /**
+     * Convert Course entity to CourseRes (lite version without chapters).
+     * NOTE: This method loads description field which is LOB - use with caution on PostgreSQL.
+     * For PostgreSQL, prefer using getDetail() which uses native query.
+     */
     private CourseRes toCourseResLite(Course c) {
+        // Check if PostgreSQL - if yes, avoid loading description
+        boolean isPostgreSQL = DatabaseUtil.isPostgreSQLDatabase();
+        String description = isPostgreSQL ? null : c.getDescription();
+        
         return new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
-                c.getDescription(), c.getLevel(),
+                description, c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 List.of()
@@ -484,123 +493,72 @@ public class CourseService {
         );
     }
 
-    // CourseService.java  (bổ sung vào class hiện tại)
-
     // =========================
-    // COURSE DETAIL (metadata only)
+    // COURSE DETAIL (metadata only - avoids LOB fields)
     // =========================
     @Transactional(readOnly = true)
     public CourseRes getDetail(Long id, Long teacherUserId) {
-        // Check if we're using PostgreSQL (which has LOB stream issues)
-        // SQL Server doesn't have this issue, so we can use entity directly
-        boolean isPostgreSQL = DatabaseUtil.isPostgreSQLDatabase();
-        
-        if (isPostgreSQL) {
-            // Use native query to avoid LOB stream error (PostgreSQL only)
-            var metadataOpt = courseRepo.findCourseMetadataById(id);
-            if (metadataOpt.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-            }
-            
-            Object[] metadata = metadataOpt.get();
-            
-            // Verify ownership
-            Long courseUserId = null;
-            Object userIdObj = metadata[11]; // user_id is at index 11
-            if (userIdObj instanceof Number) {
-                courseUserId = ((Number) userIdObj).longValue();
-            } else if (userIdObj != null) {
-                try {
-                    courseUserId = Long.parseLong(userIdObj.toString());
-                } catch (NumberFormatException e) {
-                    throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Invalid user_id in course");
-                }
-            }
-            
-            if (!Objects.equals(courseUserId, teacherUserId)) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
-            }
-            
-            // Build CourseRes from metadata (without description to avoid LOB)
-            return buildCourseResFromMetadata(metadata);
-        } else {
-            // SQL Server: Use entity directly (no LOB stream issues)
-            Course c = getOwned(id, teacherUserId);
-            return toCourseResLite(c);
+        // Always use native query to avoid LOB stream error
+        // Works for both PostgreSQL and SQL Server
+        var metadataOpt = courseRepo.findCourseMetadataById(id);
+        if (metadataOpt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
         }
+        
+        Object[] metadata = metadataOpt.get();
+        
+        // Handle nested array case (PostgreSQL returns Object[] inside Object[])
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+        
+        // Verify ownership - user_id is at index 11
+        if (actualMetadata.length < 12) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Invalid course metadata");
+        }
+        
+        Long courseUserId = safeExtractLong(actualMetadata[11]);
+        if (courseUserId == null || !courseUserId.equals(teacherUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
+        }
+        
+        // Build CourseRes from metadata (without description to avoid LOB)
+        return buildCourseResFromMetadata(actualMetadata);
     }
     
-    
+    /**
+     * Build CourseRes from native query metadata array.
+     * Metadata array: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
+     */
     private CourseRes buildCourseResFromMetadata(Object[] metadata) {
-        // [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
-        Long id = extractLong(metadata[0]);
-        String title = metadata[1] != null ? metadata[1].toString() : null;
-        String slug = metadata[2] != null ? metadata[2].toString() : null;
-        String subtitle = metadata[3] != null ? metadata[3].toString() : null;
+        Long id = safeExtractLong(metadata[0]);
+        String title = safeExtractString(metadata[1]);
+        String slug = safeExtractString(metadata[2]);
+        String subtitle = safeExtractString(metadata[3]);
         
-        // Level enum
-        com.hokori.web.Enum.JLPTLevel level = com.hokori.web.Enum.JLPTLevel.N5;
-        if (metadata[4] != null) {
-            try {
-                level = com.hokori.web.Enum.JLPTLevel.valueOf(metadata[4].toString().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                level = com.hokori.web.Enum.JLPTLevel.N5;
-            }
-        }
+        JLPTLevel level = safeExtractEnum(metadata[4], JLPTLevel.class, JLPTLevel.N5);
+        Long priceCents = safeExtractLong(metadata[5]);
+        Long discountedPriceCents = safeExtractLong(metadata[6]);
+        String currency = safeExtractString(metadata[7], "VND");
+        Long coverAssetId = safeExtractLong(metadata[8]);
         
-        Long priceCents = extractLong(metadata[5]);
-        Long discountedPriceCents = extractLong(metadata[6]);
-        String currency = metadata[7] != null ? metadata[7].toString() : "VND";
-        Long coverAssetId = extractLong(metadata[8]);
-        
-        // Status enum
-        com.hokori.web.Enum.CourseStatus status = com.hokori.web.Enum.CourseStatus.DRAFT;
-        if (metadata[9] != null) {
-            try {
-                status = com.hokori.web.Enum.CourseStatus.valueOf(metadata[9].toString().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                status = com.hokori.web.Enum.CourseStatus.DRAFT;
-            }
-        }
-        
-        // PublishedAt (Instant)
-        java.time.Instant publishedAt = null;
-        if (metadata[10] != null) {
-            try {
-                if (metadata[10] instanceof java.sql.Timestamp) {
-                    publishedAt = ((java.sql.Timestamp) metadata[10]).toInstant();
-                } else if (metadata[10] instanceof java.time.Instant) {
-                    publishedAt = (java.time.Instant) metadata[10];
-                } else {
-                    // Try to parse as string
-                    publishedAt = java.time.Instant.parse(metadata[10].toString());
-                }
-            } catch (Exception e) {
-                // Ignore, keep as null
-            }
-        }
-        
-        Long userId = extractLong(metadata[11]);
+        CourseStatus status = safeExtractEnum(metadata[9], CourseStatus.class, CourseStatus.DRAFT);
+        Instant publishedAt = safeExtractInstant(metadata[10]);
+        Long userId = safeExtractLong(metadata[11]);
         
         return new CourseRes(
-                id, 
-                title, 
-                slug, 
-                subtitle,
+                id, title, slug, subtitle,
                 null, // description = null (avoid LOB, can be loaded separately if needed)
                 level,
-                priceCents, 
-                discountedPriceCents, 
-                currency, 
-                coverAssetId,
-                status, 
-                publishedAt, 
-                userId,
-                Collections.emptyList() // Empty chapters list for lite version
+                priceCents, discountedPriceCents, currency, coverAssetId,
+                status, publishedAt, userId,
+                Collections.emptyList() // Empty chapters list for metadata version
         );
     }
     
-    private Long extractLong(Object obj) {
+    // Helper methods for safe extraction
+    private Long safeExtractLong(Object obj) {
         if (obj == null) return null;
         if (obj instanceof Number) {
             return ((Number) obj).longValue();
@@ -608,6 +566,38 @@ public class CourseService {
         try {
             return Long.parseLong(obj.toString());
         } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+    
+    private String safeExtractString(Object obj) {
+        return obj != null ? obj.toString() : null;
+    }
+    
+    private String safeExtractString(Object obj, String defaultValue) {
+        return obj != null ? obj.toString() : defaultValue;
+    }
+    
+    private <T extends Enum<T>> T safeExtractEnum(Object obj, Class<T> enumClass, T defaultValue) {
+        if (obj == null) return defaultValue;
+        try {
+            return Enum.valueOf(enumClass, obj.toString().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return defaultValue;
+        }
+    }
+    
+    private Instant safeExtractInstant(Object obj) {
+        if (obj == null) return null;
+        try {
+            if (obj instanceof java.sql.Timestamp) {
+                return ((java.sql.Timestamp) obj).toInstant();
+            } else if (obj instanceof Instant) {
+                return (Instant) obj;
+            } else {
+                return Instant.parse(obj.toString());
+            }
+        } catch (Exception e) {
             return null;
         }
     }
