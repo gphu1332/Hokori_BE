@@ -56,8 +56,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (jwtConfig.validateToken(jwtToken, email)) {
                 
                 try {
-                    // Get user from repository
-                    var userOpt = userRepository.findByEmail(email);
+                    // Get user from repository WITH role (using fetch join to avoid lazy loading issues)
+                    var userOpt = userRepository.findByEmailWithRole(email);
+                    if (userOpt.isEmpty()) {
+                        // Fallback to regular findByEmail if findByEmailWithRole not available
+                        userOpt = userRepository.findByEmail(email);
+                    }
+                    
                     if (userOpt.isPresent()) {
                         var user = userOpt.get();
                         
@@ -100,19 +105,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     .collect(Collectors.toList());
                             
                             if (authorities.isEmpty()) {
-                                logger.error("❌ User " + email + " has NO authorities! This will cause 403 errors!");
+                                logger.error("❌ User " + email + " has NO authorities! User will be authenticated but cannot access role-protected endpoints!");
+                                logger.error("   User role_id: " + (user.getRole() != null ? user.getRole().getId() : "null"));
+                                logger.error("   User role_name: " + (user.getRole() != null ? user.getRole().getRoleName() : "null"));
+                                // Still set authentication with empty authorities - allows authenticated() endpoints to work
+                                // But role-protected endpoints (hasRole) will fail
                             } else {
                                 logger.info("✅ User " + email + " authorities: " + authorities.stream()
                                         .map(a -> a.getAuthority())
                                         .collect(Collectors.joining(", ")));
                             }
 
+                            // IMPORTANT: Always set authentication, even with empty authorities
+                            // This allows endpoints with .authenticated() to work
+                            // But endpoints with hasRole() will fail if authorities are empty
                             UsernamePasswordAuthenticationToken authToken = 
                                     new UsernamePasswordAuthenticationToken(email, null, authorities);
                             
                             authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                             
                             SecurityContextHolder.getContext().setAuthentication(authToken);
+                            logger.debug("Authentication set for user: " + email + " with " + authorities.size() + " authorities");
                         }
                     }
                 } catch (Exception e) {
