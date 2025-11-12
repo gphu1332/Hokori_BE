@@ -63,11 +63,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 
                 try {
                     // Get user from repository WITH role (using fetch join to avoid lazy loading issues)
-                    var userOpt = userRepository.findByEmailWithRole(email);
-                    if (userOpt.isEmpty()) {
-                        logger.debug("findByEmailWithRole returned empty, trying findByEmail");
-                        // Fallback to regular findByEmail if findByEmailWithRole not available
+                    var userOpt = Optional.empty();
+                    try {
+                        userOpt = userRepository.findByEmailWithRole(email);
+                        logger.debug("findByEmailWithRole result: " + (userOpt.isPresent() ? "found" : "empty"));
+                    } catch (Exception e) {
+                        logger.warn("⚠️ findByEmailWithRole failed, falling back to findByEmail: " + e.getMessage());
+                        logger.debug("Exception details: ", e);
+                        // Fallback to regular findByEmail if findByEmailWithRole fails
                         userOpt = userRepository.findByEmail(email);
+                    }
+                    
+                    if (userOpt.isEmpty()) {
+                        logger.debug("findByEmail also returned empty, user not found for email: " + email);
                     }
                     
                     if (userOpt.isPresent()) {
@@ -189,7 +197,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         }
                     }
                 } catch (Exception e) {
-                    logger.error("Cannot set user authentication: {}", e);
+                    logger.error("❌ CRITICAL: Cannot set user authentication for email: " + email, e);
+                    logger.error("   Exception type: " + e.getClass().getName());
+                    logger.error("   Exception message: " + e.getMessage());
+                    if (e.getCause() != null) {
+                        logger.error("   Cause: " + e.getCause().getMessage());
+                    }
+                    // Print stack trace for debugging
+                    e.printStackTrace();
                 }
             }
         }
