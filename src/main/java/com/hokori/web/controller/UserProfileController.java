@@ -79,14 +79,15 @@ public class UserProfileController {
                 // Get user basic info from database (without LOB fields)
                 if (email != null) {
                     try {
-                        var basicInfoOpt = userRepository.findUserBasicInfoByEmail(email);
-                        if (basicInfoOpt.isPresent()) {
-                            Object[] info = basicInfoOpt.get();
+                        var statusOpt = userRepository.findUserActiveStatusByEmail(email);
+                        if (statusOpt.isPresent()) {
+                            Object[] status = statusOpt.get();
+                            // JPQL query returns: [id, isActive]
                             
                             // Safely extract userId
                             Long userId = null;
-                            if (info.length > 0 && info[0] != null) {
-                                Object userIdObj = info[0];
+                            if (status.length > 0 && status[0] != null) {
+                                Object userIdObj = status[0];
                                 try {
                                     if (userIdObj instanceof Number) {
                                         userId = ((Number) userIdObj).longValue();
@@ -100,8 +101,8 @@ public class UserProfileController {
                             
                             // Handle isActive
                             Boolean isActive = null;
-                            if (info.length > 2 && info[2] != null) {
-                                Object isActiveObj = info[2];
+                            if (status.length > 1 && status[1] != null) {
+                                Object isActiveObj = status[1];
                                 try {
                                     if (isActiveObj instanceof Boolean) {
                                         isActive = (Boolean) isActiveObj;
@@ -118,9 +119,9 @@ public class UserProfileController {
                             
                             debugInfo.put("userId", userId);
                             debugInfo.put("isActive", isActive);
-                            debugInfo.put("queryResultLength", info.length);
-                            if (info.length > 0) {
-                                debugInfo.put("queryResultTypes", java.util.Arrays.stream(info)
+                            debugInfo.put("queryResultLength", status.length);
+                            if (status.length > 0) {
+                                debugInfo.put("queryResultTypes", java.util.Arrays.stream(status)
                                     .map(obj -> obj != null ? obj.getClass().getName() : "null")
                                     .collect(java.util.stream.Collectors.toList()));
                             }
