@@ -179,6 +179,26 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- Exclude Lombok from final JAR (Lombok chỉ cần ở compile-time) -->
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <!-- Maven Compiler Plugin - Đảm bảo Lombok annotation processor hoạt động -->
+            <!-- Spring Boot parent POM đã quản lý Lombok version, không cần specify version -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <!-- Lombok annotation processor sẽ tự động được detect từ dependencies -->
+                </configuration>
             </plugin>
         </plugins>
     </build>
