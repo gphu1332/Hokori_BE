@@ -36,19 +36,26 @@ public class SecurityConfig {
 
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // Public endpoints - no authentication required
+                // ============================================
+                // PUBLIC ENDPOINTS - No authentication required
+                // ============================================
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/ai/**").permitAll()
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/api/hello").permitAll()
                 .requestMatchers("/api/echo").permitAll()
                 .requestMatchers("/api/debug/jwt").permitAll()
+                .requestMatchers("/api/courses/**").permitAll() // Public marketplace - published courses only
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/v3/api-docs/**").permitAll()
                 .requestMatchers("/swagger-ui/**").permitAll()
                 .requestMatchers("/swagger-ui.html").permitAll()
                 .requestMatchers("/api-docs/**").permitAll()
                 .requestMatchers("/health").permitAll()
+                
+                // ============================================
+                // ROLE-BASED ENDPOINTS
+                // ============================================
                 
                 // Admin-only endpoints
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
@@ -57,10 +64,24 @@ public class SecurityConfig {
                 .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN")
                 
                 // Teacher, Staff, and Admin endpoints
+                // Note: Individual methods may have stricter @PreAuthorize annotations
                 .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN")
+                
+                // Learner-only endpoints
+                .requestMatchers("/api/learner/**").hasRole("LEARNER")
+                
+                // ============================================
+                // AUTHENTICATED ENDPOINTS - Any authenticated user
+                // ============================================
                 
                 // User profile endpoints - authenticated users only
                 .requestMatchers("/api/profile/**").authenticated()
+                
+                // Cart endpoints - authenticated users only
+                .requestMatchers("/api/cart/**").authenticated()
+                
+                // Asset endpoints - authenticated users only (typically TEACHER/ADMIN but checked in service)
+                .requestMatchers("/api/assets/**").authenticated()
                 
                 // All other requests require authentication
                 .anyRequest().authenticated()
