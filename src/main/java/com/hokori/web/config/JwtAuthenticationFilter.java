@@ -124,9 +124,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 Object[] info = basicInfoOpt.get();
                                 Long userId = ((Number) info[0]).longValue();
                                 String userEmail = (String) info[1];
-                                Boolean isActive = (Boolean) info[2];
                                 
-                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive);
+                                // Handle different boolean types from PostgreSQL (boolean, bit, etc.)
+                                Boolean isActive = null;
+                                Object isActiveObj = info[2];
+                                if (isActiveObj instanceof Boolean) {
+                                    isActive = (Boolean) isActiveObj;
+                                } else if (isActiveObj instanceof Number) {
+                                    isActive = ((Number) isActiveObj).intValue() != 0;
+                                } else if (isActiveObj != null) {
+                                    // Try to parse as string
+                                    String isActiveStr = isActiveObj.toString().toLowerCase();
+                                    isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
+                                }
+                                
+                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive + " (raw=" + isActiveObj + ")");
                                 
                                 // Check if user is active
                                 if (isActive == null || !isActive) {
