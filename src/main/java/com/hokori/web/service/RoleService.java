@@ -15,7 +15,8 @@ public class RoleService {
     private RoleRepository roleRepository;
     
     /**
-     * Initialize default roles if they don't exist
+     * Initialize default roles if they don't exist.
+     * Ensures role names are normalized to uppercase for consistency (PostgreSQL is case-sensitive).
      */
     public void initializeDefaultRoles() {
         String[] roleNames = {"LEARNER", "TEACHER", "STAFF", "ADMIN"};
@@ -27,9 +28,13 @@ public class RoleService {
         };
         
         for (int i = 0; i < roleNames.length; i++) {
-            if (!roleRepository.findByRoleName(roleNames[i]).isPresent()) {
+            // Normalize role name to uppercase for consistency
+            String normalizedRoleName = roleNames[i].trim().toUpperCase();
+            
+            // Check if role exists (case-insensitive check via repository)
+            if (!roleRepository.findByRoleName(normalizedRoleName).isPresent()) {
                 Role role = new Role();
-                role.setRoleName(roleNames[i]);
+                role.setRoleName(normalizedRoleName); // Always store uppercase
                 role.setDescription(descriptions[i]);
                 roleRepository.save(role);
             }
@@ -44,10 +49,16 @@ public class RoleService {
     }
     
     /**
-     * Get role by name
+     * Get role by name (case-insensitive).
+     * Normalizes role name to uppercase before searching for consistency.
      */
     public Optional<Role> getRoleByName(String roleName) {
-        return roleRepository.findByRoleName(roleName);
+        if (roleName == null || roleName.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        // Normalize to uppercase for consistency (repository uses case-insensitive query)
+        String normalizedRoleName = roleName.trim().toUpperCase();
+        return roleRepository.findByRoleName(normalizedRoleName);
     }
     
     /**
@@ -58,11 +69,29 @@ public class RoleService {
     }
     
     /**
-     * Create a new role
+     * Create a new role.
+     * Normalizes role name to uppercase for consistency (PostgreSQL is case-sensitive).
+     * 
+     * @param roleName Role name (will be normalized to uppercase)
+     * @param description Role description
+     * @return Created role
+     * @throws IllegalArgumentException if role already exists
      */
     public Role createRole(String roleName, String description) {
+        if (roleName == null || roleName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Role name cannot be null or empty");
+        }
+        
+        // Normalize role name to uppercase for consistency
+        String normalizedRoleName = roleName.trim().toUpperCase();
+        
+        // Check if role already exists (case-insensitive)
+        if (roleRepository.findByRoleName(normalizedRoleName).isPresent()) {
+            throw new IllegalArgumentException("Role '" + normalizedRoleName + "' already exists");
+        }
+        
         Role role = new Role();
-        role.setRoleName(roleName);
+        role.setRoleName(normalizedRoleName); // Always store uppercase
         role.setDescription(description);
         return roleRepository.save(role);
     }
@@ -93,17 +122,24 @@ public class RoleService {
     }
     
     /**
-     * Check if role exists
+     * Check if role exists (case-insensitive).
+     * Normalizes role name to uppercase before checking for consistency.
      */
     public boolean roleExists(String roleName) {
-        return roleRepository.findByRoleName(roleName).isPresent();
+        if (roleName == null || roleName.trim().isEmpty()) {
+            return false;
+        }
+        // Normalize to uppercase for consistency (repository uses case-insensitive query)
+        String normalizedRoleName = roleName.trim().toUpperCase();
+        return roleRepository.findByRoleName(normalizedRoleName).isPresent();
     }
     
     /**
-     * Get default role for new users
+     * Get default role for new users.
+     * Always returns LEARNER role (uppercase, normalized).
      */
     public Role getDefaultRole() {
         return roleRepository.findByRoleName("LEARNER")
-                .orElseThrow(() -> new RuntimeException("Default role LEARNER not found"));
+                .orElseThrow(() -> new RuntimeException("Default role LEARNER not found. Please run initializeDefaultRoles() first."));
     }
 }
