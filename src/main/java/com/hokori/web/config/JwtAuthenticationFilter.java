@@ -137,20 +137,38 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             if (basicInfoOpt.isPresent()) {
                                 Object[] info = basicInfoOpt.get();
                                 
+                                // Log array length for debugging
+                                logger.debug("findUserBasicInfoByEmail returned array length: " + info.length);
+                                if (info.length > 0) {
+                                    logger.debug("Array types: " + java.util.Arrays.stream(info)
+                                        .map(obj -> obj != null ? obj.getClass().getName() : "null")
+                                        .collect(java.util.stream.Collectors.joining(", ")));
+                                }
+                                
                                 // Safely extract userId - handle different number types from PostgreSQL
                                 Long userId = null;
-                                Object userIdObj = info[0];
-                                if (userIdObj instanceof Number) {
-                                    userId = ((Number) userIdObj).longValue();
-                                } else if (userIdObj != null) {
-                                    try {
-                                        userId = Long.parseLong(userIdObj.toString());
-                                    } catch (NumberFormatException ex) {
-                                        logger.warn("⚠️ Could not parse userId: " + userIdObj);
+                                if (info.length > 0 && info[0] != null) {
+                                    Object userIdObj = info[0];
+                                    if (userIdObj instanceof Number) {
+                                        userId = ((Number) userIdObj).longValue();
+                                    } else {
+                                        try {
+                                            userId = Long.parseLong(userIdObj.toString());
+                                        } catch (NumberFormatException ex) {
+                                            logger.warn("⚠️ Could not parse userId: " + userIdObj);
+                                        }
                                     }
                                 }
                                 
-                                String userEmail = info[1] != null ? info[1].toString() : null;
+                                // Safely extract email - check array bounds
+                                String userEmail = null;
+                                if (info.length > 1 && info[1] != null) {
+                                    userEmail = info[1].toString();
+                                } else {
+                                    // Fallback: use email from principal if array doesn't have email
+                                    userEmail = email;
+                                    logger.debug("⚠️ Email not in query result, using principal email: " + email);
+                                }
                                 
                                 // Handle different boolean types from PostgreSQL (boolean, bit, etc.)
                                 Boolean isActive = null;
@@ -165,7 +183,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr) || "t".equals(isActiveStr);
                                 }
                                 
-                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive + " (raw types: id=" + (userIdObj != null ? userIdObj.getClass().getName() : "null") + ", isActive=" + (isActiveObj != null ? isActiveObj.getClass().getName() : "null") + ")");
+                                logger.debug("User basic info found: id=" + userId + ", email=" + userEmail + ", isActive=" + isActive + " (array length: " + info.length + ")");
                                 
                                 // Check if user is active
                                 if (isActive == null || !isActive) {
