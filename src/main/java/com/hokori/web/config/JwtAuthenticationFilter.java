@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -31,6 +32,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
                                     FilterChain filterChain) throws ServletException, IOException {
+        
+        String path = request.getRequestURI();
+        logger.debug("🔍 JWT Filter processing request: " + path);
         
         final String requestTokenHeader = request.getHeader("Authorization");
 
@@ -137,20 +141,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             }
                             
                             // Convert roles to authorities (normalize role name to uppercase)
-                            var authorities = roles.stream()
-                                    .map(role -> role.toUpperCase().trim()) // Normalize role name
-                                    .filter(role -> !role.isEmpty()) // Filter out empty roles
-                                    .map(role -> {
-                                        // Remove ROLE_ prefix if already present, then add it
-                                        String normalizedRole = role.startsWith("ROLE_") ? role.substring(5) : role;
-                                        return new SimpleGrantedAuthority("ROLE_" + normalizedRole);
-                                    })
-                                    .collect(Collectors.toList());
+                            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                            try {
+                                authorities = roles.stream()
+                                        .map(role -> role.toUpperCase().trim()) // Normalize role name
+                                        .filter(role -> !role.isEmpty()) // Filter out empty roles
+                                        .map(role -> {
+                                            // Remove ROLE_ prefix if already present, then add it
+                                            String normalizedRole = role.startsWith("ROLE_") ? role.substring(5) : role;
+                                            return new SimpleGrantedAuthority("ROLE_" + normalizedRole);
+                                        })
+                                        .collect(Collectors.toList());
+                            } catch (Exception e) {
+                                logger.error("❌ Error converting roles to authorities: " + e.getMessage(), e);
+                            }
                             
                             if (authorities.isEmpty()) {
                                 logger.error("❌ User " + email + " has NO authorities! User will be authenticated but cannot access role-protected endpoints!");
                                 logger.error("   User role_id: " + (user.getRole() != null ? user.getRole().getId() : "null"));
                                 logger.error("   User role_name: " + (user.getRole() != null ? user.getRole().getRoleName() : "null"));
+                                logger.error("   Roles extracted: " + roles);
                                 // Still set authentication with empty authorities - allows authenticated() endpoints to work
                                 // But role-protected endpoints (hasRole) will fail
                             } else {
@@ -162,13 +172,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             // IMPORTANT: Always set authentication, even with empty authorities
                             // This allows endpoints with .authenticated() to work
                             // But endpoints with hasRole() will fail if authorities are empty
-                            UsernamePasswordAuthenticationToken authToken = 
-                                    new UsernamePasswordAuthenticationToken(email, null, authorities);
-                            
-                            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                            
-                            SecurityContextHolder.getContext().setAuthentication(authToken);
-                            logger.debug("Authentication set for user: " + email + " with " + authorities.size() + " authorities");
+                            try {
+                                UsernamePasswordAuthenticationToken authToken = 
+                                        new UsernamePasswordAuthenticationToken(email, null, authorities);
+                                
+                                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                                
+                                SecurityContextHolder.getContext().setAuthentication(authToken);
+                                logger.info("✅ Authentication SET for user: " + email + " with " + authorities.size() + " authorities");
+                                logger.info("   Authorities: " + authorities.stream()
+                                        .map(a -> a.getAuthority())
+                                        .collect(Collectors.joining(", ")));
+                            } catch (Exception e) {
+                                logger.error("❌ CRITICAL: Failed to set authentication for user " + email + ": " + e.getMessage(), e);
+                            }
                         }
                     }
                 } catch (Exception e) {
