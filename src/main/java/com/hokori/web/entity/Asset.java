@@ -18,7 +18,7 @@ import java.time.Instant;
 @AllArgsConstructor
 @Builder
 @SQLDelete(sql = "UPDATE assets SET deleted_flag = 1 WHERE id = ?")
-@Where(clause = "deleted_flag = 0")
+@Where(clause = "deleted_flag = false")
 public class Asset {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)

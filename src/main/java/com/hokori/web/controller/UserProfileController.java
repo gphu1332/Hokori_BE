@@ -267,14 +267,14 @@ public class UserProfileController {
         return ResponseEntity.ok(ApiResponse.success("Teacher section updated", createProfileResponse(saved)));
     }
 
-    @PostMapping("/me/teacher/submit-approval")
-    @PreAuthorize("hasRole('TEACHER')")
-    @Operation(summary = "Submit teacher approval request")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> submitTeacherApproval() {
-        User u = currentUserService.getCurrentUserOrThrow();
-        Map<String, Object> result = userService.submitTeacherApproval(u.getId());
-        return ResponseEntity.ok(ApiResponse.success("Submitted", result));
-    }
+//    @PostMapping("/me/teacher/submit-approval")
+//    @PreAuthorize("hasRole('TEACHER')")
+//    @Operation(summary = "Submit teacher approval request")
+//    public ResponseEntity<ApiResponse<Map<String, Object>>> submitTeacherApproval() {
+//        User u = currentUserService.getCurrentUserOrThrow();
+//        Map<String, Object> result = userService.submitTeacherApproval(u.getId());
+//        return ResponseEntity.ok(ApiResponse.success("Submitted", result));
+//    }
 
 
 

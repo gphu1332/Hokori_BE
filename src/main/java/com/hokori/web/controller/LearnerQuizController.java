@@ -23,7 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 @Tag(name = "Learner: Quiz Play")
-@SecurityRequirement(name = "bearerAuth")
+@SecurityRequirement(name = "Bearer Authentication")
 public class LearnerQuizController {
 
     private final LearnerQuizService service;
