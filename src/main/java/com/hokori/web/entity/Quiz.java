@@ -1,5 +1,6 @@
 package com.hokori.web.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.hokori.web.entity.Lesson;
 import jakarta.persistence.*;
 import lombok.Getter; import lombok.Setter;
@@ -23,7 +24,9 @@ public class Quiz {
     private Lesson lesson;
 
     @Column(nullable=false) private String title;
-    @Column(columnDefinition = "TEXT") private String description;
+    @Column(columnDefinition = "TEXT")
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
+    private String description;
 
     @Column(name="total_questions", nullable=false)
     private Integer totalQuestions = 0;

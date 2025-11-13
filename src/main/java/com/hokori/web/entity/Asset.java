@@ -1,5 +1,6 @@
 package com.hokori.web.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.hokori.web.Enum.AssetStatus;
 import com.hokori.web.Enum.AssetType;
 import com.hokori.web.Enum.AssetVisibility;
@@ -37,6 +38,7 @@ public class Asset {
     private String title;
 
     @Column(columnDefinition = "TEXT")
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
     private String description;
 
     @Column(nullable = false, length = 255)

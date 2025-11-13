@@ -1,5 +1,6 @@
 package com.hokori.web.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter; import lombok.Setter;
 
@@ -22,6 +23,7 @@ public class Option {
     private Question question;
 
     @Column(columnDefinition="TEXT", nullable=false)
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
     private String content;
 
     @Column(name="is_correct", nullable=false)
