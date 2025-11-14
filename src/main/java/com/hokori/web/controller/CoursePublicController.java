@@ -3,6 +3,7 @@ package com.hokori.web.controller;
 import com.hokori.web.Enum.JLPTLevel;            // Đảm bảo đúng package enum của bạn
 import com.hokori.web.dto.course.CourseRes;
 import com.hokori.web.service.CourseService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RequestMapping("/api/courses")
 @RequiredArgsConstructor
 @Tag(name = "Public - Courses", description = "Danh sách và cấu trúc khoá học đã publish (marketplace)")
+@SecurityRequirements
 public class CoursePublicController {
 
     private final CourseService service;

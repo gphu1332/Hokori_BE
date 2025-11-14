@@ -3,6 +3,7 @@ package com.hokori.web.config;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;                     // 👈 thêm import này
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -19,48 +20,54 @@ public class SecurityConfig {
 
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
-    
+
     @Autowired
     private CorsConfigurationSource corsConfigurationSource;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(AbstractHttpConfigurer::disable)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource))
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(authz -> authz
-                // Public endpoints - no authentication required
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/ai/**").permitAll()
-                .requestMatchers("/api/health").permitAll()
-                .requestMatchers("/api/hello").permitAll()
-                .requestMatchers("/api/echo").permitAll()
-                .requestMatchers("/actuator/**").permitAll()
-                .requestMatchers("/v3/api-docs/**").permitAll()
-                .requestMatchers("/swagger-ui/**").permitAll()
-                .requestMatchers("/swagger-ui.html").permitAll()
-                .requestMatchers("/api-docs/**").permitAll()
-                .requestMatchers("/health").permitAll()
-                .requestMatchers("/files/**").permitAll()
-                
-                // Admin-only endpoints
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                
-                // Staff and Admin endpoints
-                .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN")
-                
-                // Teacher, Staff, and Admin endpoints
-                .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN")
-                
-                // User profile endpoints - authenticated users only
-                .requestMatchers("/api/profile/**").authenticated()
-                
-                // All other requests require authentication
-                .anyRequest().authenticated()
-            )
-            // Add JWT filter
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(authz -> authz
+                        // Public endpoints - no authentication required
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/ai/**").permitAll()
+                        .requestMatchers("/api/health").permitAll()
+                        .requestMatchers("/api/hello").permitAll()
+                        .requestMatchers("/api/echo").permitAll()
+                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/v3/api-docs/**").permitAll()
+                        .requestMatchers("/swagger-ui/**").permitAll()
+                        .requestMatchers("/swagger-ui.html").permitAll()
+                        .requestMatchers("/api-docs/**").permitAll()
+                        .requestMatchers("/health").permitAll()
+                        .requestMatchers("/files/**").permitAll()
+
+                        // 👇 Public marketplace courses (chỉ GET)
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/courses",
+                                "/api/courses/*/tree"
+                        ).permitAll()
+
+                        // Admin-only endpoints
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // Staff and Admin endpoints
+                        .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN")
+
+                        // Teacher, Staff, and Admin endpoints
+                        .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN")
+
+                        // User profile endpoints - authenticated users only
+                        .requestMatchers("/api/profile/**").authenticated()
+
+                        // All other requests require authentication
+                        .anyRequest().authenticated()
+                )
+                // Add JWT filter
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
