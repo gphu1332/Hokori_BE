@@ -7,3 +7,9 @@ spring:
       max-file-size: 512MB
       max-request-size: 512MB
 
+server:
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true

@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,6 +29,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/teacher/courses")
@@ -79,13 +83,27 @@ public class TeacherCourseController {
         return courseService.updateCourse(id, currentUserIdOrThrow(), req);
     }
 
-    @Operation(summary = "Xoá mềm khoá học", description = "Đặt deleted_flag=true (không xoá cứng).")
+    @Operation(
+            summary = "Xoá mềm khoá học",
+            description = "Đặt deleted_flag=true (không xoá cứng)."
+    )
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('TEACHER')")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
-        courseService.softDelete(id, currentUserIdOrThrow());
+    public ResponseEntity<Map<String, Object>> delete(@PathVariable Long id) {
+        // ID teacher hiện tại
+        Long teacherId = currentUserIdOrThrow();
+
+        // Xoá mềm
+        courseService.softDelete(id, teacherId);
+
+        // Trả JSON cho FE / Swagger thấy rõ
+        Map<String, Object> body = new HashMap<>();
+        body.put("courseId", id);
+        body.put("message", "Course deleted successfully");
+
+        return ResponseEntity.ok(body); // HTTP 200 + JSON
     }
+
 
     @Operation(summary = "Publish khoá học",
             description = """
