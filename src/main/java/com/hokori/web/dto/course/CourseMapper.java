@@ -17,7 +17,7 @@ public final class CourseMapper {
     public static CourseRes toRes(Course c) {
         return new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(), c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 mapChaptersDeepSafe(c) // an toàn với LAZY
         );
@@ -27,7 +27,7 @@ public final class CourseMapper {
     public static CourseRes toResOnlyTrial(Course c, Chapter trial) {
         return new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(), c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 List.of(toChapterResDeep(trial))
         );
@@ -94,7 +94,7 @@ public final class CourseMapper {
     public static ContentRes toContentRes(SectionsContent ct) {
         return new ContentRes(
                 ct.getId(), ct.getOrderIndex(), ct.getContentFormat(), ct.isPrimaryContent(),
-                ct.getAssetId(), ct.getRichText(), ct.getQuizId(), ct.getFlashcardSetId()
+                ct.getFilePath(), ct.getRichText(), ct.getQuizId(), ct.getFlashcardSetId()
         );
     }
 

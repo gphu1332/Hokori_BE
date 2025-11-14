@@ -10,7 +10,7 @@ public class ContentRes {
     private Integer orderIndex;
     private ContentFormat contentFormat;
     private boolean primaryContent;
-    private Long assetId;
+    private String filePath;
     private String richText;
     private Long quizId;
     private Long flashcardSetId;

@@ -13,5 +13,5 @@ public class CourseUpsertReq {
     private Long priceCents;
     private Long discountedPriceCents;
     private String currency;
-    private Long coverAssetId;
+    private String coverImagePath;
 }

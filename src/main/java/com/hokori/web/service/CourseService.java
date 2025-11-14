@@ -65,6 +65,12 @@ public class CourseService {
         return toCourseResLite(c);
     }
 
+    public CourseRes updateCoverImage(Long courseId, Long teacherUserId, String coverImagePath) {
+        Course c = getOwned(courseId, teacherUserId);  // đã check owner + deletedFlag
+        c.setCoverImagePath(coverImagePath);
+        return toCourseResLite(c);
+    }
+
     public void softDelete(Long id, Long teacherUserId) {
         getOwned(id, teacherUserId).setDeletedFlag(true);
     }
@@ -116,29 +122,49 @@ public class CourseService {
                     var contentDtos = new java.util.ArrayList<ContentRes>(contentEntities.size());
                     for (var ct : contentEntities) {
                         contentDtos.add(new ContentRes(
-                                ct.getId(), ct.getOrderIndex(), ct.getContentFormat(), ct.isPrimaryContent(),
-                                ct.getAssetId(), ct.getRichText(), ct.getQuizId(), ct.getFlashcardSetId()
+                                ct.getId(),
+                                ct.getOrderIndex(),
+                                ct.getContentFormat(),
+                                ct.isPrimaryContent(),
+                                ct.getFilePath(),          // CHANGED: dùng filePath thay assetId
+                                ct.getRichText(),
+                                ct.getQuizId(),
+                                ct.getFlashcardSetId()
                         ));
                     }
                     sectionDtos.add(new SectionRes(
-                            s.getId(), s.getTitle(), s.getOrderIndex(), s.getStudyType(), s.getFlashcardSetId(), contentDtos
+                            s.getId(),
+                            s.getTitle(),
+                            s.getOrderIndex(),
+                            s.getStudyType(),
+                            s.getFlashcardSetId(),
+                            contentDtos
                     ));
                 }
 
                 lessonDtos.add(new LessonRes(
-                        ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(), sectionDtos
+                        ls.getId(),
+                        ls.getTitle(),
+                        ls.getOrderIndex(),
+                        ls.getTotalDurationSec(),
+                        sectionDtos
                 ));
             }
 
             chapterDtos.add(new ChapterRes(
-                    ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), lessonDtos
+                    ch.getId(),
+                    ch.getTitle(),
+                    ch.getOrderIndex(),
+                    ch.getSummary(),
+                    lessonDtos
             ));
         }
 
         return new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
+                c.getCoverImagePath(),       // CHANGED: dùng coverImagePath
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 chapterDtos
         );
@@ -164,8 +190,10 @@ public class CourseService {
             if (status != null) ps.add(cb.equal(root.get("status"), status));
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase() + "%";
-                ps.add(cb.or(cb.like(cb.lower(root.get("title")), like),
-                        cb.like(cb.lower(root.get("slug")), like)));
+                ps.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("slug")), like)
+                ));
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
@@ -270,7 +298,7 @@ public class CourseService {
 
         ct.setContentFormat(r.getContentFormat() == null ? ContentFormat.ASSET : r.getContentFormat());
         ct.setPrimaryContent(r.isPrimaryContent());
-        ct.setAssetId(r.getAssetId());
+        ct.setFilePath(r.getFilePath());          // CHANGED: filePath
         ct.setRichText(r.getRichText());
         ct.setQuizId(r.getQuizId());
         ct.setFlashcardSetId(r.getFlashcardSetId());
@@ -306,7 +334,9 @@ public class CourseService {
     private void validateContentPayload(Section section, ContentUpsertReq r) {
         ContentFormat fmt = r.getContentFormat();
         if (fmt == null || fmt == ContentFormat.ASSET) {
-            if (r.getAssetId() == null) throw bad("assetId is required for ASSET");
+            // CHANGED: dùng filePath thay vì assetId
+            if (r.getFilePath() == null || r.getFilePath().isBlank())
+                throw bad("filePath is required for ASSET");
 
             if (section.getStudyType() == ContentType.GRAMMAR && r.isPrimaryContent()) {
                 long primaryCount = section.getContents().stream()
@@ -351,7 +381,7 @@ public class CourseService {
         c.setPriceCents(r.getPriceCents());
         c.setDiscountedPriceCents(r.getDiscountedPriceCents());
         if (r.getCurrency() != null) c.setCurrency(r.getCurrency());
-        c.setCoverAssetId(r.getCoverAssetId());
+        c.setCoverImagePath(r.getCoverImagePath());   // CHANGED
     }
 
     private String uniqueSlug(String title) {
@@ -391,7 +421,8 @@ public class CourseService {
         return new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
+                c.getCoverImagePath(),            // CHANGED
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 List.of()
         );
@@ -416,7 +447,8 @@ public class CourseService {
         return new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
+                c.getCoverImagePath(),            // CHANGED
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 chapters
         );
@@ -436,7 +468,8 @@ public class CourseService {
         return new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverAssetId(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
+                c.getCoverImagePath(),            // CHANGED
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 chapters
         );
@@ -476,14 +509,12 @@ public class CourseService {
                 c.getOrderIndex(),
                 c.getContentFormat(),
                 c.isPrimaryContent(),
-                c.getAssetId(),
+                c.getFilePath(),        // CHANGED: filePath thay assetId
                 c.getRichText(),
                 c.getQuizId(),
                 c.getFlashcardSetId()
         );
     }
-
-    // CourseService.java  (bổ sung vào class hiện tại)
 
     // =========================
     // COURSE DETAIL (metadata only)
@@ -620,7 +651,7 @@ public class CourseService {
 
         if (r.getContentFormat() != null) c.setContentFormat(r.getContentFormat());
         c.setPrimaryContent(r.isPrimaryContent());
-        c.setAssetId(r.getAssetId());
+        c.setFilePath(r.getFilePath());   // CHANGED: filePath
         c.setRichText(r.getRichText());
         c.setQuizId(r.getQuizId());
         c.setFlashcardSetId(r.getFlashcardSetId());

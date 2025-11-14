@@ -15,6 +15,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import com.hokori.web.service.FileStorageService;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 
 // Swagger / OpenAPI
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +39,7 @@ public class TeacherCourseController {
 
     private final CourseService courseService;
     private final UserRepository userRepository;
+    private final FileStorageService fileStorageService;
 
     /** Lấy userId (teacher) từ SecurityContext (principal=email). */
     private Long currentUserIdOrThrow() {
@@ -103,6 +107,30 @@ public class TeacherCourseController {
         return courseService.unpublish(id, currentUserIdOrThrow());
     }
 
+    @Operation(
+            summary = "Upload ảnh cover cho khoá học",
+            description = "Nhận file ảnh (multipart/form-data), lưu vào thư mục uploads/courses/{courseId}/cover và cập nhật coverImagePath cho Course."
+    )
+    @PostMapping(
+            value = "/{courseId}/cover-image",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @PreAuthorize("hasRole('TEACHER')")
+    public CourseRes uploadCoverImage(@PathVariable Long courseId,
+                                      @RequestParam("file") MultipartFile file) {
+        Long teacherId = currentUserIdOrThrow();
+
+        // thư mục con: courses/{courseId}/cover
+        String subFolder = "courses/" + courseId + "/cover";
+
+        // lưu file và lấy relative path (vd: courses/10/cover/uuid.png)
+        String relativePath = fileStorageService.store(file, subFolder);
+
+        // cập nhật coverImagePath trong Course
+        return courseService.updateCoverImage(courseId, teacherId, relativePath);
+    }
+
+
     @Operation(summary = "Danh sách khoá học của tôi",
             description = "Phân trang + tìm theo `title/slug` + lọc trạng thái.")
     @Parameters({
@@ -157,9 +185,41 @@ public class TeacherCourseController {
         return courseService.createSection(lessonId, currentUserIdOrThrow(), req);
     }
 
+    @Operation(
+            summary = "Upload file (video/audio/docx...) cho Section",
+            description = """
+                Nhận file binary (multipart/form-data), lưu vào thư mục uploads/sections/{sectionId},
+                trả về:
+                - filePath: đường dẫn tương đối trong hệ thống (dùng để set ContentUpsertReq.filePath)
+                - url: URL đầy đủ để FE có thể preview ("/files/" + filePath).
+                
+                Sau khi upload xong, FE tạo Content bằng API:
+                POST /api/teacher/courses/sections/{sectionId}/contents
+                với contentFormat = ASSET, filePath = giá trị trả về ở đây.
+                """
+    )
+    @PostMapping(
+            value = "/sections/{sectionId}/files",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @PreAuthorize("hasRole('TEACHER')")
+    public FileUploadRes uploadSectionFile(@PathVariable Long sectionId,
+                                           @RequestParam("file") MultipartFile file) {
+        // ép user phải đăng nhập + active (dùng luôn hàm có sẵn)
+        currentUserIdOrThrow();  // TODO: nếu muốn check đúng owner theo section thì đưa logic vào service
+
+        String subFolder = "sections/" + sectionId;
+        String relativePath = fileStorageService.store(file, subFolder);
+
+        String url = "/files/" + relativePath;  // FE tự prepend domain nếu cần
+        return new FileUploadRes(relativePath, url);
+    }
+
+
+
     @Operation(summary = "Thêm Content vào Section",
             description = """
-            - ASSET: require assetId; GRAMMAR chỉ có 1 primaryContent=true
+            - ASSET: require filePath (đường dẫn file đã upload); GRAMMAR chỉ có 1 primaryContent=true
             - RICH_TEXT: require richText; primaryContent=false
             - FLASHCARD_SET: chỉ cho VOCAB; require flashcardSetId
             - QUIZ_REF: require quizId
@@ -182,6 +242,9 @@ public class TeacherCourseController {
 
     // ====== DTO nhỏ cho PATCH reorder ======
     public record ReorderReq(Integer orderIndex) {}
+
+    // ====== DTO kết quả upload file ======
+    public record FileUploadRes(String filePath, String url) {}
 
     // ===== Chapter: update / delete / reorder =====
     @Operation(summary = "Cập nhật Chapter")

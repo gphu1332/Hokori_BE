@@ -11,7 +11,9 @@ import java.util.*;
 @Entity @Table(name="course")
 @Getter @Setter
 public class Course extends BaseEntity {
-    private Long coverAssetId;
+
+    @Column(name = "cover_image_path", length = 500)
+    private String coverImagePath;
 
     @Column(nullable=false) private String title;
     @Column(nullable=false, unique=true, length=180) private String slug;

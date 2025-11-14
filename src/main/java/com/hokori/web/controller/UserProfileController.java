@@ -3,6 +3,7 @@ package com.hokori.web.controller;
 import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.dto.*;
 import com.hokori.web.entity.User;
+import com.hokori.web.repository.UserRepository;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,6 +11,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,6 +21,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -36,6 +41,9 @@ public class UserProfileController {
     
     @Autowired
     private CurrentUserService currentUserService;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @GetMapping("/me")
     @Operation(summary = "Get current user profile", description = "Retrieve current authenticated user's profile")
@@ -267,16 +275,19 @@ public class UserProfileController {
         return ResponseEntity.ok(ApiResponse.success("Teacher section updated", createProfileResponse(saved)));
     }
 
-//    @PostMapping("/me/teacher/submit-approval")
-//    @PreAuthorize("hasRole('TEACHER')")
-//    @Operation(summary = "Submit teacher approval request")
-//    public ResponseEntity<ApiResponse<Map<String, Object>>> submitTeacherApproval() {
-//        User u = currentUserService.getCurrentUserOrThrow();
-//        Map<String, Object> result = userService.submitTeacherApproval(u.getId());
-//        return ResponseEntity.ok(ApiResponse.success("Submitted", result));
-//    }
+    @Operation(summary = "Upload avatar cho user hiện tại")
+    @PostMapping(
+            value = "/me/avatar",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @PreAuthorize("isAuthenticated()")
+    public AvatarUploadRes uploadAvatar(@RequestPart("file") MultipartFile file) {
+        Long userId = currentUserIdOrThrow();
+        String url = userService.uploadAvatar(userId, file);
+        return new AvatarUploadRes(url);
+    }
 
-
+    public record AvatarUploadRes(String avatarUrl) {}
 
     private Map<String, Object> createProfileResponse(User user) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -342,5 +353,24 @@ public class UserProfileController {
         m.put("status", "success");
         m.put("timestamp", java.time.LocalDateTime.now());
         return m;
+    }
+
+    private Long currentUserIdOrThrow() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getPrincipal() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
+        }
+
+        String email = String.valueOf(auth.getPrincipal());
+
+        User u = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED, "User not found"));
+
+        if (Boolean.FALSE.equals(u.getIsActive())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is disabled");
+        }
+
+        return u.getId();
     }
 }
