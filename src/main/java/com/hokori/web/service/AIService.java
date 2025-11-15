@@ -44,6 +44,9 @@ public class AIService {
     @Autowired(required = false)
     private TextToSpeechClient textToSpeechClient;
     
+    @Autowired(required = false)
+    private AIResponseFormatter responseFormatter;
+    
     /**
      * Translate text using Google Cloud Translation API
      */
@@ -65,8 +68,8 @@ public class AIService {
         
         try {
             logger.debug("Translating text: length={}, source={}, target={}", text.length(), sourceLanguage, targetLanguage);
-            // Default to English if target language not specified
-            String targetLang = targetLanguage != null && !targetLanguage.isEmpty() ? targetLanguage : "en";
+            // Default to Vietnamese for Vietnamese users learning Japanese
+            String targetLang = targetLanguage != null && !targetLanguage.isEmpty() ? targetLanguage : "vi";
             
             // Auto-detect source language if not specified
             Translation translation;
@@ -89,6 +92,11 @@ public class AIService {
             result.put("detectedSourceLanguage", translation.getSourceLanguage());
             result.put("targetLanguage", targetLang);
             result.put("confidence", translation.getTranslatedText().length() > 0 ? 1.0 : 0.0);
+            
+            // Format response for Vietnamese users
+            if (responseFormatter != null) {
+                result = responseFormatter.formatTranslationResponse(result);
+            }
             
             logger.debug("Translation successful: detectedLanguage={}", result.get("detectedSourceLanguage"));
             return result;
@@ -152,6 +160,11 @@ public class AIService {
                 sentences[i] = sentenceSentiment;
             }
             result.put("sentences", sentences);
+            
+            // Format response for Vietnamese users
+            if (responseFormatter != null) {
+                result = responseFormatter.formatSentimentResponse(result);
+            }
             
             logger.debug("Sentiment analysis successful: sentiment={}, score={}", result.get("sentiment"), result.get("score"));
             return result;
@@ -227,7 +240,7 @@ public class AIService {
             }
             ByteString audioBytesString = ByteString.copyFrom(audioBytes);
             
-            // Default to Japanese if language not specified
+            // Default to Japanese for Vietnamese users learning Japanese
             String langCode = language != null && !language.isEmpty() ? language : "ja-JP";
             
             // Configure recognition
@@ -265,6 +278,11 @@ public class AIService {
                 result.put("error", "No speech detected in audio");
             }
             
+            // Format response for Vietnamese users
+            if (responseFormatter != null) {
+                result = responseFormatter.formatSpeechToTextResponse(result);
+            }
+            
             logger.debug("Speech-to-text successful: transcript={}, confidence={}", 
                 result.get("transcript"), result.get("confidence"));
             return result;
@@ -297,7 +315,7 @@ public class AIService {
         
         try {
             logger.debug("Converting text to speech: textLength={}, voice={}, speed={}", text.length(), voice, speed);
-            // Default voice for Japanese
+            // Default voice for Japanese (for Vietnamese users learning Japanese)
             String voiceName = voice != null && !voice.isEmpty() ? voice : "ja-JP-Standard-A";
             
             // Parse speed (SSML speaking rate: 0.25 to 4.0)
@@ -343,6 +361,11 @@ public class AIService {
             result.put("audioFormat", "mp3");
             result.put("audioData", audioBase64);
             result.put("audioSize", audioBytes.length);
+            
+            // Format response for Vietnamese users
+            if (responseFormatter != null) {
+                result = responseFormatter.formatTextToSpeechResponse(result);
+            }
             
             logger.debug("Text-to-speech successful: audioSize={}", result.get("audioSize"));
             return result;

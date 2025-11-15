@@ -28,6 +28,9 @@ public class AIController {
 
     @Autowired
     private AIService aiService;
+    
+    @Autowired(required = false)
+    private com.hokori.web.service.AIResponseFormatter responseFormatter;
 
     @PostMapping("/translate")
     @Operation(summary = "Translate text", description = "Translate text using Google Cloud Translation API")
@@ -152,5 +155,35 @@ public class AIController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> healthCheck() {
         Map<String, Object> healthStatus = aiService.getHealthStatus();
         return ResponseEntity.ok(ApiResponse.success("AI services health check", healthStatus));
+    }
+    
+    @GetMapping("/defaults")
+    @Operation(summary = "Get default settings for Vietnamese users", description = "Get default language and voice settings optimized for Vietnamese users learning Japanese")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getDefaultSettings() {
+        Map<String, Object> defaults = new java.util.HashMap<>();
+        
+        if (responseFormatter != null) {
+            defaults.putAll(responseFormatter.getDefaultLanguageSettings());
+        } else {
+            // Fallback defaults
+            defaults.put("nativeLanguage", "vi");
+            defaults.put("learningLanguage", "ja");
+            defaults.put("translationSource", "ja");
+            defaults.put("translationTarget", "vi");
+            defaults.put("textToSpeechVoice", "ja-JP-Standard-A");
+            defaults.put("speechToTextLanguage", "ja-JP");
+        }
+        
+        // Add business rules
+        Map<String, Object> businessRules = new java.util.HashMap<>();
+        businessRules.put("targetAudience", "Vietnamese users learning Japanese");
+        businessRules.put("defaultTranslationDirection", "Japanese → Vietnamese");
+        businessRules.put("supportedLanguages", java.util.Arrays.asList("ja", "vi", "en"));
+        businessRules.put("recommendedVoices", java.util.Arrays.asList(
+            "ja-JP-Standard-A", "ja-JP-Standard-B", "ja-JP-Standard-C", "ja-JP-Standard-D"
+        ));
+        defaults.put("businessRules", businessRules);
+        
+        return ResponseEntity.ok(ApiResponse.success("Default settings for Vietnamese users", defaults));
     }
 }
