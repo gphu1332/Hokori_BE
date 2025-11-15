@@ -100,11 +100,26 @@ public class GoogleCloudConfig {
     
     private String buildGoogleCloudJsonFromEnv() {
         // Escape JSON string properly
-        String escapedPrivateKey = privateKey != null ? 
-            privateKey.replace("\\", "\\\\")
+        // Handle both cases: Railway may keep \n as literal or convert to actual newline
+        String escapedPrivateKey = "";
+        if (privateKey != null) {
+            String normalizedKey = privateKey;
+            
+            // Check if it contains actual newlines (Railway converted \n to real newline)
+            if (privateKey.contains("\n") || privateKey.contains("\r")) {
+                // Already has actual newlines, use as-is
+                normalizedKey = privateKey;
+            } else if (privateKey.contains("\\n")) {
+                // Contains literal \n, convert to actual newline
+                normalizedKey = privateKey.replace("\\n", "\n").replace("\\r", "\r");
+            }
+            
+            // Then escape for JSON: convert actual newlines to \n for JSON
+            escapedPrivateKey = normalizedKey.replace("\\", "\\\\")
                      .replace("\"", "\\\"")
                      .replace("\n", "\\n")
-                     .replace("\r", "\\r") : "";
+                     .replace("\r", "\\r");
+        }
         
         return String.format(
             "{\n" +
