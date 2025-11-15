@@ -6,9 +6,13 @@ import com.google.cloud.texttospeech.v1.*;
 import com.google.cloud.translate.Translate;
 import com.google.cloud.translate.Translation;
 import com.google.protobuf.ByteString;
+import com.hokori.web.exception.AIServiceException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.Base64;
 import java.util.HashMap;
@@ -19,6 +23,8 @@ import java.util.Map;
  */
 @Service
 public class AIService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(AIService.class);
     
     @Value("${google.cloud.project-id:hokori-web}")
     private String projectId;
@@ -43,10 +49,22 @@ public class AIService {
      */
     public Map<String, Object> translateText(String text, String sourceLanguage, String targetLanguage) {
         if (!googleCloudEnabled || translateClient == null) {
-            throw new RuntimeException("Google Cloud Translation API is not enabled or not configured. Please enable it in application properties.");
+            throw new AIServiceException("Translation", 
+                "Google Cloud Translation API is not enabled or not configured. Please enable it in application properties.",
+                "TRANSLATION_SERVICE_DISABLED");
+        }
+        
+        // Input validation
+        if (!StringUtils.hasText(text)) {
+            throw new AIServiceException("Translation", "Text cannot be empty", "INVALID_INPUT");
+        }
+        
+        if (text.length() > 5000) {
+            throw new AIServiceException("Translation", "Text exceeds maximum length of 5000 characters", "INVALID_INPUT");
         }
         
         try {
+            logger.debug("Translating text: length={}, source={}, target={}", text.length(), sourceLanguage, targetLanguage);
             // Default to English if target language not specified
             String targetLang = targetLanguage != null && !targetLanguage.isEmpty() ? targetLanguage : "en";
             
@@ -72,9 +90,13 @@ public class AIService {
             result.put("targetLanguage", targetLang);
             result.put("confidence", translation.getTranslatedText().length() > 0 ? 1.0 : 0.0);
             
+            logger.debug("Translation successful: detectedLanguage={}", result.get("detectedSourceLanguage"));
             return result;
+        } catch (AIServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Translation failed: " + e.getMessage(), e);
+            logger.error("Translation API error", e);
+            throw new AIServiceException("Translation", "Translation failed: " + e.getMessage(), e);
         }
     }
     
@@ -83,10 +105,22 @@ public class AIService {
      */
     public Map<String, Object> analyzeSentiment(String text) {
         if (!googleCloudEnabled || languageServiceClient == null) {
-            throw new RuntimeException("Google Cloud Natural Language API is not enabled or not configured. Please enable it in application properties.");
+            throw new AIServiceException("Sentiment Analysis", 
+                "Google Cloud Natural Language API is not enabled or not configured. Please enable it in application properties.",
+                "SENTIMENT_SERVICE_DISABLED");
+        }
+        
+        // Input validation
+        if (!StringUtils.hasText(text)) {
+            throw new AIServiceException("Sentiment Analysis", "Text cannot be empty", "INVALID_INPUT");
+        }
+        
+        if (text.length() > 10000) {
+            throw new AIServiceException("Sentiment Analysis", "Text exceeds maximum length of 10000 characters", "INVALID_INPUT");
         }
         
         try {
+            logger.debug("Analyzing sentiment: textLength={}", text.length());
             Document doc = Document.newBuilder()
                 .setContent(text)
                 .setType(Document.Type.PLAIN_TEXT)
@@ -119,9 +153,13 @@ public class AIService {
             }
             result.put("sentences", sentences);
             
+            logger.debug("Sentiment analysis successful: sentiment={}, score={}", result.get("sentiment"), result.get("score"));
             return result;
+        } catch (AIServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Sentiment analysis failed: " + e.getMessage(), e);
+            logger.error("Sentiment analysis API error", e);
+            throw new AIServiceException("Sentiment Analysis", "Sentiment analysis failed: " + e.getMessage(), e);
         }
     }
     
@@ -130,12 +168,20 @@ public class AIService {
      */
     public Map<String, Object> generateContent(String prompt, String contentType) {
         if (!googleCloudEnabled) {
-            throw new RuntimeException("Google Cloud AI is not enabled. Please enable it in application properties.");
+            throw new AIServiceException("Content Generation", 
+                "Google Cloud AI is not enabled. Please enable it in application properties.",
+                "CONTENT_GENERATION_SERVICE_DISABLED");
+        }
+        
+        // Input validation
+        if (!StringUtils.hasText(prompt)) {
+            throw new AIServiceException("Content Generation", "Prompt cannot be empty", "INVALID_INPUT");
         }
         
         // For now, we'll use sentiment analysis as a placeholder
         // In the future, this can be extended with Vertex AI for content generation
         try {
+            logger.debug("Generating content: contentType={}, promptLength={}", contentType, prompt.length());
             Map<String, Object> sentimentResult = analyzeSentiment(prompt);
             
             Map<String, Object> result = new HashMap<>();
@@ -144,9 +190,13 @@ public class AIService {
             result.put("generatedContent", "Content generation feature is under development. Currently analyzing sentiment: " + sentimentResult.get("sentiment"));
             result.put("note", "This endpoint will use Vertex AI for content generation in future updates.");
             
+            logger.debug("Content generation successful: contentType={}", contentType);
             return result;
+        } catch (AIServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Content generation failed: " + e.getMessage(), e);
+            logger.error("Content generation API error", e);
+            throw new AIServiceException("Content Generation", "Content generation failed: " + e.getMessage(), e);
         }
     }
     
@@ -155,12 +205,26 @@ public class AIService {
      */
     public Map<String, Object> speechToText(String audioData, String language) {
         if (!googleCloudEnabled || speechClient == null) {
-            throw new RuntimeException("Google Cloud Speech-to-Text API is not enabled or not configured. Please enable it in application properties.");
+            throw new AIServiceException("Speech-to-Text", 
+                "Google Cloud Speech-to-Text API is not enabled or not configured. Please enable it in application properties.",
+                "SPEECH_TO_TEXT_SERVICE_DISABLED");
+        }
+        
+        // Input validation
+        if (!StringUtils.hasText(audioData)) {
+            throw new AIServiceException("Speech-to-Text", "Audio data cannot be empty", "INVALID_INPUT");
         }
         
         try {
+            logger.debug("Converting speech to text: language={}, audioDataLength={}", language, audioData.length());
+            
             // Decode base64 audio data
-            byte[] audioBytes = Base64.getDecoder().decode(audioData);
+            byte[] audioBytes;
+            try {
+                audioBytes = Base64.getDecoder().decode(audioData);
+            } catch (IllegalArgumentException e) {
+                throw new AIServiceException("Speech-to-Text", "Invalid base64 audio data", "INVALID_INPUT");
+            }
             ByteString audioBytesString = ByteString.copyFrom(audioBytes);
             
             // Default to Japanese if language not specified
@@ -201,9 +265,14 @@ public class AIService {
                 result.put("error", "No speech detected in audio");
             }
             
+            logger.debug("Speech-to-text successful: transcript={}, confidence={}", 
+                result.get("transcript"), result.get("confidence"));
             return result;
+        } catch (AIServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Speech-to-text conversion failed: " + e.getMessage(), e);
+            logger.error("Speech-to-text API error", e);
+            throw new AIServiceException("Speech-to-Text", "Speech-to-text conversion failed: " + e.getMessage(), e);
         }
     }
     
@@ -212,10 +281,22 @@ public class AIService {
      */
     public Map<String, Object> textToSpeech(String text, String voice, String speed) {
         if (!googleCloudEnabled || textToSpeechClient == null) {
-            throw new RuntimeException("Google Cloud Text-to-Speech API is not enabled or not configured. Please enable it in application properties.");
+            throw new AIServiceException("Text-to-Speech", 
+                "Google Cloud Text-to-Speech API is not enabled or not configured. Please enable it in application properties.",
+                "TEXT_TO_SPEECH_SERVICE_DISABLED");
+        }
+        
+        // Input validation
+        if (!StringUtils.hasText(text)) {
+            throw new AIServiceException("Text-to-Speech", "Text cannot be empty", "INVALID_INPUT");
+        }
+        
+        if (text.length() > 5000) {
+            throw new AIServiceException("Text-to-Speech", "Text exceeds maximum length of 5000 characters", "INVALID_INPUT");
         }
         
         try {
+            logger.debug("Converting text to speech: textLength={}, voice={}, speed={}", text.length(), voice, speed);
             // Default voice for Japanese
             String voiceName = voice != null && !voice.isEmpty() ? voice : "ja-JP-Standard-A";
             
@@ -263,9 +344,13 @@ public class AIService {
             result.put("audioData", audioBase64);
             result.put("audioSize", audioBytes.length);
             
+            logger.debug("Text-to-speech successful: audioSize={}", result.get("audioSize"));
             return result;
+        } catch (AIServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Text-to-speech conversion failed: " + e.getMessage(), e);
+            logger.error("Text-to-speech API error", e);
+            throw new AIServiceException("Text-to-Speech", "Text-to-speech conversion failed: " + e.getMessage(), e);
         }
     }
     
