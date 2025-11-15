@@ -4,10 +4,12 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.translate.Translate;
 import com.google.cloud.translate.TranslateOptions;
 import com.google.cloud.language.v1.LanguageServiceClient;
+import com.google.cloud.language.v1.LanguageServiceSettings;
 import com.google.cloud.speech.v1.SpeechClient;
 import com.google.cloud.speech.v1.SpeechSettings;
 import com.google.cloud.texttospeech.v1.TextToSpeechClient;
 import com.google.cloud.texttospeech.v1.TextToSpeechSettings;
+import com.google.api.gax.core.FixedCredentialsProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -176,9 +178,14 @@ public class GoogleCloudConfig {
             return null;
         }
         try {
-            // LanguageServiceClient will use default credentials from environment
-            // or GOOGLE_APPLICATION_CREDENTIALS environment variable
-            LanguageServiceClient client = LanguageServiceClient.create();
+            GoogleCredentials credentials = loadCredentials();
+            FixedCredentialsProvider credentialsProvider = FixedCredentialsProvider.create(credentials);
+            
+            LanguageServiceSettings settings = LanguageServiceSettings.newBuilder()
+                .setCredentialsProvider(credentialsProvider)
+                .build();
+            
+            LanguageServiceClient client = LanguageServiceClient.create(settings);
             System.out.println("✅ Cloud Natural Language API client initialized");
             return client;
         } catch (Exception e) {
