@@ -182,6 +182,10 @@ public class User {
     @Column(name = "last_payout_date")
     private LocalDate lastPayoutDate;
 
+    @Column(name = "wallet_balance", nullable = false)
+    private Long walletBalance = 0L;
+
+
     // ===== Audit =====
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;
@@ -225,6 +229,8 @@ public class User {
     public Long getRoleId() {
         return role != null ? role.getId() : null;
     }
+
+
 
     // ===== Audit hooks =====
     @PrePersist
