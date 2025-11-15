@@ -23,7 +23,7 @@ jwt.expiration=86400000
 
 # Google Cloud AI configuration for development
 google.cloud.enabled=true
-google.cloud.project-id=capable-sphinx-475210-a6
+google.cloud.project-id=hokori-web
 google.cloud.credentials.path=classpath:google-cloud-service-account.json
 
 # Logging configuration for development
