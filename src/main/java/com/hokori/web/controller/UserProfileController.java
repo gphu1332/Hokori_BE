@@ -96,9 +96,6 @@ public class UserProfileController {
             if (profileData.getPhoneNumber() != null) {
                 currentUser.setPhoneNumber(profileData.getPhoneNumber());
             }
-            if (profileData.getCountry() != null) {
-                currentUser.setCountry(profileData.getCountry());
-            }
             
             User updatedUser = userService.updateUser(currentUser);
             Map<String, Object> response = createProfileResponse(updatedUser);
@@ -131,9 +128,6 @@ public class UserProfileController {
             }
             if (profileData.containsKey("phoneNumber")) {
                 user.setPhoneNumber((String) profileData.get("phoneNumber"));
-            }
-            if (profileData.containsKey("country")) {
-                user.setCountry((String) profileData.get("country"));
             }
 
             User updatedUser = userService.updateUser(user);
@@ -256,16 +250,8 @@ public class UserProfileController {
 
         if (req.getYearsOfExperience()!=null) u.setYearsOfExperience(req.getYearsOfExperience());
         if (req.getBio()!=null) u.setBio(req.getBio());
-        if (req.getTeachingStyles()!=null) u.setTeachingStyles(req.getTeachingStyles());
-
         if (req.getWebsiteUrl()!=null) u.setWebsiteUrl(req.getWebsiteUrl());
-        if (req.getFacebook()!=null) u.setFacebook(req.getFacebook());
-        if (req.getInstagram()!=null) u.setInstagram(req.getInstagram());
         if (req.getLinkedin()!=null) u.setLinkedin(req.getLinkedin());
-        if (req.getTiktok()!=null) u.setTiktok(req.getTiktok());
-        if (req.getX()!=null) u.setX(req.getX());
-        if (req.getYoutube()!=null) u.setYoutube(req.getYoutube());
-
         if (req.getBankAccountNumber()!=null) u.setBankAccountNumber(req.getBankAccountNumber());
         if (req.getBankAccountName()!=null) u.setBankAccountName(req.getBankAccountName());
         if (req.getBankName()!=null) u.setBankName(req.getBankName());
@@ -298,7 +284,6 @@ public class UserProfileController {
         m.put("displayName", user.getDisplayName());
         m.put("avatarUrl", user.getAvatarUrl());
         m.put("phoneNumber", user.getPhoneNumber());
-        m.put("country", user.getCountry());
         m.put("isActive", user.getIsActive());
         m.put("isVerified", user.getIsVerified());
         m.put("lastLoginAt", user.getLastLoginAt());
@@ -330,15 +315,9 @@ public class UserProfileController {
 
             t.put("yearsOfExperience", user.getYearsOfExperience());
             t.put("bio", user.getBio());
-            t.put("teachingStyles", user.getTeachingStyles());
 
             t.put("websiteUrl", user.getWebsiteUrl());
-            t.put("facebook", user.getFacebook());
-            t.put("instagram", user.getInstagram());
             t.put("linkedin", user.getLinkedin());
-            t.put("tiktok", user.getTiktok());
-            t.put("x", user.getX());
-            t.put("youtube", user.getYoutube());
 
             t.put("bankAccountNumber", user.getBankAccountNumber());
             t.put("bankAccountName", user.getBankAccountName());
