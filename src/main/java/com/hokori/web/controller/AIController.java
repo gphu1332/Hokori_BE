@@ -6,7 +6,10 @@ import com.hokori.web.dto.SentimentAnalysisRequest;
 import com.hokori.web.dto.ContentGenerationRequest;
 import com.hokori.web.dto.SpeechToTextRequest;
 import com.hokori.web.dto.TextToSpeechRequest;
+import com.hokori.web.dto.KaiwaPracticeRequest;
 import com.hokori.web.service.AIService;
+import com.hokori.web.service.SpeakingPracticeService;
+import com.hokori.web.service.KaiwaSentenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -28,6 +31,12 @@ public class AIController {
 
     @Autowired
     private AIService aiService;
+    
+    @Autowired(required = false)
+    private SpeakingPracticeService speakingPracticeService;
+    
+    @Autowired(required = false)
+    private KaiwaSentenceService kaiwaSentenceService;
     
     @Autowired(required = false)
     private com.hokori.web.service.AIResponseFormatter responseFormatter;
@@ -157,6 +166,109 @@ public class AIController {
         return ResponseEntity.ok(ApiResponse.success("AI services health check", healthStatus));
     }
     
+    @PostMapping("/kaiwa-practice")
+    @Operation(summary = "Kaiwa practice", description = "Practice Japanese conversation by comparing pronunciation with target text")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> practiceKaiwa(
+            @Valid @RequestBody KaiwaPracticeRequest request) {
+        logger.info("Kaiwa practice request: targetTextLength={}, audioDataLength={}, language={}, level={}", 
+            request.getTargetText() != null ? request.getTargetText().length() : 0,
+            request.getAudioData() != null ? request.getAudioData().length() : 0,
+            request.getLanguage(),
+            request.getLevel());
+        
+        try {
+            if (!request.isValidAudioFormat()) {
+                return ResponseEntity.ok(ApiResponse.error("Invalid audio format. Valid formats: wav, mp3, flac, ogg"));
+            }
+            
+            if (!request.isValidLevel()) {
+                return ResponseEntity.ok(ApiResponse.error("Invalid JLPT level. Valid levels: N5, N4, N3, N2, N1"));
+            }
+            
+            if (speakingPracticeService == null) {
+                return ResponseEntity.ok(ApiResponse.error("Speaking practice service is not available"));
+            }
+            
+            Map<String, Object> practiceResult = speakingPracticeService.practiceKaiwa(
+                request.getTargetText(),
+                request.getAudioData(),
+                request.getLanguage(),
+                request.getLevel()
+            );
+            
+            logger.debug("Kaiwa practice successful: overallScore={}, accuracyScore={}", 
+                practiceResult.get("overallScore"), practiceResult.get("accuracyScore"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Kaiwa practice completed", practiceResult));
+        } catch (Exception e) {
+            logger.error("Kaiwa practice failed", e);
+            return ResponseEntity.ok(ApiResponse.error("Kaiwa practice failed: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/kaiwa-recommendations/{level}")
+    @Operation(summary = "Get kaiwa practice recommendations by JLPT level", description = "Get recommended settings (speed, thresholds) for kaiwa practice based on JLPT level")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getKaiwaRecommendations(
+            @PathVariable String level) {
+        logger.info("Getting kaiwa recommendations for level: {}", level);
+        
+        if (speakingPracticeService == null) {
+            return ResponseEntity.ok(ApiResponse.error("Speaking practice service is not available"));
+        }
+        
+        Map<String, Object> recommendations = new java.util.HashMap<>();
+        recommendations.put("level", level);
+        recommendations.put("recommendedSpeed", speakingPracticeService.getRecommendedSpeed(level));
+        recommendations.put("recommendedSpeakingRate", speakingPracticeService.getRecommendedSpeakingRate(level));
+        
+        // Add level info
+        Map<String, Object> levelInfo = new java.util.HashMap<>();
+        levelInfo.put("level", level);
+        levelInfo.put("description", "Recommended settings for " + level + " level practice");
+        recommendations.put("levelInfo", levelInfo);
+        
+        return ResponseEntity.ok(ApiResponse.success("Kaiwa recommendations for " + level, recommendations));
+    }
+    
+    @GetMapping("/kaiwa-sentences/{level}")
+    @Operation(summary = "Get suggested sentences for kaiwa practice", description = "Get list of suggested Japanese sentences for practice based on JLPT level")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getSuggestedSentences(
+            @PathVariable String level) {
+        logger.info("Getting suggested sentences for level: {}", level);
+        
+        if (kaiwaSentenceService == null) {
+            return ResponseEntity.ok(ApiResponse.error("Kaiwa sentence service is not available"));
+        }
+        
+        List<Map<String, Object>> sentences = kaiwaSentenceService.getSuggestedSentences(level);
+        
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("level", level);
+        result.put("sentences", sentences);
+        result.put("count", sentences.size());
+        
+        return ResponseEntity.ok(ApiResponse.success("Suggested sentences for " + level, result));
+    }
+    
+    @GetMapping("/kaiwa-sentences/{level}/random")
+    @Operation(summary = "Get random sentence for kaiwa practice", description = "Get a random Japanese sentence for practice based on JLPT level")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getRandomSentence(
+            @PathVariable String level) {
+        logger.info("Getting random sentence for level: {}", level);
+        
+        if (kaiwaSentenceService == null) {
+            return ResponseEntity.ok(ApiResponse.error("Kaiwa sentence service is not available"));
+        }
+        
+        Map<String, Object> sentence = kaiwaSentenceService.getRandomSentence(level);
+        
+        if (sentence == null) {
+            return ResponseEntity.ok(ApiResponse.error("No sentences available for level " + level));
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success("Random sentence for " + level, sentence));
+    }
+
     @GetMapping("/defaults")
     @Operation(summary = "Get default settings for Vietnamese users", description = "Get default language and voice settings optimized for Vietnamese users learning Japanese")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getDefaultSettings() {

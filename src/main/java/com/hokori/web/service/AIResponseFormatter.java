@@ -146,6 +146,46 @@ public class AIResponseFormatter {
     }
     
     /**
+     * Format kaiwa practice response for Vietnamese users
+     * Adds metadata and enhances feedback
+     */
+    public Map<String, Object> formatKaiwaPracticeResponse(Map<String, Object> rawResponse) {
+        Map<String, Object> formatted = new HashMap<>(rawResponse);
+        
+        // Add metadata
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("targetAudience", "Vietnamese users learning Japanese");
+        meta.put("practiceType", "kaiwa");
+        meta.put("defaultLanguage", "ja-JP");
+        meta.put("purpose", "Conversation practice for Vietnamese learners");
+        formatted.put("meta", meta);
+        
+        // Add score labels in Vietnamese
+        Double overallScore = (Double) rawResponse.get("overallScore");
+        if (overallScore != null) {
+            String scoreLabelVi = getScoreLabelVi(overallScore);
+            formatted.put("scoreLabelVi", scoreLabelVi);
+        }
+        
+        return formatted;
+    }
+    
+    /**
+     * Get score label in Vietnamese
+     */
+    private String getScoreLabelVi(double score) {
+        if (score >= 0.9) {
+            return "Xuất sắc";
+        } else if (score >= 0.7) {
+            return "Tốt";
+        } else if (score >= 0.5) {
+            return "Trung bình";
+        } else {
+            return "Cần cải thiện";
+        }
+    }
+    
+    /**
      * Get default language settings for Vietnamese users
      */
     public Map<String, String> getDefaultLanguageSettings() {
