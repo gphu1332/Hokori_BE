@@ -193,7 +193,11 @@ public class SpeakingPracticeService {
         // Step 1: Convert user's audio to text
         Map<String, Object> speechToTextResult = aiService.speechToText(audioData, language, audioFormat);
         String userTranscript = (String) speechToTextResult.get("transcript");
-        Double confidence = (Double) speechToTextResult.get("confidence");
+        Double confidence = null;
+        Object confidenceObj = speechToTextResult.get("confidence");
+        if (confidenceObj != null) {
+            confidence = ((Number) confidenceObj).doubleValue();
+        }
         
         if (userTranscript == null || userTranscript.isEmpty()) {
             throw new AIServiceException("Kaiwa Practice", 
