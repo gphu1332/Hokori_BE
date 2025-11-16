@@ -1,0 +1,19 @@
+[33m82401af[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: Add Swagger example values for AI Sentence Analysis API
+[33m87bc0ca[m Fix LOB stream errors in CourseService.listPublished() and UserProfileController
+[33mcb0631e[m Fix LOB stream error in /api/teacher/courses: Use native query to avoid loading LOB fields - Fix currentUserIdOrThrow to use query without LOB - Manual pagination for Course metadata
+[33m9ac7f71[m Fix database compatibility: Remove all columnDefinition from User entity to support both SQL Server and PostgreSQL - Let Hibernate handle database-specific syntax automatically
+[33mf198dac[m Fix LOB stream error: Add @JsonIgnore to User.bio field for PostgreSQL compatibility
+[33m7601d31[m Fix wallet_balance column for PostgreSQL Railway compatibility - Add columnDefinition with DEFAULT value
+[33mcad7c45[m Merge branch 'backup'
+[33mdec1ab6[m Merge branch 'master' of https://github.com/gphu1332/Hokori_BE
+[33m0ca4873[m[33m ([m[1;31morigin/feature/ai-integration[m[33m, [m[1;32mfeature/ai-integration[m[33m)[m feat: Add AI Sentence Analysis feature
+[33mde8b0f9[m refactor: Remove hardcoded values and move to configuration files
+[33m64fb2f0[m fix: Add missing List import in AIController
+[33m34a1111[m feat: Add Kaiwa Practice module with JLPT level support and advanced algorithms
+[33mc715474[m feat: Add Vietnamese-specific business rules and response formatting for Japanese learning
+[33m6f34a9b[m feat: Improve AI service error handling, logging, and input validation
+[33m3130a60[m fix: Use custom credentials for LanguageServiceClient instead of default credentials
+[33mecb5131[m fix: Handle Railway environment variable newline format for Google Cloud private key
+[33m5d10a6e[m feat: Integrate Google Cloud AI services (Translation, NLP, Speech-to-Text, Text-to-Speech)
+[33me84abfc[m[33m ([m[1;31morigin/backup[m[33m)[m API jlpt, chỉnh sửa user profile
+[33ma8b67f0[m API flashcard

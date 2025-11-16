@@ -1,15 +1,29 @@
 package com.hokori.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+@Schema(description = "Request for converting speech to text")
 public class SpeechToTextRequest {
     
     @NotBlank(message = "Audio data is required")
     @Size(max = 10485760, message = "Audio data must not exceed 10MB") // 10MB limit
+    @Schema(description = "Base64 encoded audio data",
+            example = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
+            required = true)
     private String audioData; // Base64 encoded audio
     
+    @Schema(description = "Language code for speech recognition",
+            example = "ja-JP",
+            allowableValues = {"ja-JP", "vi-VN", "en-US"},
+            defaultValue = "ja-JP")
     private String language; // Optional, default to "ja-JP"
+
+    @Schema(description = "Audio format",
+            example = "wav",
+            allowableValues = {"wav", "mp3", "flac", "ogg"},
+            defaultValue = "wav")
     private String audioFormat; // Optional, default to "wav"
     
     // Constructors
