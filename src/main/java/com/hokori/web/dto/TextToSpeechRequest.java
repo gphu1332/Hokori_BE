@@ -1,16 +1,35 @@
 package com.hokori.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+@Schema(description = "Request for converting text to speech")
 public class TextToSpeechRequest {
     
     @NotBlank(message = "Text is required")
     @Size(max = 5000, message = "Text must not exceed 5000 characters")
+    @Schema(description = "Text to convert to speech",
+            example = "こんにちは、私は日本語を勉強しています",
+            required = true)
     private String text;
     
+    @Schema(description = "Voice name for text-to-speech",
+            example = "ja-JP-Standard-A",
+            allowableValues = {"ja-JP-Standard-A", "ja-JP-Standard-B", "ja-JP-Standard-C", "ja-JP-Standard-D"},
+            defaultValue = "ja-JP-Standard-A")
     private String voice; // Optional, default to "ja-JP-Standard-A"
+    
+    @Schema(description = "Speech speed",
+            example = "normal",
+            allowableValues = {"slow", "normal", "fast"},
+            defaultValue = "normal")
     private String speed; // Optional, default to "normal"
+    
+    @Schema(description = "Audio output format",
+            example = "mp3",
+            allowableValues = {"mp3", "wav", "ogg"},
+            defaultValue = "mp3")
     private String audioFormat; // Optional, default to "mp3"
     
     // Constructors

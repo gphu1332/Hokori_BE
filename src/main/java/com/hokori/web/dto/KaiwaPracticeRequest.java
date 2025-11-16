@@ -1,5 +1,6 @@
 package com.hokori.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -7,20 +8,51 @@ import jakarta.validation.constraints.Size;
  * Request DTO for Kaiwa (Conversation) Practice
  * User provides target text and their recorded audio
  */
+@Schema(description = "Request for practicing Japanese conversation (Kaiwa)")
 public class KaiwaPracticeRequest {
     
     @NotBlank(message = "Target text is required")
     @Size(max = 5000, message = "Target text must not exceed 5000 characters")
+    @Schema(description = "The Japanese text user should practice",
+            example = "こんにちは、私は日本語を勉強しています",
+            required = true)
     private String targetText; // The Japanese text user should practice
     
     @NotBlank(message = "Audio data is required")
     @Size(max = 10485760, message = "Audio data must not exceed 10MB") // 10MB limit
+    @Schema(description = "Base64 encoded audio of user's pronunciation",
+            example = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
+            required = true)
     private String audioData; // Base64 encoded audio of user's pronunciation
     
+    @Schema(description = "JLPT level",
+            example = "N5",
+            allowableValues = {"N5", "N4", "N3", "N2", "N1"},
+            defaultValue = "N5")
     private String level; // Optional, JLPT level: N5, N4, N3, N2, N1 (default: N5)
+    
+    @Schema(description = "Language code",
+            example = "ja-JP",
+            allowableValues = {"ja-JP", "vi-VN", "en-US"},
+            defaultValue = "ja-JP")
     private String language; // Optional, default to "ja-JP"
+    
+    @Schema(description = "Audio format",
+            example = "wav",
+            allowableValues = {"wav", "mp3", "flac", "ogg"},
+            defaultValue = "wav")
     private String audioFormat; // Optional, default to "wav"
+    
+    @Schema(description = "Voice name for reference audio generation",
+            example = "ja-JP-Standard-A",
+            allowableValues = {"ja-JP-Standard-A", "ja-JP-Standard-B", "ja-JP-Standard-C", "ja-JP-Standard-D"},
+            defaultValue = "ja-JP-Standard-A")
     private String voice; // Optional, default to "ja-JP-Standard-A" (for reference audio generation)
+    
+    @Schema(description = "Speech speed for reference audio",
+            example = "normal",
+            allowableValues = {"slow", "normal", "fast"},
+            defaultValue = "normal")
     private String speed; // Optional, default to "normal" (for reference audio generation)
     
     // Constructors

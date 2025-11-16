@@ -52,7 +52,47 @@ public class AIController {
     private SentenceAnalysisService sentenceAnalysisService;
 
     @PostMapping("/translate")
-    @Operation(summary = "Translate text", description = "Translate text using Google Cloud Translation API")
+    @Operation(
+        summary = "Translate text",
+        description = "Translate text using Google Cloud Translation API",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Text to translate and language settings",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = TranslationRequest.class),
+                examples = @ExampleObject(
+                    name = "Example Request",
+                    value = "{\n" +
+                            "  \"text\": \"私は日本語を勉強しています\",\n" +
+                            "  \"sourceLanguage\": \"ja\",\n" +
+                            "  \"targetLanguage\": \"vi\"\n" +
+                            "}"
+                )
+            )
+        ),
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Translation completed successfully",
+                content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(
+                        name = "Success Response",
+                        value = "{\n" +
+                                "  \"success\": true,\n" +
+                                "  \"message\": \"Translation completed\",\n" +
+                                "  \"data\": {\n" +
+                                "    \"translatedText\": \"Tôi đang học tiếng Nhật\",\n" +
+                                "    \"sourceLanguage\": \"ja\",\n" +
+                                "    \"targetLanguage\": \"vi\"\n" +
+                                "  }\n" +
+                                "}"
+                    )
+                )
+            )
+        }
+    )
     public ResponseEntity<ApiResponse<Map<String, Object>>> translateText(
             @Valid @RequestBody TranslationRequest request) {
         logger.info("Translation request: source={}, target={}, textLength={}", 
@@ -74,7 +114,45 @@ public class AIController {
     }
 
     @PostMapping("/analyze-sentiment")
-    @Operation(summary = "Analyze text sentiment", description = "Analyze text sentiment using Google Cloud Natural Language API")
+    @Operation(
+        summary = "Analyze text sentiment",
+        description = "Analyze text sentiment using Google Cloud Natural Language API",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Text to analyze for sentiment",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = SentimentAnalysisRequest.class),
+                examples = @ExampleObject(
+                    name = "Example Request",
+                    value = "{\n" +
+                            "  \"text\": \"日本語の勉強は楽しいです！\"\n" +
+                            "}"
+                )
+            )
+        ),
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Sentiment analysis completed successfully",
+                content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(
+                        name = "Success Response",
+                        value = "{\n" +
+                                "  \"success\": true,\n" +
+                                "  \"message\": \"Sentiment analysis completed\",\n" +
+                                "  \"data\": {\n" +
+                                "    \"sentiment\": \"POSITIVE\",\n" +
+                                "    \"score\": 0.8,\n" +
+                                "    \"magnitude\": 0.9\n" +
+                                "  }\n" +
+                                "}"
+                    )
+                )
+            )
+        }
+    )
     public ResponseEntity<ApiResponse<Map<String, Object>>> analyzeSentiment(
             @Valid @RequestBody SentimentAnalysisRequest request) {
         logger.info("Sentiment analysis request: textLength={}", 
@@ -92,7 +170,45 @@ public class AIController {
     }
 
     @PostMapping("/generate-content")
-    @Operation(summary = "Generate content", description = "Generate content using Google Cloud AI")
+    @Operation(
+        summary = "Generate content",
+        description = "Generate content using Google Cloud AI",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Prompt and content type for generation",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ContentGenerationRequest.class),
+                examples = @ExampleObject(
+                    name = "Example Request",
+                    value = "{\n" +
+                            "  \"prompt\": \"Create a lesson about Japanese particles は and が\",\n" +
+                            "  \"contentType\": \"lesson\"\n" +
+                            "}"
+                )
+            )
+        ),
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Content generated successfully",
+                content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(
+                        name = "Success Response",
+                        value = "{\n" +
+                                "  \"success\": true,\n" +
+                                "  \"message\": \"Content generated successfully\",\n" +
+                                "  \"data\": {\n" +
+                                "    \"content\": \"Lesson content here...\",\n" +
+                                "    \"contentType\": \"lesson\"\n" +
+                                "  }\n" +
+                                "}"
+                    )
+                )
+            )
+        }
+    )
     public ResponseEntity<ApiResponse<Map<String, Object>>> generateContent(
             @Valid @RequestBody ContentGenerationRequest request) {
         logger.info("Content generation request: contentType={}, promptLength={}", 
@@ -114,7 +230,64 @@ public class AIController {
     }
 
     @PostMapping("/speech-to-text")
-    @Operation(summary = "Speech to text", description = "Convert speech to text using Google Cloud Speech-to-Text API")
+    @Operation(
+        summary = "Speech to text",
+        description = "Convert speech to text using Google Cloud Speech-to-Text API. Optimized for Vietnamese users learning Japanese.",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Base64 encoded audio data and language settings",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = SpeechToTextRequest.class),
+                examples = @ExampleObject(
+                    name = "Example Request",
+                    value = "{\n" +
+                            "  \"audioData\": \"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=\",\n" +
+                            "  \"language\": \"ja-JP\",\n" +
+                            "  \"audioFormat\": \"wav\"\n" +
+                            "}"
+                )
+            )
+        ),
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Speech transcribed successfully",
+                content = @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiResponse.class),
+                    examples = @ExampleObject(
+                        name = "Success Response",
+                        value = "{\n" +
+                                "  \"success\": true,\n" +
+                                "  \"message\": \"Speech transcribed successfully\",\n" +
+                                "  \"data\": {\n" +
+                                "    \"transcript\": \"私は日本語を勉強しています\",\n" +
+                                "    \"confidence\": 0.95,\n" +
+                                "    \"language\": \"ja-JP\"\n" +
+                                "  },\n" +
+                                "  \"timestamp\": \"2025-01-16T10:14:04.084Z\"\n" +
+                                "}"
+                    )
+                )
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Error response",
+                content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(
+                        name = "Error Response",
+                        value = "{\n" +
+                                "  \"success\": false,\n" +
+                                "  \"message\": \"Invalid audio format. Valid formats: wav, mp3, flac, ogg\",\n" +
+                                "  \"data\": null\n" +
+                                "}"
+                    )
+                )
+            )
+        }
+    )
     public ResponseEntity<ApiResponse<Map<String, Object>>> speechToText(
             @Valid @RequestBody SpeechToTextRequest request) {
         logger.info("Speech-to-text request: language={}, audioFormat={}, audioDataLength={}", 
@@ -140,7 +313,48 @@ public class AIController {
     }
 
     @PostMapping("/text-to-speech")
-    @Operation(summary = "Text to speech", description = "Convert text to speech using Google Cloud Text-to-Speech API")
+    @Operation(
+        summary = "Text to speech",
+        description = "Convert text to speech using Google Cloud Text-to-Speech API",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Text and voice settings for speech synthesis",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = TextToSpeechRequest.class),
+                examples = @ExampleObject(
+                    name = "Example Request",
+                    value = "{\n" +
+                            "  \"text\": \"こんにちは、私は日本語を勉強しています\",\n" +
+                            "  \"voice\": \"ja-JP-Standard-A\",\n" +
+                            "  \"speed\": \"normal\",\n" +
+                            "  \"audioFormat\": \"mp3\"\n" +
+                            "}"
+                )
+            )
+        ),
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Text converted to speech successfully",
+                content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(
+                        name = "Success Response",
+                        value = "{\n" +
+                                "  \"success\": true,\n" +
+                                "  \"message\": \"Text converted to speech successfully\",\n" +
+                                "  \"data\": {\n" +
+                                "    \"audioData\": \"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=\",\n" +
+                                "    \"audioFormat\": \"mp3\",\n" +
+                                "    \"audioSize\": 12345\n" +
+                                "  }\n" +
+                                "}"
+                    )
+                )
+            )
+        }
+    )
     public ResponseEntity<ApiResponse<Map<String, Object>>> textToSpeech(
             @Valid @RequestBody TextToSpeechRequest request) {
         logger.info("Text-to-speech request: voice={}, speed={}, textLength={}", 
@@ -177,7 +391,50 @@ public class AIController {
     }
     
     @PostMapping("/kaiwa-practice")
-    @Operation(summary = "Kaiwa practice", description = "Practice Japanese conversation by comparing pronunciation with target text")
+    @Operation(
+        summary = "Kaiwa practice",
+        description = "Practice Japanese conversation by comparing pronunciation with target text",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Target text and user's recorded audio for practice",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = KaiwaPracticeRequest.class),
+                examples = @ExampleObject(
+                    name = "Example Request",
+                    value = "{\n" +
+                            "  \"targetText\": \"こんにちは、私は日本語を勉強しています\",\n" +
+                            "  \"audioData\": \"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=\",\n" +
+                            "  \"level\": \"N5\",\n" +
+                            "  \"language\": \"ja-JP\",\n" +
+                            "  \"audioFormat\": \"wav\"\n" +
+                            "}"
+                )
+            )
+        ),
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Kaiwa practice completed successfully",
+                content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(
+                        name = "Success Response",
+                        value = "{\n" +
+                                "  \"success\": true,\n" +
+                                "  \"message\": \"Kaiwa practice completed\",\n" +
+                                "  \"data\": {\n" +
+                                "    \"overallScore\": 85,\n" +
+                                "    \"accuracyScore\": 90,\n" +
+                                "    \"pronunciationScore\": 80,\n" +
+                                "    \"feedback\": \"Good pronunciation!\"\n" +
+                                "  }\n" +
+                                "}"
+                    )
+                )
+            )
+        }
+    )
     public ResponseEntity<ApiResponse<Map<String, Object>>> practiceKaiwa(
             @Valid @RequestBody KaiwaPracticeRequest request) {
         logger.info("Kaiwa practice request: targetTextLength={}, audioDataLength={}, language={}, level={}", 
