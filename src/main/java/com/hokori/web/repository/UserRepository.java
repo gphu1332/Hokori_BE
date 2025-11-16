@@ -46,9 +46,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByIsActive(Boolean isActive);
     List<User> findByIsVerified(Boolean isVerified);
 
-    List<User> findByCountry(String country);
-    List<User> findByLearningLanguage(String learningLanguage);
-
     @Query("SELECT u FROM User u WHERE u.createdAt >= :date")
     List<User> findUsersCreatedAfter(@Param("date") LocalDateTime date);
 

@@ -15,7 +15,6 @@ public final class UserMeMapper {
         r.setDisplayName(u.getDisplayName());
         r.setAvatarUrl(u.getAvatarUrl());
         r.setPhoneNumber(u.getPhoneNumber());
-        r.setCountry(u.getCountry());
         r.setIsActive(u.getIsActive());
         r.setIsVerified(u.getIsVerified());
         r.setLastLoginAt(u.getLastLoginAt());
@@ -32,14 +31,8 @@ public final class UserMeMapper {
             t.setApprovedAt(u.getApprovedAt());
             t.setYearsOfExperience(u.getYearsOfExperience());
             t.setBio(u.getBio());
-            t.setTeachingStyles(u.getTeachingStyles());
             t.setWebsiteUrl(u.getWebsiteUrl());
-            t.setFacebook(u.getFacebook());
-            t.setInstagram(u.getInstagram());
             t.setLinkedin(u.getLinkedin());
-            t.setTiktok(u.getTiktok());
-            t.setX(u.getX());
-            t.setYoutube(u.getYoutube());
             t.setBankAccountNumber(u.getBankAccountNumber());
             t.setBankAccountName(u.getBankAccountName());
             t.setBankName(u.getBankName());

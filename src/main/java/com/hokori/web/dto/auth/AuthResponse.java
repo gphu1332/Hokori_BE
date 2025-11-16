@@ -40,7 +40,6 @@ public class AuthResponse {
             this.firebaseUid = u.getFirebaseUid();
             this.firebaseEmailVerified = u.getFirebaseEmailVerified();
             this.firebaseProvider = u.getFirebaseProvider();
-            this.headline = u.getHeadline();
             this.bio = u.getBio();
             this.currentJlptLevel = (u.getCurrentJlptLevel()!=null) ? u.getCurrentJlptLevel().name() : null;
             this.isActive = u.getIsActive();

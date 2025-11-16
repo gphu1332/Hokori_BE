@@ -192,7 +192,6 @@ public class AdminController {
                     .filter(u -> username == null || (u.getUsername() != null && u.getUsername().toLowerCase().contains(username.toLowerCase())))
                     .filter(u -> email == null || (u.getEmail() != null && u.getEmail().toLowerCase().contains(email.toLowerCase())))
                     .filter(u -> role == null || (u.getRole() != null && role.equals(u.getRole().getRoleName())))
-                    .filter(u -> country == null || (u.getCountry() != null && u.getCountry().toLowerCase().contains(country.toLowerCase())))
                     .filter(u -> jlptLevel == null || (u.getCurrentJlptLevel() != null && u.getCurrentJlptLevel().name().equals(jlptLevel)))
                     .filter(u -> isActive == null || Boolean.valueOf(Boolean.TRUE.equals(u.getIsActive())).equals(isActive))
                     .filter(u -> isVerified == null || Boolean.valueOf(Boolean.TRUE.equals(u.getIsVerified())).equals(isVerified))
@@ -232,22 +231,7 @@ public class AdminController {
                 activityByHour.put(hour.getHour() + ":00", count);
             }
 
-            // Top countries
-            Map<String, Long> topCountries = allUsers.stream()
-                    .filter(u -> u.getCountry() != null && !u.getCountry().isEmpty())
-                    .collect(java.util.stream.Collectors.groupingBy(
-                            User::getCountry,
-                            java.util.stream.Collectors.counting()
-                    ))
-                    .entrySet().stream()
-                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-                    .limit(10)
-                    .collect(java.util.stream.Collectors.toMap(
-                            Map.Entry::getKey,
-                            Map.Entry::getValue,
-                            (e1, e2) -> e1,
-                            java.util.LinkedHashMap::new
-                    ));
+
 
             // JLPT level distribution
             Map<String, Long> jlptDistribution = new HashMap<>();
@@ -261,7 +245,6 @@ public class AdminController {
             Map<String, Object> analytics = new HashMap<>();
             analytics.put("registrationTrends", registrationTrends);
             analytics.put("activityByHour", activityByHour);
-            analytics.put("topCountries", topCountries);
             analytics.put("jlptDistribution", jlptDistribution);
             analytics.put("totalUsers", allUsers.size());
             analytics.put("activeUsers", allUsers.stream().filter(u -> Boolean.TRUE.equals(u.getIsActive())).count());   // ✅ tránh NPE
@@ -304,9 +287,6 @@ public class AdminController {
                         row.put("username", u.getUsername());
                         row.put("email", u.getEmail());
                         row.put("displayName", u.getDisplayName());
-                        row.put("country", u.getCountry());
-                        row.put("nativeLanguage", u.getNativeLanguage());
-                        row.put("learningLanguage", u.getLearningLanguage());
                         row.put("currentJlptLevel", u.getCurrentJlptLevel() != null ? u.getCurrentJlptLevel().name() : "N/A");
                         row.put("role", u.getRole() != null ? u.getRole().getRoleName() : "No role");
                         row.put("isActive", u.getIsActive());
@@ -498,12 +478,6 @@ public class AdminController {
                 jlptStats.put(level.name(), count);
             }
 
-            Map<String, Long> countryStats = allUsers.stream()
-                    .filter(u -> u.getCountry() != null && !u.getCountry().isEmpty())
-                    .collect(java.util.stream.Collectors.groupingBy(
-                            User::getCountry,
-                            java.util.stream.Collectors.counting()
-                    ));
 
             Map<String, Object> dashboard = new HashMap<>();
             dashboard.put("overview", Map.of(
@@ -516,7 +490,6 @@ public class AdminController {
             ));
             dashboard.put("roleDistribution", roleStats);
             dashboard.put("jlptDistribution", jlptStats);
-            dashboard.put("countryDistribution", countryStats);
             dashboard.put("recentUsers", recentUsers);
             dashboard.put("lastUpdated", java.time.LocalDateTime.now());
 

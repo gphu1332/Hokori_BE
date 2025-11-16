@@ -8,10 +8,8 @@ import com.hokori.web.dto.course.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
 import com.hokori.web.util.SlugUtil;
-import com.hokori.web.util.DatabaseUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -24,7 +22,6 @@ import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -55,41 +52,36 @@ public class CourseService {
         preview.setTrial(true);
         chapterRepo.save(preview);
 
-        // Use native query to avoid LOB stream error
-        return getDetail(c.getId(), teacherUserId);
+        return toCourseResLite(c);
     }
 
     public CourseRes updateCourse(Long id, Long teacherUserId, @Valid CourseUpsertReq r) {
-        Course c = getOwnedForUpdate(id, teacherUserId);
+        Course c = getOwned(id, teacherUserId);
         String old = c.getSlug();
         applyCourse(c, r);
         if (!SlugUtil.toSlug(r.getTitle()).equals(old)) {
             c.setSlug(uniqueSlug(r.getTitle()));
         }
-        courseRepo.save(c);
-        
-        // Use native query to avoid LOB stream error
-        return getDetail(id, teacherUserId);
+        return toCourseResLite(c);
+    }
+
+    public CourseRes updateCoverImage(Long courseId, Long teacherUserId, String coverImagePath) {
+        Course c = getOwned(courseId, teacherUserId);  // đã check owner + deletedFlag
+        c.setCoverImagePath(coverImagePath);
+        return toCourseResLite(c);
     }
 
     public void softDelete(Long id, Long teacherUserId) {
-        Course c = getOwnedForUpdate(id, teacherUserId);
-        c.setDeletedFlag(true);
-        courseRepo.save(c);
+        getOwned(id, teacherUserId).setDeletedFlag(true);
     }
 
     public CourseRes publish(Long id, Long teacherUserId) {
-        // Check ownership first without loading entity
-        checkOwnership(id, teacherUserId);
-        
+        Course c = getOwned(id, teacherUserId);
+
         // Đúng 1 chapter học thử
         long trialCount = chapterRepo.countByCourse_IdAndIsTrialTrue(id);
         if (trialCount != 1) throw bad("Course must have exactly ONE trial chapter");
 
-        // Load entity only for validation and update
-        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        
         // Validate cấu trúc
         c.getChapters().forEach(ch ->
                 ch.getLessons().forEach(ls ->
@@ -99,62 +91,22 @@ public class CourseService {
 
         c.setStatus(CourseStatus.PUBLISHED);
         c.setPublishedAt(Instant.now());
-        courseRepo.save(c);
-        
-        // Use native query to avoid LOB stream error
-        return getDetail(id, teacherUserId);
+        return toCourseResLite(c);
     }
 
     public CourseRes unpublish(Long id, Long teacherUserId) {
-        Course c = getOwnedForUpdate(id, teacherUserId);
+        Course c = getOwned(id, teacherUserId);
         c.setStatus(CourseStatus.DRAFT);
         c.setPublishedAt(null);
-        courseRepo.save(c);
-        
-        // Use native query to avoid LOB stream error
-        return getDetail(id, teacherUserId);
+        return toCourseResLite(c);
     }
 
     @Transactional(readOnly = true)
     public CourseRes getTree(Long id) {
-        // Use native query to get course metadata without LOB field
-        var metadataOpt = courseRepo.findCourseMetadataById(id);
-        if (metadataOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-        }
-        
-        Object[] metadata = metadataOpt.get();
-        // Handle empty array case
-        if (metadata.length == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-        }
-        
-        // Handle nested array case (PostgreSQL)
-        Object[] actualMetadata = metadata;
-        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
-            actualMetadata = (Object[]) metadata[0];
-            // Check if inner array is also empty
-            if (actualMetadata.length == 0) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-            }
-        }
-        
-        // Build CourseRes from metadata (without description to avoid LOB)
-        Long courseId = safeExtractLong(actualMetadata[0]);
-        String title = safeExtractString(actualMetadata[1]);
-        String slug = safeExtractString(actualMetadata[2]);
-        String subtitle = safeExtractString(actualMetadata[3]);
-        JLPTLevel level = safeExtractEnum(actualMetadata[4], JLPTLevel.class, JLPTLevel.N5);
-        Long priceCents = safeExtractLong(actualMetadata[5]);
-        Long discountedPriceCents = safeExtractLong(actualMetadata[6]);
-        String currency = safeExtractString(actualMetadata[7], "VND");
-        Long coverAssetId = safeExtractLong(actualMetadata[8]);
-        CourseStatus status = safeExtractEnum(actualMetadata[9], CourseStatus.class, CourseStatus.DRAFT);
-        Instant publishedAt = safeExtractInstant(actualMetadata[10]);
-        Long userId = safeExtractLong(actualMetadata[11]);
+        var c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
-        // Load chapters tree (without loading Course entity to avoid LOB)
-        var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
+        var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(c.getId());
         var chapterDtos = new java.util.ArrayList<ChapterRes>();
 
         for (var ch : chapterEntities) {
@@ -170,32 +122,50 @@ public class CourseService {
                     var contentDtos = new java.util.ArrayList<ContentRes>(contentEntities.size());
                     for (var ct : contentEntities) {
                         contentDtos.add(new ContentRes(
-                                ct.getId(), ct.getOrderIndex(), ct.getContentFormat(), ct.isPrimaryContent(),
-                                ct.getAssetId(), ct.getRichText(), ct.getQuizId(), ct.getFlashcardSetId()
+                                ct.getId(),
+                                ct.getOrderIndex(),
+                                ct.getContentFormat(),
+                                ct.isPrimaryContent(),
+                                ct.getFilePath(),          // CHANGED: dùng filePath thay assetId
+                                ct.getRichText(),
+                                ct.getQuizId(),
+                                ct.getFlashcardSetId()
                         ));
                     }
                     sectionDtos.add(new SectionRes(
-                            s.getId(), s.getTitle(), s.getOrderIndex(), s.getStudyType(), s.getFlashcardSetId(), contentDtos
+                            s.getId(),
+                            s.getTitle(),
+                            s.getOrderIndex(),
+                            s.getStudyType(),
+                            s.getFlashcardSetId(),
+                            contentDtos
                     ));
                 }
 
                 lessonDtos.add(new LessonRes(
-                        ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(), sectionDtos
+                        ls.getId(),
+                        ls.getTitle(),
+                        ls.getOrderIndex(),
+                        ls.getTotalDurationSec(),
+                        sectionDtos
                 ));
             }
 
             chapterDtos.add(new ChapterRes(
-                    ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), lessonDtos
+                    ch.getId(),
+                    ch.getTitle(),
+                    ch.getOrderIndex(),
+                    ch.getSummary(),
+                    lessonDtos
             ));
         }
 
-        // Build CourseRes with chapters but without description (avoid LOB)
         return new CourseRes(
-                courseId, title, slug, subtitle,
-                null, // description = null (avoid LOB)
-                level,
-                priceCents, discountedPriceCents, currency, coverAssetId,
-                status, publishedAt, userId,
+                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
+                c.getDescription(), c.getLevel(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
+                c.getCoverImagePath(),       // CHANGED: dùng coverImagePath
+                c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 chapterDtos
         );
     }
@@ -203,127 +173,38 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public CourseRes getTrialTree(Long courseId) {
-        // Use native query to get course metadata without LOB field
-        var metadataOpt = courseRepo.findCourseMetadataById(courseId);
-        if (metadataOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-        }
-        
-        Object[] metadata = metadataOpt.get();
-        // Handle empty array case
-        if (metadata.length == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-        }
-        
-        // Handle nested array case (PostgreSQL)
-        Object[] actualMetadata = metadata;
-        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
-            actualMetadata = (Object[]) metadata[0];
-            // Check if inner array is also empty
-            if (actualMetadata.length == 0) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-            }
-        }
-        
-        // Build CourseRes from metadata (without description to avoid LOB)
-        Long id = safeExtractLong(actualMetadata[0]);
-        String title = safeExtractString(actualMetadata[1]);
-        String slug = safeExtractString(actualMetadata[2]);
-        String subtitle = safeExtractString(actualMetadata[3]);
-        JLPTLevel level = safeExtractEnum(actualMetadata[4], JLPTLevel.class, JLPTLevel.N5);
-        Long priceCents = safeExtractLong(actualMetadata[5]);
-        Long discountedPriceCents = safeExtractLong(actualMetadata[6]);
-        String currency = safeExtractString(actualMetadata[7], "VND");
-        Long coverAssetId = safeExtractLong(actualMetadata[8]);
-        CourseStatus status = safeExtractEnum(actualMetadata[9], CourseStatus.class, CourseStatus.DRAFT);
-        Instant publishedAt = safeExtractInstant(actualMetadata[10]);
-        Long userId = safeExtractLong(actualMetadata[11]);
-        
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         Chapter trial = chapterRepo.findByCourse_IdAndIsTrialTrue(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No trial chapter"));
-        
-        // Build chapters list with trial chapter only
-        List<ChapterRes> chapters = List.of(
-                new ChapterRes(
-                        trial.getId(), trial.getTitle(), trial.getOrderIndex(), trial.getSummary(),
-                        trial.getLessons().stream()
-                                .sorted(Comparator.comparing(Lesson::getOrderIndex))
-                                .map(this::toLessonResFull)
-                                .collect(Collectors.toList())
-                )
-        );
-        
-        return new CourseRes(
-                id, title, slug, subtitle,
-                null, // description = null (avoid LOB)
-                level,
-                priceCents, discountedPriceCents, currency, coverAssetId,
-                status, publishedAt, userId,
-                chapters
-        );
+        return toCourseResWithChapters(c, List.of(trial));
     }
 
-    /**
-     * List courses for teacher - uses native query to avoid LOB fields.
-     * Simple and clean implementation for Railway PostgreSQL.
-     */
     @Transactional(readOnly = true)
     public Page<CourseRes> listMine(Long teacherUserId, int page, int size, String q, CourseStatus status) {
-        // Get all matching courses metadata (no LOB fields)
-        String statusStr = status != null ? status.name() : null;
-        String qStr = (q != null && !q.isBlank()) ? q.trim() : null;
-        List<Object[]> metadataList = courseRepo.findCourseMetadataByUserId(teacherUserId, statusStr, qStr);
-        
-        // Convert to CourseRes
-        List<CourseRes> courses = metadataList.stream()
-                .map(metadata -> {
-                    // Handle nested array case (PostgreSQL)
-                    Object[] actualMetadata = metadata;
-                    if (metadata.length == 1 && metadata[0] instanceof Object[]) {
-                        actualMetadata = (Object[]) metadata[0];
-                    }
-                    return buildCourseResFromMetadata(actualMetadata);
-                })
-                .collect(Collectors.toList());
-        
-        // Manual pagination
-        int total = courses.size();
-        int start = page * size;
-        int end = Math.min(start + size, total);
-        List<CourseRes> pageContent = start < total ? courses.subList(start, end) : Collections.emptyList();
-        
-        return new PageImpl<>(pageContent, PageRequest.of(page, size), total);
+        Pageable p = PageRequest.of(page, size, Sort.by("updatedAt").descending());
+        Specification<Course> spec = (root, cq, cb) -> {
+            List<Predicate> ps = new ArrayList<>();
+            ps.add(cb.isFalse(root.get("deletedFlag")));
+            ps.add(cb.equal(root.get("userId"), teacherUserId));
+            if (status != null) ps.add(cb.equal(root.get("status"), status));
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase() + "%";
+                ps.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("slug")), like)
+                ));
+            }
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+        return courseRepo.findAll(spec, p).map(this::toCourseResLite);
     }
 
-    /**
-     * List published courses - uses native query to avoid LOB fields.
-     * Simple and clean implementation for Railway PostgreSQL.
-     */
     @Transactional(readOnly = true)
     public Page<CourseRes> listPublished(JLPTLevel level, int page, int size) {
-        // Get all published courses metadata (no LOB fields)
-        String levelStr = level != null ? level.name() : null;
-        List<Object[]> metadataList = courseRepo.findPublishedCourseMetadata(levelStr);
-        
-        // Convert to CourseRes
-        List<CourseRes> courses = metadataList.stream()
-                .map(metadata -> {
-                    // Handle nested array case (PostgreSQL)
-                    Object[] actualMetadata = metadata;
-                    if (metadata.length == 1 && metadata[0] instanceof Object[]) {
-                        actualMetadata = (Object[]) metadata[0];
-                    }
-                    return buildCourseResFromMetadata(actualMetadata);
-                })
-                .collect(Collectors.toList());
-        
-        // Manual pagination
-        int total = courses.size();
-        int start = page * size;
-        int end = Math.min(start + size, total);
-        List<CourseRes> pageContent = start < total ? courses.subList(start, end) : Collections.emptyList();
-        
-        return new PageImpl<>(pageContent, PageRequest.of(page, size), total);
+        return courseRepo.findPublishedByLevel(
+                level, PageRequest.of(page, size, Sort.by("publishedAt").descending())
+        ).map(this::toCourseResLite);
     }
 
     // =========================
@@ -417,7 +298,7 @@ public class CourseService {
 
         ct.setContentFormat(r.getContentFormat() == null ? ContentFormat.ASSET : r.getContentFormat());
         ct.setPrimaryContent(r.isPrimaryContent());
-        ct.setAssetId(r.getAssetId());
+        ct.setFilePath(r.getFilePath());          // CHANGED: filePath
         ct.setRichText(r.getRichText());
         ct.setQuizId(r.getQuizId());
         ct.setFlashcardSetId(r.getFlashcardSetId());
@@ -453,7 +334,9 @@ public class CourseService {
     private void validateContentPayload(Section section, ContentUpsertReq r) {
         ContentFormat fmt = r.getContentFormat();
         if (fmt == null || fmt == ContentFormat.ASSET) {
-            if (r.getAssetId() == null) throw bad("assetId is required for ASSET");
+            // CHANGED: dùng filePath thay vì assetId
+            if (r.getFilePath() == null || r.getFilePath().isBlank())
+                throw bad("filePath is required for ASSET");
 
             if (section.getStudyType() == ContentType.GRAMMAR && r.isPrimaryContent()) {
                 long primaryCount = section.getContents().stream()
@@ -498,7 +381,7 @@ public class CourseService {
         c.setPriceCents(r.getPriceCents());
         c.setDiscountedPriceCents(r.getDiscountedPriceCents());
         if (r.getCurrency() != null) c.setCurrency(r.getCurrency());
-        c.setCoverAssetId(r.getCoverAssetId());
+        c.setCoverImagePath(r.getCoverImagePath());   // CHANGED
     }
 
     private String uniqueSlug(String title) {
@@ -511,82 +394,12 @@ public class CourseService {
         return s;
     }
 
-    /**
-     * Check ownership without loading Course entity (avoids LOB fields).
-     * Returns course metadata if owned, throws exception otherwise.
-     */
-    /**
-     * Check ownership and return course metadata (avoids loading Course entity with LOB).
-     * Returns Object[] metadata array from native query.
-     * Expected metadata: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag] (13 fields)
-     */
-    private Object[] checkOwnership(Long id, Long teacherUserId) {
-        var metadataOpt = courseRepo.findCourseMetadataById(id);
-        if (metadataOpt.isEmpty()) {
-            log.warn("⚠️ Course not found: id={}", id);
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-        }
-        
-        Object[] metadata = metadataOpt.get();
-        log.info("📊 Course metadata query result: length={}, types={}", 
-            metadata.length, 
-            metadata.length > 0 ? java.util.Arrays.stream(metadata)
-                .map(obj -> obj != null ? obj.getClass().getSimpleName() : "null")
-                .collect(java.util.stream.Collectors.toList()) : "empty");
-        
-        // Handle empty array case (should not happen, but PostgreSQL might return empty array)
-        if (metadata.length == 0) {
-            log.error("❌ Course metadata query returned empty array: id={}", id);
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-        }
-        
-        // Handle nested array case (PostgreSQL)
-        Object[] actualMetadata = metadata;
-        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
-            actualMetadata = (Object[]) metadata[0];
-            log.info("📦 Unwrapped nested array: outer length={}, inner length={}", metadata.length, actualMetadata.length);
-            
-            // Check if inner array is also empty
-            if (actualMetadata.length == 0) {
-                log.error("❌ Unwrapped nested array is empty: id={}", id);
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
-            }
-        }
-        
-        // Query returns 13 fields: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
-        if (actualMetadata.length < 12) {
-            log.error("❌ Invalid course metadata: expected at least 12 fields, got {}", actualMetadata.length);
-            log.error("   Course ID: {}", id);
-            log.error("   Metadata array length: {}", actualMetadata.length);
-            log.error("   Metadata content: {}", java.util.Arrays.toString(actualMetadata));
-            if (actualMetadata.length > 0) {
-                log.error("   First field type: {}", actualMetadata[0] != null ? actualMetadata[0].getClass().getName() : "null");
-            }
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
-                "Invalid course metadata: expected 13 fields, got " + actualMetadata.length);
-        }
-        
-        // userId is at index 11 (12th field, 0-indexed)
-        Long courseUserId = safeExtractLong(actualMetadata[11]);
-        log.debug("🔍 Course userId: {}, Teacher userId: {}", courseUserId, teacherUserId);
-        if (courseUserId == null || !courseUserId.equals(teacherUserId)) {
-            log.warn("⚠️ Ownership check failed: course userId={}, teacher userId={}", courseUserId, teacherUserId);
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
-        }
-        
-        return actualMetadata;
-    }
-    
-    /**
-     * Get Course entity for update operations (only when absolutely necessary).
-     * WARNING: This loads LOB fields - use only for update operations.
-     */
-    private Course getOwnedForUpdate(Long id, Long teacherUserId) {
-        // First check ownership without loading entity
-        checkOwnership(id, teacherUserId);
-        // Then load entity only if ownership check passes
+    private Course getOwned(Long id, Long teacherUserId) {
         Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        if (!Objects.equals(c.getUserId(), teacherUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
+        }
         return c;
     }
 
@@ -604,8 +417,63 @@ public class CourseService {
     // MAPPERS
     // =========================
 
-    // Removed toCourseResLite, toCourseResFull, toCourseResWithChapters - not used
-    // Always use buildCourseResFromMetadata() with native query to avoid LOB issues
+    private CourseRes toCourseResLite(Course c) {
+        return new CourseRes(
+                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
+                c.getDescription(), c.getLevel(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
+                c.getCoverImagePath(),            // CHANGED
+                c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                List.of()
+        );
+    }
+
+    private CourseRes toCourseResFull(Course c) {
+        List<ChapterRes> chapters = c.getChapters().stream()
+                .sorted(Comparator.comparing(Chapter::getOrderIndex))
+                .map(ch -> new ChapterRes(
+                        ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(),
+                        ch.getLessons().stream()
+                                .sorted(Comparator.comparing(Lesson::getOrderIndex))
+                                .map(ls -> new LessonRes(
+                                        ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(),
+                                        ls.getSections().stream()
+                                                .sorted(Comparator.comparing(Section::getOrderIndex))
+                                                .map(this::toSectionResFull)
+                                                .collect(Collectors.toList())
+                                )).collect(Collectors.toList())
+                )).collect(Collectors.toList());
+
+        return new CourseRes(
+                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
+                c.getDescription(), c.getLevel(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
+                c.getCoverImagePath(),            // CHANGED
+                c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                chapters
+        );
+    }
+
+    private CourseRes toCourseResWithChapters(Course c, List<Chapter> include) {
+        List<ChapterRes> chapters = include.stream()
+                .sorted(Comparator.comparing(Chapter::getOrderIndex))
+                .map(ch -> new ChapterRes(
+                        ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(),
+                        ch.getLessons().stream()
+                                .sorted(Comparator.comparing(Lesson::getOrderIndex))
+                                .map(this::toLessonResFull)
+                                .collect(Collectors.toList())
+                )).collect(Collectors.toList());
+
+        return new CourseRes(
+                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
+                c.getDescription(), c.getLevel(),
+                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
+                c.getCoverImagePath(),            // CHANGED
+                c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                chapters
+        );
+    }
 
     private ChapterRes toChapterResShallow(Chapter ch) {
         return new ChapterRes(ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), List.of());
@@ -641,7 +509,7 @@ public class CourseService {
                 c.getOrderIndex(),
                 c.getContentFormat(),
                 c.isPrimaryContent(),
-                c.getAssetId(),
+                c.getFilePath(),        // CHANGED: filePath thay assetId
                 c.getRichText(),
                 c.getQuizId(),
                 c.getFlashcardSetId()
@@ -649,126 +517,12 @@ public class CourseService {
     }
 
     // =========================
-    // COURSE DETAIL (metadata only - avoids LOB fields)
+    // COURSE DETAIL (metadata only)
     // =========================
-    /**
-     * Get course detail using native query (avoids LOB fields completely).
-     * Simple and clean implementation for Railway PostgreSQL.
-     */
     @Transactional(readOnly = true)
     public CourseRes getDetail(Long id, Long teacherUserId) {
-        try {
-            log.info("🔍 Getting course detail: id={}, teacherUserId={}", id, teacherUserId);
-            
-            // Check ownership and get metadata in one call (no Course entity loaded)
-            Object[] metadata = checkOwnership(id, teacherUserId);
-            
-            log.debug("✅ Ownership check passed, building CourseRes from metadata");
-            
-            // Build CourseRes from metadata (description is always null - no LOB loading)
-            CourseRes result = buildCourseResFromMetadata(metadata);
-            log.info("✅ Course detail retrieved successfully: id={}, title={}", id, result.getTitle());
-            return result;
-        } catch (ResponseStatusException e) {
-            // Re-throw as-is (404, 403, etc.)
-            log.warn("⚠️ ResponseStatusException: status={}, message={}", e.getStatusCode(), e.getReason());
-            throw e;
-        } catch (Exception e) {
-            // Log and wrap any unexpected errors
-            log.error("❌ Unexpected error getting course detail: id={}, error={}", id, e.getMessage(), e);
-            String errorMsg = e.getMessage();
-            if (errorMsg != null && (errorMsg.contains("lob") || errorMsg.contains("LOB"))) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
-                    "Failed to load course data");
-            }
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
-                "Failed to load course: " + (errorMsg != null ? errorMsg : "Unknown error"));
-        }
-    }
-    
-    /**
-     * Build CourseRes from native query metadata array.
-     * Simple and clean - no LOB fields, no complex logic.
-     * Metadata array: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
-     */
-    private CourseRes buildCourseResFromMetadata(Object[] metadata) {
-        // Extract fields safely with null checks
-        Long id = safeExtractLong(metadata[0]);
-        String title = safeExtractString(metadata[1]);
-        String slug = safeExtractString(metadata[2]);
-        String subtitle = safeExtractString(metadata[3]);
-        JLPTLevel level = safeExtractEnum(metadata[4], JLPTLevel.class, JLPTLevel.N5);
-        Long priceCents = safeExtractLong(metadata[5]);
-        Long discountedPriceCents = safeExtractLong(metadata[6]);
-        String currency = safeExtractString(metadata[7], "VND");
-        Long coverAssetId = safeExtractLong(metadata[8]);
-        CourseStatus status = safeExtractEnum(metadata[9], CourseStatus.class, CourseStatus.DRAFT);
-        Instant publishedAt = safeExtractInstant(metadata[10]);
-        Long userId = safeExtractLong(metadata[11]);
-        
-        // Create CourseRes with description = null (never load LOB)
-        CourseRes result = new CourseRes();
-        result.setId(id);
-        result.setTitle(title);
-        result.setSlug(slug);
-        result.setSubtitle(subtitle);
-        result.setDescription(null); // Explicitly null - no LOB loading
-        result.setLevel(level);
-        result.setPriceCents(priceCents);
-        result.setDiscountedPriceCents(discountedPriceCents);
-        result.setCurrency(currency);
-        result.setCoverAssetId(coverAssetId);
-        result.setStatus(status);
-        result.setPublishedAt(publishedAt);
-        result.setUserId(userId);
-        result.setChapters(Collections.emptyList()); // Empty chapters for detail view
-        
-        return result;
-    }
-    
-    // Helper methods for safe extraction
-    private Long safeExtractLong(Object obj) {
-        if (obj == null) return null;
-        if (obj instanceof Number) {
-            return ((Number) obj).longValue();
-        }
-        try {
-            return Long.parseLong(obj.toString());
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-    
-    private String safeExtractString(Object obj) {
-        return obj != null ? obj.toString() : null;
-    }
-    
-    private String safeExtractString(Object obj, String defaultValue) {
-        return obj != null ? obj.toString() : defaultValue;
-    }
-    
-    private <T extends Enum<T>> T safeExtractEnum(Object obj, Class<T> enumClass, T defaultValue) {
-        if (obj == null) return defaultValue;
-        try {
-            return Enum.valueOf(enumClass, obj.toString().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return defaultValue;
-        }
-    }
-    
-    private Instant safeExtractInstant(Object obj) {
-        if (obj == null) return null;
-        try {
-            if (obj instanceof java.sql.Timestamp) {
-                return ((java.sql.Timestamp) obj).toInstant();
-            } else if (obj instanceof Instant) {
-                return (Instant) obj;
-            } else {
-                return Instant.parse(obj.toString());
-            }
-        } catch (Exception e) {
-            return null;
-        }
+        Course c = getOwned(id, teacherUserId);
+        return toCourseResLite(c);
     }
 
     // =========================
@@ -897,7 +651,7 @@ public class CourseService {
 
         if (r.getContentFormat() != null) c.setContentFormat(r.getContentFormat());
         c.setPrimaryContent(r.isPrimaryContent());
-        c.setAssetId(r.getAssetId());
+        c.setFilePath(r.getFilePath());   // CHANGED: filePath
         c.setRichText(r.getRichText());
         c.setQuizId(r.getQuizId());
         c.setFlashcardSetId(r.getFlashcardSetId());

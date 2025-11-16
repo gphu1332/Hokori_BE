@@ -4,8 +4,11 @@ import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
 import com.hokori.web.repository.UserRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -16,10 +19,14 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final RoleService roleService;
+    private final FileStorageService fileStorageService; // <-- THÊM
 
-    public UserService(UserRepository userRepository, RoleService roleService) {
+    public UserService(UserRepository userRepository,
+                       RoleService roleService,
+                       FileStorageService fileStorageService) { // <-- THÊM PARAM
         this.userRepository = userRepository;
         this.roleService = roleService;
+        this.fileStorageService = fileStorageService;     // <-- GÁN FIELD
     }
 
     /* ===== READ ===== */
@@ -133,7 +140,6 @@ public class UserService {
         return userRepository.findByIdWithRole(id);
     }
 
-
     public Map<String, Object> submitTeacherApproval(Long userId) {
         User u = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found: " + userId));
@@ -152,13 +158,33 @@ public class UserService {
         u.setApprovalStatus(ApprovalStatus.PENDING);
         u.setApprovedAt(null);
         u.setApprovedByUserId(null);
-        // Nếu bạn có currentApproveRequest thì giữ nguyên; chưa có thì bỏ qua
         userRepository.save(u);
 
         res.put("approvalStatus", u.getApprovalStatus());
         res.put("approvedAt", u.getApprovedAt());
         res.put("timestamp", LocalDateTime.now());
-        // res.put("currentApproveRequestId", u.getCurrentApproveRequest()!=null ? u.getCurrentApproveRequest().getId() : null);
         return res;
+    }
+
+    /* ===== AVATAR UPLOAD ===== */
+
+    public String uploadAvatar(Long userId, MultipartFile file) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "User not found"));
+
+        if (Boolean.TRUE.equals(user.getDeletedFlag())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is deleted");
+        }
+
+        // lưu vào thư mục uploads/avatars/{userId}
+        String subFolder = "avatars/" + userId;
+        String relativePath = fileStorageService.store(file, subFolder);
+
+        String url = "/files/" + relativePath;
+        user.setAvatarUrl(url);
+
+        // @Transactional nên không cần save() lại, entity managed rồi
+        return url;
     }
 }

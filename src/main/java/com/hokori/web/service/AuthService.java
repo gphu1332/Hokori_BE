@@ -134,7 +134,6 @@ public class AuthService {
         u.setAvatarUrl(photoUrl);
         u.setIsActive(true);
         u.setIsVerified(Boolean.TRUE.equals(emailVerified));
-        u.setLearningLanguage("Japanese");
         u.setCurrentJlptLevel(JLPTLevel.N5);
         u.setRole(getDefaultRole()); // LEARNER mặc định
 
@@ -205,7 +204,6 @@ public class AuthService {
         u.setAvatarUrl(photoUrl);
         u.setIsActive(true);
         u.setIsVerified(true);
-        u.setLearningLanguage("Japanese");
         u.setCurrentJlptLevel(JLPTLevel.N5);
         u.setRole(getDefaultRole()); // LEARNER mặc định
         return userRepository.save(u);
@@ -357,9 +355,6 @@ public class AuthService {
         u.setEmail(req.getEmail());
         u.setPasswordHash(passwordEncoder.encode(req.getPassword()));
         u.setDisplayName(req.getDisplayName() != null ? req.getDisplayName() : req.getUsername());
-        u.setCountry(req.getCountry());
-        u.setNativeLanguage(req.getNativeLanguage());
-        u.setLearningLanguage("Japanese");
 
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
         u.setFirebaseUid(uid);
@@ -390,9 +385,6 @@ public class AuthService {
         u.setPasswordHash(passwordEncoder.encode(req.getPassword()));
         u.setDisplayName((req.getDisplayName()!=null && !req.getDisplayName().isBlank())
                 ? req.getDisplayName() : req.getUsername());
-        u.setCountry(req.getCountry());
-        u.setNativeLanguage(req.getNativeLanguage());
-        u.setLearningLanguage("Japanese");
 
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
         u.setFirebaseUid(uid);
@@ -432,21 +424,10 @@ public class AuthService {
         u.setLastName(req.getLastName());
         u.setDisplayName((req.getFirstName() != null ? req.getFirstName() : "") +
                 (req.getLastName()!= null ? " " + req.getLastName() : ""));
-        u.setHeadline(req.getHeadline());
         u.setBio(req.getBio());
         u.setCurrentJlptLevel(parseJlptOrDefault(req.getCurrentJlptLevel(), JLPTLevel.N2));
-        u.setLearningLanguage("Japanese");
         u.setIsActive(true);
         u.setIsVerified(false);
-
-        // social / website
-        u.setWebsiteUrl(req.getWebsiteUrl());
-        u.setFacebook(req.getFacebook());
-        u.setInstagram(req.getInstagram());
-        u.setLinkedin(req.getLinkedin());
-        u.setTiktok(req.getTiktok());
-        u.setX(req.getX());
-        u.setYoutube(req.getYoutube());
 
         // trạng thái duyệt mặc định
         u.setApprovalStatus(ApprovalStatus.NONE);

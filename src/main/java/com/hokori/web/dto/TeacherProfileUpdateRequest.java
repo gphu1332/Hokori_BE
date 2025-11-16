@@ -12,12 +12,7 @@ public class TeacherProfileUpdateRequest {
 
     // Social
     @Size(max = 255) private String websiteUrl;
-    @Size(max = 255) private String facebook;
-    @Size(max = 255) private String instagram;
     @Size(max = 255) private String linkedin;
-    @Size(max = 255) private String tiktok;
-    @Size(max = 255) private String x;       // Twitter/X
-    @Size(max = 255) private String youtube;
 
     // Payout/Bank
     @Size(max = 100) private String bankAccountNumber;

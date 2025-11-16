@@ -11,7 +11,6 @@ public class UserMeResponse {
     private String displayName;
     private String avatarUrl;
     private String phoneNumber;
-    private String country;
     private Boolean isActive;
     private Boolean isVerified;
     private java.time.LocalDateTime lastLoginAt;
@@ -28,8 +27,7 @@ public class UserMeResponse {
         private java.time.LocalDateTime approvedAt;
         private Integer yearsOfExperience;
         private String bio;
-        private String teachingStyles;
-        private String websiteUrl, facebook, instagram, linkedin, tiktok, x, youtube;
+        private String websiteUrl, linkedin;
 
         // Payout
         private String bankAccountNumber;

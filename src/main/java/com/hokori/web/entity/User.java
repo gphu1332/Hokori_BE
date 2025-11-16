@@ -3,7 +3,6 @@ package com.hokori.web.entity;
 import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.Enum.Gender;
 import com.hokori.web.Enum.JLPTLevel;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -110,49 +109,23 @@ public class User {
     @Column(name = "gender", length = 10)
     private Gender gender = Gender.OTHER;
 
-    @Size(max = 100) @Column(name = "country", length = 100) private String country;
-    @Size(max = 100) @Column(name = "city", length = 100)     private String city;
     @Size(max = 255) @Column(name = "address", length = 255)   private String address;
-
-    @Size(max = 50)
-    @Column(name = "native_language", length = 50)
-    private String nativeLanguage;
-
-    @Size(max = 50)
-    @Column(name = "learning_language", length = 50)
-    private String learningLanguage = "Japanese";
 
     @Enumerated(EnumType.STRING)
     @Column(name = "current_jlpt_level", length = 10)
     private JLPTLevel currentJlptLevel = JLPTLevel.N5;
 
-    @Size(max = 150)
-    @Column(name = "headline", length = 150)
-    private String headline;
-
     @Lob
     @Column(name = "bio")
-    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
     private String bio;
 
     /** Số năm kinh nghiệm (dành cho teacher) */
     @Column(name = "years_of_experience")
     private Integer yearsOfExperience;
 
-    /** Sở thích/phong cách dạy */
-    @Lob
-    @Column(name = "teaching_styles")
-    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
-    private String teachingStyles;
-
     // ===== Social / website =====
     @Size(max = 255) @Column(name = "website_url", length = 255) private String websiteUrl;
-    @Size(max = 255) @Column(name = "facebook", length = 255)     private String facebook;
-    @Size(max = 255) @Column(name = "instagram", length = 255)    private String instagram;
     @Size(max = 255) @Column(name = "linkedin", length = 255)     private String linkedin;
-    @Size(max = 255) @Column(name = "tiktok", length = 255)       private String tiktok;
-    @Size(max = 255) @Column(name = "x_twitter", length = 255)    private String x; // twitter/X
-    @Size(max = 255) @Column(name = "youtube", length = 255)      private String youtube;
 
     // ===== Approval (luồng duyệt teacher) =====
     @Enumerated(EnumType.STRING)
@@ -184,6 +157,10 @@ public class User {
 
     @Column(name = "last_payout_date")
     private LocalDate lastPayoutDate;
+
+    @Column(name = "wallet_balance", nullable = false)
+    private Long walletBalance = 0L;
+
 
     // ===== Audit =====
     @Column(name = "last_login_at")
@@ -221,8 +198,7 @@ public class User {
 
     // ===== Helpers =====
     public boolean hasRole(String roleName) {
-        // Case-insensitive check for PostgreSQL compatibility
-        return role != null && role.getRoleName() != null && role.getRoleName().equalsIgnoreCase(roleName);
+        return role != null && role.getRoleName().equals(roleName);
     }
 
     @Transient
