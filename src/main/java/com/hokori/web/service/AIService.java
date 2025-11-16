@@ -245,8 +245,21 @@ public class AIService {
     
     /**
      * Convert speech to text using Google Cloud Speech-to-Text API
+     * @param audioData Base64 encoded audio data
+     * @param language Language code (e.g., "ja-JP")
+     * @param audioFormat Audio format (e.g., "wav", "mp3", "ogg", "webm"). If null or empty, defaults to LINEAR16.
      */
     public Map<String, Object> speechToText(String audioData, String language) {
+        return speechToText(audioData, language, null);
+    }
+    
+    /**
+     * Convert speech to text using Google Cloud Speech-to-Text API
+     * @param audioData Base64 encoded audio data
+     * @param language Language code (e.g., "ja-JP")
+     * @param audioFormat Audio format (e.g., "wav", "mp3", "ogg", "webm"). If null or empty, defaults to LINEAR16.
+     */
+    public Map<String, Object> speechToText(String audioData, String language, String audioFormat) {
         if (!googleCloudEnabled || speechClient == null) {
             throw new AIServiceException("Speech-to-Text", 
                 "Google Cloud Speech-to-Text API is not enabled or not configured. Please enable it in application properties.",
@@ -259,7 +272,8 @@ public class AIService {
         }
         
         try {
-            logger.debug("Converting speech to text: language={}, audioDataLength={}", language, audioData.length());
+            logger.debug("Converting speech to text: language={}, audioFormat={}, audioDataLength={}", 
+                language, audioFormat, audioData.length());
             
             // Decode base64 audio data
             byte[] audioBytes;
@@ -273,13 +287,34 @@ public class AIService {
             // Default to Japanese for Vietnamese users learning Japanese
             String langCode = language != null && !language.isEmpty() ? language : "ja-JP";
             
-            // Configure recognition
-            RecognitionConfig config = RecognitionConfig.newBuilder()
-                .setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
-                .setSampleRateHertz(speechToTextSampleRate)
+            // Configure recognition based on audio format
+            RecognitionConfig.Builder configBuilder = RecognitionConfig.newBuilder()
                 .setLanguageCode(langCode)
-                .setEnableAutomaticPunctuation(true)
-                .build();
+                .setEnableAutomaticPunctuation(true);
+            
+            // Handle different audio formats
+            String format = (audioFormat != null) ? audioFormat.toLowerCase().trim() : "";
+            
+            if (format.equals("webm") || format.equals("ogg") || format.contains("opus")) {
+                // WEBM OPUS: Let Google Cloud auto-detect encoding and sample rate from header
+                // Don't set encoding or sample_rate_hertz for container formats
+                logger.debug("Using auto-detection for WEBM/OGG/OPUS format");
+            } else if (format.equals("mp3")) {
+                // MP3: Use MP3 encoding, let Google Cloud detect sample rate
+                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.MP3);
+                logger.debug("Using MP3 encoding with auto-detected sample rate");
+            } else if (format.equals("flac")) {
+                // FLAC: Use FLAC encoding, let Google Cloud detect sample rate
+                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.FLAC);
+                logger.debug("Using FLAC encoding with auto-detected sample rate");
+            } else {
+                // Default: LINEAR16 (WAV) with configured sample rate
+                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
+                    .setSampleRateHertz(speechToTextSampleRate);
+                logger.debug("Using LINEAR16 encoding with sample rate: {}", speechToTextSampleRate);
+            }
+            
+            RecognitionConfig config = configBuilder.build();
             
             RecognitionAudio audio = RecognitionAudio.newBuilder()
                 .setContent(audioBytesString)
