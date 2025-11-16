@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
+import org.springframework.web.client.RestTemplate;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -236,6 +237,14 @@ public class GoogleCloudConfig {
             System.out.println("❌ Failed to initialize Cloud Text-to-Speech API: " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * RestTemplate bean for HTTP calls (used for Gemini API)
+     */
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
     }
 }
 

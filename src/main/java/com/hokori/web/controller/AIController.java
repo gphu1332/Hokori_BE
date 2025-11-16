@@ -7,9 +7,12 @@ import com.hokori.web.dto.ContentGenerationRequest;
 import com.hokori.web.dto.SpeechToTextRequest;
 import com.hokori.web.dto.TextToSpeechRequest;
 import com.hokori.web.dto.KaiwaPracticeRequest;
+import com.hokori.web.dto.SentenceAnalysisRequest;
+import com.hokori.web.dto.SentenceAnalysisResponse;
 import com.hokori.web.service.AIService;
 import com.hokori.web.service.SpeakingPracticeService;
 import com.hokori.web.service.KaiwaSentenceService;
+import com.hokori.web.service.SentenceAnalysisService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -41,6 +44,9 @@ public class AIController {
     
     @Autowired(required = false)
     private com.hokori.web.service.AIResponseFormatter responseFormatter;
+    
+    @Autowired(required = false)
+    private SentenceAnalysisService sentenceAnalysisService;
 
     @PostMapping("/translate")
     @Operation(summary = "Translate text", description = "Translate text using Google Cloud Translation API")
@@ -298,5 +304,38 @@ public class AIController {
         defaults.put("businessRules", businessRules);
         
         return ResponseEntity.ok(ApiResponse.success("Default settings for Vietnamese users", defaults));
+    }
+
+    @PostMapping("/sentence-analysis")
+    @Operation(summary = "Analyze Japanese sentence", description = "Analyze Japanese sentence for vocabulary and grammar patterns using AI")
+    public ResponseEntity<ApiResponse<SentenceAnalysisResponse>> analyzeSentence(
+            @Valid @RequestBody SentenceAnalysisRequest request) {
+        logger.info("Sentence analysis request: sentenceLength={}, level={}",
+            request.getSentence() != null ? request.getSentence().length() : 0,
+            request.getLevel());
+
+        try {
+            if (!request.isValidLevel()) {
+                return ResponseEntity.ok(ApiResponse.error("Invalid JLPT level. Valid levels: N5, N4, N3, N2, N1"));
+            }
+
+            if (sentenceAnalysisService == null) {
+                return ResponseEntity.ok(ApiResponse.error("Sentence analysis service is not available"));
+            }
+
+            SentenceAnalysisResponse analysisResult = sentenceAnalysisService.analyzeSentence(
+                request.getSentence(),
+                request.getLevel()
+            );
+
+            logger.debug("Sentence analysis successful: vocabularyCount={}, grammarCount={}",
+                analysisResult.getVocabulary() != null ? analysisResult.getVocabulary().size() : 0,
+                analysisResult.getGrammar() != null ? analysisResult.getGrammar().size() : 0);
+
+            return ResponseEntity.ok(ApiResponse.success("Sentence analysis completed", analysisResult));
+        } catch (Exception e) {
+            logger.error("Sentence analysis failed", e);
+            return ResponseEntity.ok(ApiResponse.error("Sentence analysis failed: " + e.getMessage()));
+        }
     }
 }

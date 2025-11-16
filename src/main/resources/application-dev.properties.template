@@ -95,6 +95,11 @@ ai.text-to-speech.speed.slow=0.75
 ai.text-to-speech.speed.normal=1.0
 ai.text-to-speech.speed.fast=1.5
 
+# Sentence Analysis Configuration
+ai.sentence-analysis.max-length=100
+google.cloud.gemini.api-key=YOUR_GEMINI_API_KEY
+google.cloud.gemini.model=gemini-pro
+
 # Logging configuration for development
 logging.level.com.hokori.web=DEBUG
 logging.level.org.springframework.security=DEBUG

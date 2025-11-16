@@ -1,0 +1,126 @@
+package com.hokori.web.dto;
+
+import java.util.List;
+
+/**
+ * DTO for vocabulary item in sentence analysis
+ */
+public class VocabularyItem {
+    private String word; // Japanese word
+    private String reading; // Reading in hiragana
+    private String meaningVi; // Meaning in Vietnamese
+    private String jlptLevel; // JLPT level: N5, N4, N3, N2, N1
+    private KanjiDetails kanjiDetails; // Kanji details (if applicable)
+    private String importance; // "high", "medium", "low" based on user's level
+
+    public VocabularyItem() {}
+
+    public VocabularyItem(String word, String reading, String meaningVi, String jlptLevel) {
+        this.word = word;
+        this.reading = reading;
+        this.meaningVi = meaningVi;
+        this.jlptLevel = jlptLevel;
+    }
+
+    public String getWord() {
+        return word;
+    }
+
+    public void setWord(String word) {
+        this.word = word;
+    }
+
+    public String getReading() {
+        return reading;
+    }
+
+    public void setReading(String reading) {
+        this.reading = reading;
+    }
+
+    public String getMeaningVi() {
+        return meaningVi;
+    }
+
+    public void setMeaningVi(String meaningVi) {
+        this.meaningVi = meaningVi;
+    }
+
+    public String getJlptLevel() {
+        return jlptLevel;
+    }
+
+    public void setJlptLevel(String jlptLevel) {
+        this.jlptLevel = jlptLevel;
+    }
+
+    public KanjiDetails getKanjiDetails() {
+        return kanjiDetails;
+    }
+
+    public void setKanjiDetails(KanjiDetails kanjiDetails) {
+        this.kanjiDetails = kanjiDetails;
+    }
+
+    public String getImportance() {
+        return importance;
+    }
+
+    public void setImportance(String importance) {
+        this.importance = importance;
+    }
+
+    /**
+     * Nested class for Kanji details
+     */
+    public static class KanjiDetails {
+        private String radical; // Radical
+        private Integer strokeCount; // Stroke count
+        private String onyomi; // Onyomi reading
+        private String kunyomi; // Kunyomi reading
+        private List<String> relatedWords; // Related compound words
+
+        public KanjiDetails() {}
+
+        public String getRadical() {
+            return radical;
+        }
+
+        public void setRadical(String radical) {
+            this.radical = radical;
+        }
+
+        public Integer getStrokeCount() {
+            return strokeCount;
+        }
+
+        public void setStrokeCount(Integer strokeCount) {
+            this.strokeCount = strokeCount;
+        }
+
+        public String getOnyomi() {
+            return onyomi;
+        }
+
+        public void setOnyomi(String onyomi) {
+            this.onyomi = onyomi;
+        }
+
+        public String getKunyomi() {
+            return kunyomi;
+        }
+
+        public void setKunyomi(String kunyomi) {
+            this.kunyomi = kunyomi;
+        }
+
+        public List<String> getRelatedWords() {
+            return relatedWords;
+        }
+
+        public void setRelatedWords(List<String> relatedWords) {
+            this.relatedWords = relatedWords;
+        }
+    }
+}
+
