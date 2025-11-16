@@ -287,13 +287,27 @@ public class AIService {
             // Default to Japanese for Vietnamese users learning Japanese
             String langCode = language != null && !language.isEmpty() ? language : "ja-JP";
             
-            // Auto-detect audio format from magic bytes if not provided
+            // Always detect audio format from magic bytes first (more reliable than FE-provided format)
+            String detectedFormatFromBytes = detectAudioFormat(audioBytes);
+            logger.info("Detected audio format from magic bytes: {}", detectedFormatFromBytes);
+            
+            // Use detected format if FE didn't provide one, or if FE format doesn't match actual format
             String detectedFormat = audioFormat;
             if (detectedFormat == null || detectedFormat.trim().isEmpty()) {
-                detectedFormat = detectAudioFormat(audioBytes);
-                logger.info("Auto-detected audio format: {} (original: {})", detectedFormat, audioFormat);
+                detectedFormat = detectedFormatFromBytes;
+                logger.info("Using auto-detected format: {} (FE provided: null/empty)", detectedFormat);
             } else {
-                logger.info("Using provided audio format: {}", detectedFormat);
+                String feFormat = detectedFormat.toLowerCase().trim();
+                String actualFormat = detectedFormatFromBytes.toLowerCase();
+                
+                // If FE says "wav" but magic bytes say "webm", trust magic bytes (FE might be wrong)
+                if (!feFormat.equals(actualFormat) && actualFormat.equals("webm")) {
+                    logger.warn("Format mismatch: FE provided '{}' but magic bytes detected '{}'. Using detected format.", 
+                        feFormat, actualFormat);
+                    detectedFormat = detectedFormatFromBytes;
+                } else {
+                    logger.info("Using FE-provided format: {} (matches detected: {})", feFormat, actualFormat);
+                }
             }
             
             // Configure recognition based on audio format
