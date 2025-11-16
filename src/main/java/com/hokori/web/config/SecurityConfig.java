@@ -52,7 +52,14 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui.html").permitAll()
                 .requestMatchers("/api-docs/**").permitAll()
                 .requestMatchers("/health").permitAll()
-                
+
+
+                    // 👇 Public marketplace courses (chỉ GET)
+                .requestMatchers(HttpMethod.GET,
+                    "/api/courses",
+                    "/api/courses/*/tree"
+                ).permitAll()   
+
                 // ============================================
                 // ROLE-BASED ENDPOINTS
                 // ============================================
