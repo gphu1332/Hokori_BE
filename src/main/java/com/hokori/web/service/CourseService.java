@@ -21,6 +21,7 @@ import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.sql.Timestamp;
 
 @Service
 @RequiredArgsConstructor
@@ -182,22 +183,66 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public Page<CourseRes> listMine(Long teacherUserId, int page, int size, String q, CourseStatus status) {
-        Pageable p = PageRequest.of(page, size, Sort.by("updatedAt").descending());
-        Specification<Course> spec = (root, cq, cb) -> {
-            List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deletedFlag")));
-            ps.add(cb.equal(root.get("userId"), teacherUserId));
-            if (status != null) ps.add(cb.equal(root.get("status"), status));
-            if (q != null && !q.isBlank()) {
-                String like = "%" + q.trim().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("title")), like),
-                        cb.like(cb.lower(root.get("slug")), like)
-                ));
-            }
-            return cb.and(ps.toArray(new Predicate[0]));
-        };
-        return courseRepo.findAll(spec, p).map(this::toCourseResLite);
+        // Use native query to avoid LOB stream errors on PostgreSQL
+        String statusStr = status != null ? status.name() : null;
+        String searchQ = (q != null && !q.isBlank()) ? q.trim() : null;
+        
+        List<Object[]> metadataList = courseRepo.findCourseMetadataByUserId(teacherUserId, statusStr, searchQ);
+        
+        // Manual pagination
+        int total = metadataList.size();
+        int start = page * size;
+        int end = Math.min(start + size, total);
+        List<Object[]> pagedList = (start < total) ? metadataList.subList(start, end) : Collections.emptyList();
+        
+        // Map to CourseRes (description will be null to avoid LOB loading)
+        List<CourseRes> content = pagedList.stream()
+                .map(this::mapCourseMetadataToRes)
+                .collect(Collectors.toList());
+        
+        return new PageImpl<>(content, PageRequest.of(page, size, Sort.by("updatedAt").descending()), total);
+    }
+    
+    private CourseRes mapCourseMetadataToRes(Object[] metadata) {
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+        
+        // Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, 
+        //          currency, coverImagePath, status, publishedAt, userId, deletedFlag]
+        Long id = ((Number) actualMetadata[0]).longValue();
+        String title = (String) actualMetadata[1];
+        String slug = (String) actualMetadata[2];
+        String subtitle = (String) actualMetadata[3];
+        JLPTLevel level = JLPTLevel.valueOf(((String) actualMetadata[4]).toUpperCase());
+        Long priceCents = actualMetadata[5] != null ? ((Number) actualMetadata[5]).longValue() : null;
+        Long discountedPriceCents = actualMetadata[6] != null ? ((Number) actualMetadata[6]).longValue() : null;
+        String currency = (String) actualMetadata[7];
+        String coverImagePath = (String) actualMetadata[8];
+        CourseStatus courseStatus = CourseStatus.valueOf(((String) actualMetadata[9]).toUpperCase());
+        Instant publishedAt = actualMetadata[10] != null ? 
+                (actualMetadata[10] instanceof Instant ? (Instant) actualMetadata[10] : 
+                 Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[10]).getTime())) : null;
+        Long userId = ((Number) actualMetadata[11]).longValue();
+        
+        CourseRes res = new CourseRes();
+        res.setId(id);
+        res.setTitle(title);
+        res.setSlug(slug);
+        res.setSubtitle(subtitle);
+        res.setDescription(null); // Set to null to avoid LOB loading
+        res.setLevel(level);
+        res.setPriceCents(priceCents);
+        res.setDiscountedPriceCents(discountedPriceCents);
+        res.setCurrency(currency);
+        res.setCoverImagePath(coverImagePath);
+        res.setStatus(courseStatus);
+        res.setPublishedAt(publishedAt);
+        res.setUserId(userId);
+        res.setChapters(Collections.emptyList()); // Empty chapters list for lite version
+        return res;
     }
 
     @Transactional(readOnly = true)

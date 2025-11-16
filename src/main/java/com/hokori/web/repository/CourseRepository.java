@@ -48,11 +48,11 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     
     /**
      * List courses metadata without LOB fields for pagination.
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
-               c.currency, c.cover_asset_id, c.status, c.published_at, c.user_id, c.deleted_flag
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag
         FROM course c
         WHERE c.deleted_flag = false 
           AND c.user_id = :userId
