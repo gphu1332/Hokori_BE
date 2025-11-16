@@ -14,6 +14,9 @@ import com.hokori.web.service.SpeakingPracticeService;
 import com.hokori.web.service.KaiwaSentenceService;
 import com.hokori.web.service.SentenceAnalysisService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -307,7 +310,100 @@ public class AIController {
     }
 
     @PostMapping("/sentence-analysis")
-    @Operation(summary = "Analyze Japanese sentence", description = "Analyze Japanese sentence for vocabulary and grammar patterns using AI")
+    @Operation(
+        summary = "Analyze Japanese sentence", 
+        description = "Analyze Japanese sentence for vocabulary and grammar patterns using AI. Designed for Vietnamese users learning Japanese. All explanations are in Vietnamese.",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Japanese sentence and user's JLPT level",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = SentenceAnalysisRequest.class),
+                examples = @ExampleObject(
+                    name = "Example Request",
+                    value = "{\n" +
+                            "  \"sentence\": \"私は日本語を勉強しています\",\n" +
+                            "  \"level\": \"N5\"\n" +
+                            "}"
+                )
+            )
+        ),
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Analysis completed successfully",
+                content = @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiResponse.class),
+                    examples = @ExampleObject(
+                        name = "Success Response",
+                        value = "{\n" +
+                                "  \"success\": true,\n" +
+                                "  \"message\": \"Sentence analysis completed\",\n" +
+                                "  \"data\": {\n" +
+                                "    \"sentence\": \"私は日本語を勉強しています\",\n" +
+                                "    \"level\": \"N5\",\n" +
+                                "    \"vocabulary\": [\n" +
+                                "      {\n" +
+                                "        \"word\": \"私\",\n" +
+                                "        \"reading\": \"わたし\",\n" +
+                                "        \"meaningVi\": \"tôi\",\n" +
+                                "        \"jlptLevel\": \"N5\",\n" +
+                                "        \"importance\": \"high\",\n" +
+                                "        \"kanjiDetails\": {\n" +
+                                "          \"radical\": \"禾\",\n" +
+                                "          \"strokeCount\": 7,\n" +
+                                "          \"onyomi\": \"シ\",\n" +
+                                "          \"kunyomi\": \"わたし\",\n" +
+                                "          \"relatedWords\": [\"私的\", \"私立\"]\n" +
+                                "        }\n" +
+                                "      },\n" +
+                                "      {\n" +
+                                "        \"word\": \"日本語\",\n" +
+                                "        \"reading\": \"にほんご\",\n" +
+                                "        \"meaningVi\": \"tiếng Nhật\",\n" +
+                                "        \"jlptLevel\": \"N5\",\n" +
+                                "        \"importance\": \"high\"\n" +
+                                "      }\n" +
+                                "    ],\n" +
+                                "    \"grammar\": [\n" +
+                                "      {\n" +
+                                "        \"pattern\": \"を + verb\",\n" +
+                                "        \"jlptLevel\": \"N5\",\n" +
+                                "        \"explanationVi\": \"Trợ từ を được dùng để đánh dấu tân ngữ trực tiếp\",\n" +
+                                "        \"example\": \"本を読みます\",\n" +
+                                "        \"notes\": \"Lưu ý: Không nhầm với は (chủ đề)\"\n" +
+                                "      },\n" +
+                                "      {\n" +
+                                "        \"pattern\": \"ています\",\n" +
+                                "        \"jlptLevel\": \"N5\",\n" +
+                                "        \"explanationVi\": \"Diễn tả hành động đang diễn ra hoặc trạng thái hiện tại\",\n" +
+                                "        \"example\": \"勉強しています\",\n" +
+                                "        \"notes\": \"Có thể dùng cho cả hành động và trạng thái\"\n" +
+                                "      }\n" +
+                                "    ]\n" +
+                                "  }\n" +
+                                "}"
+                    )
+                )
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Error response",
+                content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(
+                        name = "Error Response",
+                        value = "{\n" +
+                                "  \"success\": false,\n" +
+                                "  \"message\": \"Invalid JLPT level. Valid levels: N5, N4, N3, N2, N1\",\n" +
+                                "  \"data\": null\n" +
+                                "}"
+                    )
+                )
+            )
+        }
+    )
     public ResponseEntity<ApiResponse<SentenceAnalysisResponse>> analyzeSentence(
             @Valid @RequestBody SentenceAnalysisRequest request) {
         logger.info("Sentence analysis request: sentenceLength={}, level={}",

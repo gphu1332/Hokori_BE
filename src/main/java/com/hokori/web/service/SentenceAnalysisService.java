@@ -19,7 +19,9 @@ import java.util.*;
 
 /**
  * Service for AI Sentence Analysis feature
- * Analyzes Japanese sentences for vocabulary and grammar using Google Cloud Generative AI (Gemini)
+ * Analyzes Japanese sentences for Vietnamese users learning Japanese
+ * Provides vocabulary and grammar analysis with Vietnamese explanations
+ * Target audience: Vietnamese users only (Vietnamese → Japanese learning)
  */
 @Service
 public class SentenceAnalysisService {
@@ -186,6 +188,7 @@ public class SentenceAnalysisService {
      */
     private String buildVocabularyPrompt(String sentence, String level) {
         return String.format(
+            "You are analyzing Japanese vocabulary for Vietnamese users learning Japanese.\n\n" +
             "Analyze the vocabulary in this Japanese sentence: \"%s\"\n\n" +
             "User's JLPT level: %s\n\n" +
             "Extract all words and provide detailed information in JSON format:\n" +
@@ -194,7 +197,7 @@ public class SentenceAnalysisService {
             "    {\n" +
             "      \"word\": \"Japanese word\",\n" +
             "      \"reading\": \"hiragana reading\",\n" +
-            "      \"meaning_vi\": \"Vietnamese meaning\",\n" +
+            "      \"meaning_vi\": \"Vietnamese meaning (MUST be in Vietnamese, not English)\",\n" +
             "      \"jlpt_level\": \"N5|N4|N3|N2|N1\",\n" +
             "      \"kanji_details\": {\n" +
             "        \"radical\": \"radical (if kanji)\",\n" +
@@ -208,6 +211,8 @@ public class SentenceAnalysisService {
             "  ]\n" +
             "}\n\n" +
             "Important:\n" +
+            "- ALL meanings MUST be in Vietnamese (Tiếng Việt), NOT English\n" +
+            "- This is for Vietnamese users learning Japanese\n" +
             "- Mark words as \"high\" importance if they match user's level (%s) or are essential\n" +
             "- Mark words as \"medium\" if they are slightly above user's level\n" +
             "- Mark words as \"low\" if they are well below user's level\n" +
@@ -221,6 +226,7 @@ public class SentenceAnalysisService {
      */
     private String buildGrammarPrompt(String sentence, String level) {
         return String.format(
+            "You are analyzing Japanese grammar for Vietnamese users learning Japanese.\n\n" +
             "Analyze the grammar patterns in this Japanese sentence: \"%s\"\n\n" +
             "User's JLPT level: %s\n\n" +
             "Identify all grammar patterns and provide detailed information in JSON format:\n" +
@@ -229,13 +235,15 @@ public class SentenceAnalysisService {
             "    {\n" +
             "      \"pattern\": \"grammar pattern name\",\n" +
             "      \"jlpt_level\": \"N5|N4|N3|N2|N1\",\n" +
-            "      \"explanation_vi\": \"Vietnamese explanation\",\n" +
+            "      \"explanation_vi\": \"Vietnamese explanation (MUST be in Vietnamese, not English)\",\n" +
             "      \"example\": \"example sentence\",\n" +
-            "      \"notes\": \"common mistakes and notes\"\n" +
+            "      \"notes\": \"common mistakes and notes (in Vietnamese)\"\n" +
             "    }\n" +
             "  ]\n" +
             "}\n\n" +
             "Important:\n" +
+            "- ALL explanations and notes MUST be in Vietnamese (Tiếng Việt), NOT English\n" +
+            "- This is for Vietnamese users learning Japanese\n" +
             "- Focus on grammar patterns appropriate for level %s\n" +
             "- Provide clear explanations in Vietnamese\n" +
             "- Include practical examples\n" +

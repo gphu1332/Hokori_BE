@@ -1,16 +1,31 @@
 package com.hokori.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
  * DTO for vocabulary item in sentence analysis
  */
+@Schema(description = "Vocabulary item with detailed information")
 public class VocabularyItem {
+    @Schema(description = "Japanese word", example = "私")
     private String word; // Japanese word
+    
+    @Schema(description = "Reading in hiragana", example = "わたし")
     private String reading; // Reading in hiragana
+    
+    @Schema(description = "Meaning in Vietnamese", example = "tôi")
     private String meaningVi; // Meaning in Vietnamese
+    
+    @Schema(description = "JLPT level", example = "N5", allowableValues = {"N5", "N4", "N3", "N2", "N1"})
     private String jlptLevel; // JLPT level: N5, N4, N3, N2, N1
+    
+    @Schema(description = "Kanji details (if word contains kanji)")
     private KanjiDetails kanjiDetails; // Kanji details (if applicable)
+    
+    @Schema(description = "Importance level based on user's JLPT level", 
+            example = "high", 
+            allowableValues = {"high", "medium", "low"})
     private String importance; // "high", "medium", "low" based on user's level
 
     public VocabularyItem() {}
@@ -73,11 +88,21 @@ public class VocabularyItem {
     /**
      * Nested class for Kanji details
      */
+    @Schema(description = "Kanji details for vocabulary items containing kanji")
     public static class KanjiDetails {
+        @Schema(description = "Radical", example = "禾")
         private String radical; // Radical
+        
+        @Schema(description = "Stroke count", example = "7")
         private Integer strokeCount; // Stroke count
+        
+        @Schema(description = "Onyomi reading", example = "シ")
         private String onyomi; // Onyomi reading
+        
+        @Schema(description = "Kunyomi reading", example = "わたし")
         private String kunyomi; // Kunyomi reading
+        
+        @Schema(description = "Related compound words", example = "[\"私的\", \"私立\"]")
         private List<String> relatedWords; // Related compound words
 
         public KanjiDetails() {}
