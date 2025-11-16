@@ -3,6 +3,7 @@ package com.hokori.web.entity;
 import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.Enum.Gender;
 import com.hokori.web.Enum.JLPTLevel;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -117,6 +118,7 @@ public class User {
 
     @Lob
     @Column(name = "bio")
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
     private String bio;
 
     /** Số năm kinh nghiệm (dành cho teacher) */
