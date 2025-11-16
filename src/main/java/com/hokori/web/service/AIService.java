@@ -32,6 +32,36 @@ public class AIService {
     @Value("${google.cloud.enabled:false}")
     private boolean googleCloudEnabled;
     
+    // AI Service Limits
+    @Value("${ai.translation.max-length:5000}")
+    private int translationMaxLength;
+    
+    @Value("${ai.sentiment.max-length:10000}")
+    private int sentimentMaxLength;
+    
+    @Value("${ai.text-to-speech.max-length:5000}")
+    private int textToSpeechMaxLength;
+    
+    @Value("${ai.speech-to-text.sample-rate:16000}")
+    private int speechToTextSampleRate;
+    
+    // Text-to-Speech Speed Configuration
+    @Value("${ai.text-to-speech.speed.slow:0.75}")
+    private double textToSpeechSpeedSlow;
+    
+    @Value("${ai.text-to-speech.speed.normal:1.0}")
+    private double textToSpeechSpeedNormal;
+    
+    @Value("${ai.text-to-speech.speed.fast:1.5}")
+    private double textToSpeechSpeedFast;
+    
+    // Sentiment Analysis Thresholds
+    @Value("${ai.feedback.threshold.sentiment.positive:0.25}")
+    private float sentimentThresholdPositive;
+    
+    @Value("${ai.feedback.threshold.sentiment.negative:-0.25}")
+    private float sentimentThresholdNegative;
+    
     @Autowired(required = false)
     private Translate translateClient;
     
@@ -62,8 +92,8 @@ public class AIService {
             throw new AIServiceException("Translation", "Text cannot be empty", "INVALID_INPUT");
         }
         
-        if (text.length() > 5000) {
-            throw new AIServiceException("Translation", "Text exceeds maximum length of 5000 characters", "INVALID_INPUT");
+        if (text.length() > translationMaxLength) {
+            throw new AIServiceException("Translation", "Text exceeds maximum length of " + translationMaxLength + " characters", "INVALID_INPUT");
         }
         
         try {
@@ -123,8 +153,8 @@ public class AIService {
             throw new AIServiceException("Sentiment Analysis", "Text cannot be empty", "INVALID_INPUT");
         }
         
-        if (text.length() > 10000) {
-            throw new AIServiceException("Sentiment Analysis", "Text exceeds maximum length of 10000 characters", "INVALID_INPUT");
+        if (text.length() > sentimentMaxLength) {
+            throw new AIServiceException("Sentiment Analysis", "Text exceeds maximum length of " + sentimentMaxLength + " characters", "INVALID_INPUT");
         }
         
         try {
@@ -246,7 +276,7 @@ public class AIService {
             // Configure recognition
             RecognitionConfig config = RecognitionConfig.newBuilder()
                 .setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
-                .setSampleRateHertz(16000)
+                .setSampleRateHertz(speechToTextSampleRate)
                 .setLanguageCode(langCode)
                 .setEnableAutomaticPunctuation(true)
                 .build();
@@ -309,8 +339,8 @@ public class AIService {
             throw new AIServiceException("Text-to-Speech", "Text cannot be empty", "INVALID_INPUT");
         }
         
-        if (text.length() > 5000) {
-            throw new AIServiceException("Text-to-Speech", "Text exceeds maximum length of 5000 characters", "INVALID_INPUT");
+        if (text.length() > textToSpeechMaxLength) {
+            throw new AIServiceException("Text-to-Speech", "Text exceeds maximum length of " + textToSpeechMaxLength + " characters", "INVALID_INPUT");
         }
         
         try {
@@ -319,11 +349,11 @@ public class AIService {
             String voiceName = voice != null && !voice.isEmpty() ? voice : "ja-JP-Standard-A";
             
             // Parse speed (SSML speaking rate: 0.25 to 4.0)
-            double speakingRate = 1.0; // normal speed
+            double speakingRate = textToSpeechSpeedNormal;
             if ("slow".equalsIgnoreCase(speed)) {
-                speakingRate = 0.75;
+                speakingRate = textToSpeechSpeedSlow;
             } else if ("fast".equalsIgnoreCase(speed)) {
-                speakingRate = 1.5;
+                speakingRate = textToSpeechSpeedFast;
             }
             
             // Build the voice request
@@ -417,9 +447,9 @@ public class AIService {
      * Helper method to convert sentiment score to label
      */
     private String getSentimentLabel(float score) {
-        if (score >= 0.25) {
+        if (score >= sentimentThresholdPositive) {
             return "POSITIVE";
-        } else if (score <= -0.25) {
+        } else if (score <= sentimentThresholdNegative) {
             return "NEGATIVE";
         } else {
             return "NEUTRAL";

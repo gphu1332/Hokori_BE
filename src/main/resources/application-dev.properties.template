@@ -26,6 +26,75 @@ google.cloud.enabled=true
 google.cloud.project-id=hokori-web
 google.cloud.credentials.path=classpath:google-cloud-service-account.json
 
+# AI Service Limits and Configuration
+ai.translation.max-length=5000
+ai.sentiment.max-length=10000
+ai.text-to-speech.max-length=5000
+ai.speech-to-text.sample-rate=16000
+
+# Kaiwa Practice Scoring Configuration
+kaiwa.scoring.accuracy-weight=0.6
+kaiwa.scoring.pronunciation-weight=0.4
+
+# JLPT Level Score Adjustments (multipliers for stricter scoring at higher levels)
+kaiwa.scoring.adjustment.n1=0.95
+kaiwa.scoring.adjustment.n2=0.97
+kaiwa.scoring.adjustment.n3=0.98
+kaiwa.scoring.adjustment.n4=0.99
+kaiwa.scoring.adjustment.n5=1.0
+
+# JLPT Level Accuracy Thresholds (minimum score to pass)
+kaiwa.threshold.accuracy.n1=0.9
+kaiwa.threshold.accuracy.n2=0.85
+kaiwa.threshold.accuracy.n3=0.8
+kaiwa.threshold.accuracy.n4=0.75
+kaiwa.threshold.accuracy.n5=0.7
+kaiwa.threshold.accuracy.default=0.8
+
+# JLPT Level Practice Thresholds (below this score needs more practice)
+kaiwa.threshold.practice.n1=0.85
+kaiwa.threshold.practice.n2=0.8
+kaiwa.threshold.practice.n3=0.75
+kaiwa.threshold.practice.n4=0.7
+kaiwa.threshold.practice.n5=0.65
+kaiwa.threshold.practice.default=0.7
+
+# JLPT Level Tolerance (error tolerance for accuracy calculation)
+kaiwa.tolerance.n1=0.05
+kaiwa.tolerance.n2=0.08
+kaiwa.tolerance.n3=0.10
+kaiwa.tolerance.n4=0.12
+kaiwa.tolerance.n5=0.15
+kaiwa.tolerance.default=0.15
+
+# JLPT Level Partial Match Boost (score boost for partial matches)
+kaiwa.partial-match-boost.n1=0.6
+kaiwa.partial-match-boost.n2=0.65
+kaiwa.partial-match-boost.n3=0.7
+kaiwa.partial-match-boost.n4=0.75
+kaiwa.partial-match-boost.n5=0.8
+kaiwa.partial-match-boost.default=0.7
+
+# JLPT Level Speaking Rates (for Text-to-Speech)
+kaiwa.speaking-rate.n1=1.5
+kaiwa.speaking-rate.n2=1.25
+kaiwa.speaking-rate.n3=1.0
+kaiwa.speaking-rate.n4=0.85
+kaiwa.speaking-rate.n5=0.75
+kaiwa.speaking-rate.default=1.0
+
+# Feedback Score Thresholds
+ai.feedback.threshold.excellent=0.9
+ai.feedback.threshold.good=0.7
+ai.feedback.threshold.average=0.5
+ai.feedback.threshold.sentiment.positive=0.25
+ai.feedback.threshold.sentiment.negative=-0.25
+
+# Text-to-Speech Speed Configuration
+ai.text-to-speech.speed.slow=0.75
+ai.text-to-speech.speed.normal=1.0
+ai.text-to-speech.speed.fast=1.5
+
 # Logging configuration for development
 logging.level.com.hokori.web=DEBUG
 logging.level.org.springframework.security=DEBUG

@@ -1,5 +1,6 @@
 package com.hokori.web.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -11,6 +12,23 @@ import java.util.Map;
  */
 @Component
 public class AIResponseFormatter {
+    
+    // Feedback Score Thresholds
+    @Value("${ai.feedback.threshold.excellent:0.9}")
+    private double feedbackThresholdExcellent;
+    
+    @Value("${ai.feedback.threshold.good:0.7}")
+    private double feedbackThresholdGood;
+    
+    @Value("${ai.feedback.threshold.average:0.5}")
+    private double feedbackThresholdAverage;
+    
+    // Sentiment Analysis Thresholds
+    @Value("${ai.feedback.threshold.sentiment.positive:0.25}")
+    private float sentimentThresholdPositive;
+    
+    @Value("${ai.feedback.threshold.sentiment.negative:-0.25}")
+    private float sentimentThresholdNegative;
     
     /**
      * Format translation response for Vietnamese users
@@ -117,9 +135,9 @@ public class AIResponseFormatter {
             return "Không thể phân tích cảm xúc";
         }
         
-        if (score >= 0.25) {
+        if (score >= sentimentThresholdPositive) {
             return String.format("Văn bản có cảm xúc tích cực (điểm số: %.2f). Nội dung này thể hiện cảm xúc vui vẻ, lạc quan.", score);
-        } else if (score <= -0.25) {
+        } else if (score <= sentimentThresholdNegative) {
             return String.format("Văn bản có cảm xúc tiêu cực (điểm số: %.2f). Nội dung này thể hiện cảm xúc buồn bã, lo lắng.", score);
         } else {
             return String.format("Văn bản có cảm xúc trung tính (điểm số: %.2f). Nội dung này không thể hiện cảm xúc rõ ràng.", score);
@@ -134,11 +152,11 @@ public class AIResponseFormatter {
             return "Không thể đánh giá phát âm";
         }
         
-        if (confidence >= 0.9) {
+        if (confidence >= feedbackThresholdExcellent) {
             return String.format("Phát âm xuất sắc! (độ chính xác: %.0f%%)", confidence * 100);
-        } else if (confidence >= 0.7) {
+        } else if (confidence >= feedbackThresholdGood) {
             return String.format("Phát âm tốt! (độ chính xác: %.0f%%)", confidence * 100);
-        } else if (confidence >= 0.5) {
+        } else if (confidence >= feedbackThresholdAverage) {
             return String.format("Phát âm cần cải thiện (độ chính xác: %.0f%%)", confidence * 100);
         } else {
             return String.format("Phát âm cần luyện tập nhiều hơn (độ chính xác: %.0f%%)", confidence * 100);
@@ -174,11 +192,11 @@ public class AIResponseFormatter {
      * Get score label in Vietnamese
      */
     private String getScoreLabelVi(double score) {
-        if (score >= 0.9) {
+        if (score >= feedbackThresholdExcellent) {
             return "Xuất sắc";
-        } else if (score >= 0.7) {
+        } else if (score >= feedbackThresholdGood) {
             return "Tốt";
-        } else if (score >= 0.5) {
+        } else if (score >= feedbackThresholdAverage) {
             return "Trung bình";
         } else {
             return "Cần cải thiện";

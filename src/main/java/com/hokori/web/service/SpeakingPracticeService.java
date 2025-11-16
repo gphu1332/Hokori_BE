@@ -4,6 +4,7 @@ import com.hokori.web.exception.AIServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.text.Normalizer;
@@ -26,6 +27,134 @@ public class SpeakingPracticeService {
     
     @Autowired(required = false)
     private AIResponseFormatter responseFormatter;
+    
+    // Scoring weights
+    @Value("${kaiwa.scoring.accuracy-weight:0.6}")
+    private double accuracyWeight;
+    
+    @Value("${kaiwa.scoring.pronunciation-weight:0.4}")
+    private double pronunciationWeight;
+    
+    // Score adjustments by level
+    @Value("${kaiwa.scoring.adjustment.n1:0.95}")
+    private double adjustmentN1;
+    
+    @Value("${kaiwa.scoring.adjustment.n2:0.97}")
+    private double adjustmentN2;
+    
+    @Value("${kaiwa.scoring.adjustment.n3:0.98}")
+    private double adjustmentN3;
+    
+    @Value("${kaiwa.scoring.adjustment.n4:0.99}")
+    private double adjustmentN4;
+    
+    @Value("${kaiwa.scoring.adjustment.n5:1.0}")
+    private double adjustmentN5;
+    
+    // Accuracy thresholds by level
+    @Value("${kaiwa.threshold.accuracy.n1:0.9}")
+    private double accuracyThresholdN1;
+    
+    @Value("${kaiwa.threshold.accuracy.n2:0.85}")
+    private double accuracyThresholdN2;
+    
+    @Value("${kaiwa.threshold.accuracy.n3:0.8}")
+    private double accuracyThresholdN3;
+    
+    @Value("${kaiwa.threshold.accuracy.n4:0.75}")
+    private double accuracyThresholdN4;
+    
+    @Value("${kaiwa.threshold.accuracy.n5:0.7}")
+    private double accuracyThresholdN5;
+    
+    @Value("${kaiwa.threshold.accuracy.default:0.8}")
+    private double accuracyThresholdDefault;
+    
+    // Practice thresholds by level
+    @Value("${kaiwa.threshold.practice.n1:0.85}")
+    private double practiceThresholdN1;
+    
+    @Value("${kaiwa.threshold.practice.n2:0.8}")
+    private double practiceThresholdN2;
+    
+    @Value("${kaiwa.threshold.practice.n3:0.75}")
+    private double practiceThresholdN3;
+    
+    @Value("${kaiwa.threshold.practice.n4:0.7}")
+    private double practiceThresholdN4;
+    
+    @Value("${kaiwa.threshold.practice.n5:0.65}")
+    private double practiceThresholdN5;
+    
+    @Value("${kaiwa.threshold.practice.default:0.7}")
+    private double practiceThresholdDefault;
+    
+    // Tolerance by level
+    @Value("${kaiwa.tolerance.n1:0.05}")
+    private double toleranceN1;
+    
+    @Value("${kaiwa.tolerance.n2:0.08}")
+    private double toleranceN2;
+    
+    @Value("${kaiwa.tolerance.n3:0.10}")
+    private double toleranceN3;
+    
+    @Value("${kaiwa.tolerance.n4:0.12}")
+    private double toleranceN4;
+    
+    @Value("${kaiwa.tolerance.n5:0.15}")
+    private double toleranceN5;
+    
+    @Value("${kaiwa.tolerance.default:0.15}")
+    private double toleranceDefault;
+    
+    // Partial match boost by level
+    @Value("${kaiwa.partial-match-boost.n1:0.6}")
+    private double partialMatchBoostN1;
+    
+    @Value("${kaiwa.partial-match-boost.n2:0.65}")
+    private double partialMatchBoostN2;
+    
+    @Value("${kaiwa.partial-match-boost.n3:0.7}")
+    private double partialMatchBoostN3;
+    
+    @Value("${kaiwa.partial-match-boost.n4:0.75}")
+    private double partialMatchBoostN4;
+    
+    @Value("${kaiwa.partial-match-boost.n5:0.8}")
+    private double partialMatchBoostN5;
+    
+    @Value("${kaiwa.partial-match-boost.default:0.7}")
+    private double partialMatchBoostDefault;
+    
+    // Speaking rates by level
+    @Value("${kaiwa.speaking-rate.n1:1.5}")
+    private double speakingRateN1;
+    
+    @Value("${kaiwa.speaking-rate.n2:1.25}")
+    private double speakingRateN2;
+    
+    @Value("${kaiwa.speaking-rate.n3:1.0}")
+    private double speakingRateN3;
+    
+    @Value("${kaiwa.speaking-rate.n4:0.85}")
+    private double speakingRateN4;
+    
+    @Value("${kaiwa.speaking-rate.n5:0.75}")
+    private double speakingRateN5;
+    
+    @Value("${kaiwa.speaking-rate.default:1.0}")
+    private double speakingRateDefault;
+    
+    // Feedback thresholds
+    @Value("${ai.feedback.threshold.excellent:0.9}")
+    private double feedbackThresholdExcellent;
+    
+    @Value("${ai.feedback.threshold.good:0.7}")
+    private double feedbackThresholdGood;
+    
+    @Value("${ai.feedback.threshold.average:0.5}")
+    private double feedbackThresholdAverage;
     
     /**
      * Practice kaiwa (conversation) by comparing user's pronunciation with target text
@@ -70,7 +199,7 @@ public class SpeakingPracticeService {
         double pronunciationScore = confidence != null ? confidence : 0.0;
         
         // Step 5: Calculate overall score (weighted average)
-        double overallScore = (accuracyScore * 0.6) + (pronunciationScore * 0.4);
+        double overallScore = (accuracyScore * accuracyWeight) + (pronunciationScore * pronunciationWeight);
         
         // Step 6: Adjust scoring based on JLPT level (higher levels = stricter scoring)
         double adjustedOverallScore = adjustScoreByLevel(overallScore, normalizedLevel);
@@ -154,16 +283,16 @@ public class SpeakingPracticeService {
         // This encourages advanced learners to strive for perfection
         switch (level) {
             case "N1":
-                return score * 0.95; // Stricter for N1 - expects near-perfect pronunciation
+                return score * adjustmentN1;
             case "N2":
-                return score * 0.97; // Slightly stricter for N2
+                return score * adjustmentN2;
             case "N3":
-                return score * 0.98; // Slightly stricter for N3
+                return score * adjustmentN3;
             case "N4":
-                return score * 0.99; // Very slight adjustment for N4
+                return score * adjustmentN4;
             case "N5":
             default:
-                return score; // No adjustment for beginner levels - encourage learning
+                return score * adjustmentN5;
         }
     }
     
@@ -176,19 +305,14 @@ public class SpeakingPracticeService {
      */
     public String getRecommendedSpeed(String level) {
         String normalizedLevel = normalizeLevel(level);
+        double rate = getRecommendedSpeakingRate(normalizedLevel);
         
-        switch (normalizedLevel) {
-            case "N1":
-                return "fast"; // Advanced learners should practice at natural speed
-            case "N2":
-                return "normal"; // Upper-intermediate: normal speed
-            case "N3":
-                return "normal"; // Intermediate: normal speed
-            case "N4":
-                return "slow"; // Lower-intermediate: slower for clarity
-            case "N5":
-            default:
-                return "slow"; // Beginners: slowest for learning
+        if (rate >= 1.25) {
+            return "fast";
+        } else if (rate >= 0.85) {
+            return "normal";
+        } else {
+            return "slow";
         }
     }
     
@@ -203,16 +327,16 @@ public class SpeakingPracticeService {
         
         switch (normalizedLevel) {
             case "N1":
-                return 1.5; // Fast - natural conversation speed
+                return speakingRateN1;
             case "N2":
-                return 1.25; // Slightly faster than normal
+                return speakingRateN2;
             case "N3":
-                return 1.0; // Normal speed
+                return speakingRateN3;
             case "N4":
-                return 0.85; // Slightly slower
+                return speakingRateN4;
             case "N5":
             default:
-                return 0.75; // Slow - helps beginners learn
+                return speakingRateN5;
         }
     }
     
@@ -222,21 +346,21 @@ public class SpeakingPracticeService {
      */
     private double getAccuracyThreshold(String level) {
         if (level == null) {
-            return 0.8;
+            return accuracyThresholdDefault;
         }
         
         switch (level) {
             case "N1":
-                return 0.9; // N1 requires 90% accuracy
+                return accuracyThresholdN1;
             case "N2":
-                return 0.85; // N2 requires 85% accuracy
+                return accuracyThresholdN2;
             case "N3":
-                return 0.8; // N3 requires 80% accuracy
+                return accuracyThresholdN3;
             case "N4":
-                return 0.75; // N4 requires 75% accuracy
+                return accuracyThresholdN4;
             case "N5":
             default:
-                return 0.7; // N5 requires 70% accuracy
+                return accuracyThresholdN5;
         }
     }
     
@@ -246,21 +370,21 @@ public class SpeakingPracticeService {
      */
     private double getPracticeThreshold(String level) {
         if (level == null) {
-            return 0.7;
+            return practiceThresholdDefault;
         }
         
         switch (level) {
             case "N1":
-                return 0.85; // N1 needs practice if < 85%
+                return practiceThresholdN1;
             case "N2":
-                return 0.8; // N2 needs practice if < 80%
+                return practiceThresholdN2;
             case "N3":
-                return 0.75; // N3 needs practice if < 75%
+                return practiceThresholdN3;
             case "N4":
-                return 0.7; // N4 needs practice if < 70%
+                return practiceThresholdN4;
             case "N5":
             default:
-                return 0.65; // N5 needs practice if < 65%
+                return practiceThresholdN5;
         }
     }
     
@@ -346,21 +470,21 @@ public class SpeakingPracticeService {
      */
     private double getToleranceByLevel(String level) {
         if (level == null) {
-            return 0.15; // Default tolerance for N5
+            return toleranceDefault;
         }
         
         switch (level) {
             case "N1":
-                return 0.05; // Very strict - only 5% tolerance
+                return toleranceN1;
             case "N2":
-                return 0.08; // Strict - 8% tolerance
+                return toleranceN2;
             case "N3":
-                return 0.10; // Moderate - 10% tolerance
+                return toleranceN3;
             case "N4":
-                return 0.12; // More lenient - 12% tolerance
+                return toleranceN4;
             case "N5":
             default:
-                return 0.15; // Most lenient - 15% tolerance for beginners
+                return toleranceN5;
         }
     }
     
@@ -370,21 +494,21 @@ public class SpeakingPracticeService {
      */
     private double getPartialMatchBoost(String level) {
         if (level == null) {
-            return 0.7; // Default for N5
+            return partialMatchBoostDefault;
         }
         
         switch (level) {
             case "N1":
-                return 0.6; // Lower boost - expects more precision
+                return partialMatchBoostN1;
             case "N2":
-                return 0.65; // Moderate boost
+                return partialMatchBoostN2;
             case "N3":
-                return 0.7; // Standard boost
+                return partialMatchBoostN3;
             case "N4":
-                return 0.75; // Higher boost - encourages learning
+                return partialMatchBoostN4;
             case "N5":
             default:
-                return 0.8; // Highest boost - very encouraging for beginners
+                return partialMatchBoostN5;
         }
     }
     
@@ -596,13 +720,13 @@ public class SpeakingPracticeService {
     private String getOverallFeedbackVi(double overallScore, String level) {
         String levelName = getLevelNameVi(level);
         
-        if (overallScore >= 0.9) {
+        if (overallScore >= feedbackThresholdExcellent) {
             return String.format("Xuất sắc! Bạn đã phát âm rất tốt ở trình độ %s (điểm tổng: %.0f%%). Tiếp tục phát huy!", 
                 levelName, overallScore * 100);
-        } else if (overallScore >= 0.7) {
+        } else if (overallScore >= feedbackThresholdGood) {
             return String.format("Tốt! Phát âm của bạn khá ổn ở trình độ %s (điểm tổng: %.0f%%). Hãy luyện tập thêm để hoàn thiện hơn.", 
                 levelName, overallScore * 100);
-        } else if (overallScore >= 0.5) {
+        } else if (overallScore >= feedbackThresholdAverage) {
             return String.format("Cần cải thiện ở trình độ %s (điểm tổng: %.0f%%). Hãy nghe lại và luyện tập nhiều hơn.", 
                 levelName, overallScore * 100);
         } else {
@@ -614,11 +738,11 @@ public class SpeakingPracticeService {
     private String getAccuracyFeedbackVi(double accuracyScore, String target, String user, String level) {
         String levelName = getLevelNameVi(level);
         
-        if (accuracyScore >= 0.9) {
+        if (accuracyScore >= feedbackThresholdExcellent) {
             return String.format("Độ chính xác về từ vựng và ngữ pháp rất cao cho trình độ %s!", levelName);
-        } else if (accuracyScore >= 0.7) {
+        } else if (accuracyScore >= feedbackThresholdGood) {
             return String.format("Độ chính xác khá tốt cho trình độ %s, nhưng vẫn còn một số lỗi nhỏ.", levelName);
-        } else if (accuracyScore >= 0.5) {
+        } else if (accuracyScore >= feedbackThresholdAverage) {
             return String.format("Cần chú ý hơn về từ vựng và ngữ pháp ở trình độ %s.", levelName);
         } else {
             return String.format("Cần luyện tập nhiều hơn về từ vựng và ngữ pháp ở trình độ %s.", levelName);
@@ -628,13 +752,13 @@ public class SpeakingPracticeService {
     private String getPronunciationFeedbackVi(double pronunciationScore, Double confidence, String level) {
         String levelName = getLevelNameVi(level);
         
-        if (pronunciationScore >= 0.9) {
+        if (pronunciationScore >= feedbackThresholdExcellent) {
             return String.format("Phát âm rất rõ ràng và tự nhiên ở trình độ %s (độ tin cậy: %.0f%%)!", 
                 levelName, pronunciationScore * 100);
-        } else if (pronunciationScore >= 0.7) {
+        } else if (pronunciationScore >= feedbackThresholdGood) {
             return String.format("Phát âm khá tốt ở trình độ %s (độ tin cậy: %.0f%%), nhưng cần luyện tập thêm.", 
                 levelName, pronunciationScore * 100);
-        } else if (pronunciationScore >= 0.5) {
+        } else if (pronunciationScore >= feedbackThresholdAverage) {
             return String.format("Phát âm cần cải thiện ở trình độ %s (độ tin cậy: %.0f%%). Hãy nghe kỹ và luyện tập.", 
                 levelName, pronunciationScore * 100);
         } else {
@@ -647,17 +771,17 @@ public class SpeakingPracticeService {
         StringBuilder suggestions = new StringBuilder();
         String levelName = getLevelNameVi(level);
         
-        if (accuracyScore < 0.7) {
+        if (accuracyScore < feedbackThresholdGood) {
             suggestions.append(String.format("• Hãy đọc kỹ câu mẫu trước khi phát âm (trình độ %s).\n", levelName));
             suggestions.append("• Chú ý đến từng từ và cách phát âm.\n");
         }
         
-        if (pronunciationScore < 0.7) {
+        if (pronunciationScore < feedbackThresholdGood) {
             suggestions.append("• Nghe lại audio mẫu nhiều lần.\n");
             suggestions.append("• Luyện tập phát âm từng từ một cách rõ ràng.\n");
         }
         
-        if (overallScore < 0.7) {
+        if (overallScore < feedbackThresholdGood) {
             suggestions.append(String.format("• Luyện tập thường xuyên để đạt chuẩn trình độ %s.\n", levelName));
             suggestions.append("• Ghi âm và so sánh với audio mẫu.\n");
         }
