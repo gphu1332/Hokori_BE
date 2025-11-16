@@ -376,7 +376,10 @@ public class AIService {
      */
     private String detectAudioFormat(byte[] audioBytes) {
         if (audioBytes == null || audioBytes.length < 4) {
-            return "wav"; // Default fallback
+            // Audio data too small or null - default to webm (browser recording)
+            logger.warn("Audio data too small for format detection (length: {}), defaulting to webm", 
+                audioBytes != null ? audioBytes.length : 0);
+            return "webm";
         }
         
         // Check WEBM (EBML header: 0x1A 0x45 0xDF 0xA3)
