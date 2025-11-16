@@ -58,7 +58,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,
                     "/api/courses",
                     "/api/courses/*/tree"
-                ).permitAll()   
+                ).permitAll()
 
                 // ============================================
                 // ROLE-BASED ENDPOINTS

@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.persistence.criteria.Predicate;
+
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -186,30 +187,30 @@ public class CourseService {
         // Use native query to avoid LOB stream errors on PostgreSQL
         String statusStr = status != null ? status.name() : null;
         String searchQ = (q != null && !q.isBlank()) ? q.trim() : null;
-        
+
         List<Object[]> metadataList = courseRepo.findCourseMetadataByUserId(teacherUserId, statusStr, searchQ);
-        
+
         // Manual pagination
         int total = metadataList.size();
         int start = page * size;
         int end = Math.min(start + size, total);
         List<Object[]> pagedList = (start < total) ? metadataList.subList(start, end) : Collections.emptyList();
-        
+
         // Map to CourseRes (description will be null to avoid LOB loading)
         List<CourseRes> content = pagedList.stream()
                 .map(this::mapCourseMetadataToRes)
                 .collect(Collectors.toList());
-        
+
         return new PageImpl<>(content, PageRequest.of(page, size, Sort.by("updatedAt").descending()), total);
     }
-    
+
     private CourseRes mapCourseMetadataToRes(Object[] metadata) {
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
         }
-        
+
         // Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, 
         //          currency, coverImagePath, status, publishedAt, userId, deletedFlag]
         Long id = ((Number) actualMetadata[0]).longValue();
@@ -222,11 +223,11 @@ public class CourseService {
         String currency = (String) actualMetadata[7];
         String coverImagePath = (String) actualMetadata[8];
         CourseStatus courseStatus = CourseStatus.valueOf(((String) actualMetadata[9]).toUpperCase());
-        Instant publishedAt = actualMetadata[10] != null ? 
-                (actualMetadata[10] instanceof Instant ? (Instant) actualMetadata[10] : 
-                 Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[10]).getTime())) : null;
+        Instant publishedAt = actualMetadata[10] != null ?
+                (actualMetadata[10] instanceof Instant ? (Instant) actualMetadata[10] :
+                        Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[10]).getTime())) : null;
         Long userId = ((Number) actualMetadata[11]).longValue();
-        
+
         CourseRes res = new CourseRes();
         res.setId(id);
         res.setTitle(title);
@@ -249,20 +250,20 @@ public class CourseService {
     public Page<CourseRes> listPublished(JLPTLevel level, int page, int size) {
         // Use native query to avoid LOB stream errors on PostgreSQL
         String levelStr = level != null ? level.name() : null;
-        
+
         List<Object[]> metadataList = courseRepo.findPublishedCourseMetadata(levelStr);
-        
+
         // Manual pagination
         int total = metadataList.size();
         int start = page * size;
         int end = Math.min(start + size, total);
         List<Object[]> pagedList = (start < total) ? metadataList.subList(start, end) : Collections.emptyList();
-        
+
         // Map to CourseRes (description will be null to avoid LOB loading)
         List<CourseRes> content = pagedList.stream()
                 .map(this::mapCourseMetadataToRes)
                 .collect(Collectors.toList());
-        
+
         return new PageImpl<>(content, PageRequest.of(page, size, Sort.by("publishedAt").descending()), total);
     }
 
@@ -758,7 +759,11 @@ public class CourseService {
         while (it.hasNext()) {
             T cur = it.next();
             Long id = extractId(cur);
-            if (Objects.equals(id, targetId)) { target = cur; it.remove(); break; }
+            if (Objects.equals(id, targetId)) {
+                target = cur;
+                it.remove();
+                break;
+            }
         }
         if (target == null) throw bad("Target not in list");
 
@@ -778,17 +783,31 @@ public class CourseService {
         List<Chapter> list = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
         for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
     }
+
     private void renormalizeLessonOrder(Long chapterId) {
         List<Lesson> list = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(chapterId);
         for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
     }
+
     private void renormalizeSectionOrder(Long lessonId) {
         List<Section> list = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId);
         for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
     }
+
     private void renormalizeContentOrder(Long sectionId) {
         List<SectionsContent> list = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId);
         for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
     }
 
+    @Transactional(readOnly = true)
+    public CourseRes getPublishedTree(Long courseId) {
+        var c = courseRepo.findByIdAndDeletedFlagFalse(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        if (c.getStatus() != CourseStatus.PUBLISHED) {
+            // Ẩn sự tồn tại nếu chưa publish
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
+        }
+        return getTree(courseId);
+
+    }
 }
