@@ -23,6 +23,12 @@ public class LearnerProgressController {
 
     private Long uid() { return currentUser.getUserIdOrThrow(); }
 
+    @Operation(summary = "Danh sách các khoá học đã enroll")
+    @GetMapping("/courses")
+    public List<EnrollmentLiteRes> listCourses() {
+        return progressService.listEnrolledCourses(uid());
+    }
+
     @Operation(summary = "Lấy enrollment lite của tôi với 1 course")
     @GetMapping("/courses/{courseId}/enrollment")
     public EnrollmentLiteRes getEnrollment(@PathVariable Long courseId) {

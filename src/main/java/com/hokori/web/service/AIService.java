@@ -287,13 +287,20 @@ public class AIService {
             // Default to Japanese for Vietnamese users learning Japanese
             String langCode = language != null && !language.isEmpty() ? language : "ja-JP";
             
+            // Auto-detect audio format from magic bytes if not provided
+            String detectedFormat = audioFormat;
+            if (detectedFormat == null || detectedFormat.trim().isEmpty()) {
+                detectedFormat = detectAudioFormat(audioBytes);
+                logger.debug("Auto-detected audio format: {}", detectedFormat);
+            }
+            
             // Configure recognition based on audio format
             RecognitionConfig.Builder configBuilder = RecognitionConfig.newBuilder()
                 .setLanguageCode(langCode)
                 .setEnableAutomaticPunctuation(true);
             
             // Handle different audio formats
-            String format = (audioFormat != null) ? audioFormat.toLowerCase().trim() : "";
+            String format = (detectedFormat != null) ? detectedFormat.toLowerCase().trim() : "";
             
             if (format.equals("webm") || format.equals("ogg") || format.contains("opus")) {
                 // WEBM OPUS: Let Google Cloud auto-detect encoding and sample rate from header
@@ -357,6 +364,64 @@ public class AIService {
             logger.error("Speech-to-text API error", e);
             throw new AIServiceException("Speech-to-Text", "Speech-to-text conversion failed: " + e.getMessage(), e);
         }
+    }
+    
+    /**
+     * Detect audio format from magic bytes
+     * WEBM: starts with 0x1A 0x45 0xDF 0xA3
+     * OGG: starts with "OggS"
+     * MP3: starts with 0xFF 0xFB or 0xFF 0xF3 or "ID3"
+     * FLAC: starts with "fLaC"
+     * WAV: starts with "RIFF" and contains "WAVE"
+     */
+    private String detectAudioFormat(byte[] audioBytes) {
+        if (audioBytes == null || audioBytes.length < 4) {
+            return "wav"; // Default fallback
+        }
+        
+        // Check WEBM (EBML header: 0x1A 0x45 0xDF 0xA3)
+        if (audioBytes.length >= 4 && 
+            audioBytes[0] == 0x1A && audioBytes[1] == 0x45 && 
+            audioBytes[2] == (byte)0xDF && audioBytes[3] == (byte)0xA3) {
+            return "webm";
+        }
+        
+        // Check OGG (starts with "OggS")
+        if (audioBytes.length >= 4 && 
+            audioBytes[0] == 'O' && audioBytes[1] == 'g' && 
+            audioBytes[2] == 'g' && audioBytes[3] == 'S') {
+            return "ogg";
+        }
+        
+        // Check FLAC (starts with "fLaC")
+        if (audioBytes.length >= 4 && 
+            audioBytes[0] == 'f' && audioBytes[1] == 'L' && 
+            audioBytes[2] == 'a' && audioBytes[3] == 'C') {
+            return "flac";
+        }
+        
+        // Check MP3 (starts with 0xFF 0xFB or 0xFF 0xF3 or "ID3")
+        if (audioBytes.length >= 2 && audioBytes[0] == (byte)0xFF && 
+            (audioBytes[1] == (byte)0xFB || audioBytes[1] == (byte)0xF3)) {
+            return "mp3";
+        }
+        if (audioBytes.length >= 3 && 
+            audioBytes[0] == 'I' && audioBytes[1] == 'D' && audioBytes[2] == '3') {
+            return "mp3";
+        }
+        
+        // Check WAV (starts with "RIFF" and contains "WAVE")
+        if (audioBytes.length >= 12 && 
+            audioBytes[0] == 'R' && audioBytes[1] == 'I' && 
+            audioBytes[2] == 'F' && audioBytes[3] == 'F' &&
+            audioBytes[8] == 'W' && audioBytes[9] == 'A' && 
+            audioBytes[10] == 'V' && audioBytes[11] == 'E') {
+            return "wav";
+        }
+        
+        // Default: assume webm (most common for browser recording)
+        logger.warn("Could not detect audio format from magic bytes, defaulting to webm");
+        return "webm";
     }
     
     /**
