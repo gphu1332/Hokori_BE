@@ -43,8 +43,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
                                     FilterChain filterChain) throws ServletException, IOException {
         
-        String path = request.getRequestURI();
-        logger.debug("🔍 JWT Filter processing request: " + path);
+        // Reduced logging to avoid Railway rate limit (500 logs/sec)
+        // String path = request.getRequestURI();
+        // logger.debug("🔍 JWT Filter processing request: " + path);
         
         final String requestTokenHeader = request.getHeader("Authorization");
 
@@ -65,11 +66,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // Process authentication if token is valid and no authentication is set
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            logger.debug("🔐 Processing JWT token for email: " + email);
+            // Reduced logging to avoid Railway rate limit
+            // logger.debug("🔐 Processing JWT token for email: " + email);
 
             // Validate token
             if (jwtConfig.validateToken(jwtToken, email)) {
-                logger.debug("✅ JWT token validated successfully for: " + email);
+                // Reduced logging to avoid Railway rate limit
+                // logger.debug("✅ JWT token validated successfully for: " + email);
                 
                 try {
                     // Step 1: Extract roles from JWT token (preferred - avoids database LOB issues)
@@ -115,7 +118,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (e.getCause() != null) {
                         logger.error("   Cause: " + e.getCause().getMessage());
                     }
-                    e.printStackTrace();
+                    // Removed e.printStackTrace() to avoid excessive logging - exception already logged above
                 }
             } else {
                 logger.warn("⚠️ JWT token validation failed for email: " + email);
@@ -175,14 +178,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
             
             if (!roles.isEmpty()) {
-                logger.info("✅ Extracted roles from token: " + roles);
+                // Reduced logging to avoid Railway rate limit - only log if debug enabled
+                logger.debug("✅ Extracted roles from token: " + roles);
             } else {
                 logger.warn("⚠️ Roles object found in token but resulted in empty list: " + rolesObj);
             }
         } catch (Exception ex) {
             logger.error("❌ Failed to extract roles from token: " + ex.getMessage());
             logger.error("   Exception type: " + ex.getClass().getName());
-            ex.printStackTrace();
+            // Removed printStackTrace() to avoid excessive logging - exception already logged above
         }
         return roles;
     }
@@ -235,7 +239,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
             
             if (isActive) {
-                logger.info("✅ User " + email + " is active");
+                // Reduced logging to avoid Railway rate limit - only log if debug enabled
+                logger.debug("✅ User " + email + " is active");
             } else {
                 logger.warn("⚠️ User " + email + " is NOT active (but proceeding anyway - fail-open)");
                 // Fail-open: proceed even if inactive to avoid 403
@@ -277,7 +282,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if (actualRoleData.length >= 2 && actualRoleData[1] != null) {
                     String roleName = actualRoleData[1].toString().trim().toUpperCase();
                     roles = List.of(roleName);
-                    logger.info("✅ Got role from database: " + roleName + " (normalized to uppercase for PostgreSQL compatibility)");
+                    // Reduced logging to avoid Railway rate limit - only log if debug enabled
+                    logger.debug("✅ Got role from database: " + roleName + " (normalized to uppercase for PostgreSQL compatibility)");
                 } else {
                     logger.error("❌ User " + email + " has null or empty role_name in database!");
                     logger.error("   Role data length: " + actualRoleData.length);
@@ -331,7 +337,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             logger.error("   Roles extracted: " + roles);
             logger.error("   This will cause 403 Forbidden errors on role-protected endpoints like /api/teacher/**");
         } else {
-            logger.info("✅ User " + email + " authorities: " + authorities.stream()
+            // Reduced logging to avoid Railway rate limit - only log if debug enabled
+            logger.debug("✅ User " + email + " authorities: " + authorities.stream()
                     .map(a -> a.getAuthority())
                     .collect(Collectors.joining(", ")));
         }
@@ -351,9 +358,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             
             SecurityContextHolder.getContext().setAuthentication(authToken);
-            logger.info("✅ Authentication SET for user: " + email + " with " + authorities.size() + " authorities");
+            // Reduced logging to avoid Railway rate limit - only log if debug enabled
+            logger.debug("✅ Authentication SET for user: " + email + " with " + authorities.size() + " authorities");
             if (!authorities.isEmpty()) {
-                logger.info("   Authorities: " + authorities.stream()
+                logger.debug("   Authorities: " + authorities.stream()
                         .map(a -> a.getAuthority())
                         .collect(Collectors.joining(", ")));
             }
