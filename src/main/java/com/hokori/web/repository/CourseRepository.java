@@ -36,11 +36,11 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     
     /**
      * Get course metadata without LOB fields (avoids LOB stream error).
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
-               c.currency, c.cover_asset_id, c.status, c.published_at, c.user_id, c.deleted_flag
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag
         FROM course c
         WHERE c.id = :id AND c.deleted_flag = false
         """, nativeQuery = true)
@@ -66,11 +66,11 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     
     /**
      * List published courses metadata without LOB fields.
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverAssetId, status, publishedAt, userId, deletedFlag]
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
-               c.currency, c.cover_asset_id, c.status, c.published_at, c.user_id, c.deleted_flag
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag
         FROM course c
         WHERE c.deleted_flag = false 
           AND c.status = 'PUBLISHED'

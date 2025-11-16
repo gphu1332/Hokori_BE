@@ -335,21 +335,39 @@ public class UserProfileController {
     }
 
     private Long currentUserIdOrThrow() {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getPrincipal() == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
         }
-
         String email = String.valueOf(auth.getPrincipal());
-
-        User u = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNAUTHORIZED, "User not found"));
-
-        if (Boolean.FALSE.equals(u.getIsActive())) {
+        // Use query that avoids LOB fields to prevent LOB stream errors
+        var statusOpt = userRepository.findUserActiveStatusByEmail(email);
+        if (statusOpt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        }
+        Object[] status = statusOpt.get();
+        // Handle nested array case (PostgreSQL)
+        Object[] actualStatus = status;
+        if (status.length == 1 && status[0] instanceof Object[]) {
+            actualStatus = (Object[]) status[0];
+        }
+        if (actualStatus.length < 2) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        }
+        Long userId = ((Number) actualStatus[0]).longValue();
+        Object isActiveObj = actualStatus[1];
+        boolean isActive = false;
+        if (isActiveObj instanceof Boolean) {
+            isActive = (Boolean) isActiveObj;
+        } else if (isActiveObj instanceof Number) {
+            isActive = ((Number) isActiveObj).intValue() != 0;
+        } else {
+            String isActiveStr = isActiveObj.toString().toLowerCase().trim();
+            isActive = "true".equals(isActiveStr) || "1".equals(isActiveStr);
+        }
+        if (!isActive) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is disabled");
         }
-
-        return u.getId();
+        return userId;
     }
 }

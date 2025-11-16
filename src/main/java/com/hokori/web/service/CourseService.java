@@ -247,9 +247,23 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public Page<CourseRes> listPublished(JLPTLevel level, int page, int size) {
-        return courseRepo.findPublishedByLevel(
-                level, PageRequest.of(page, size, Sort.by("publishedAt").descending())
-        ).map(this::toCourseResLite);
+        // Use native query to avoid LOB stream errors on PostgreSQL
+        String levelStr = level != null ? level.name() : null;
+        
+        List<Object[]> metadataList = courseRepo.findPublishedCourseMetadata(levelStr);
+        
+        // Manual pagination
+        int total = metadataList.size();
+        int start = page * size;
+        int end = Math.min(start + size, total);
+        List<Object[]> pagedList = (start < total) ? metadataList.subList(start, end) : Collections.emptyList();
+        
+        // Map to CourseRes (description will be null to avoid LOB loading)
+        List<CourseRes> content = pagedList.stream()
+                .map(this::mapCourseMetadataToRes)
+                .collect(Collectors.toList());
+        
+        return new PageImpl<>(content, PageRequest.of(page, size, Sort.by("publishedAt").descending()), total);
     }
 
     // =========================
