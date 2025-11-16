@@ -3,6 +3,7 @@ package com.hokori.web.entity;
 import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.Enum.Gender;
 import com.hokori.web.Enum.JLPTLevel;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -131,6 +132,7 @@ public class User {
 
     @Lob
     @Column(name = "bio")
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
     private String bio;
 
     /** Số năm kinh nghiệm (dành cho teacher) */
@@ -140,6 +142,7 @@ public class User {
     /** Sở thích/phong cách dạy */
     @Lob
     @Column(name = "teaching_styles")
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
     private String teachingStyles;
 
     // ===== Social / website =====
@@ -218,7 +221,8 @@ public class User {
 
     // ===== Helpers =====
     public boolean hasRole(String roleName) {
-        return role != null && role.getRoleName().equals(roleName);
+        // Case-insensitive check for PostgreSQL compatibility
+        return role != null && role.getRoleName() != null && role.getRoleName().equalsIgnoreCase(roleName);
     }
 
     @Transient

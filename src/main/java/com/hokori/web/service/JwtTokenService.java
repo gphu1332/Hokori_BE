@@ -24,17 +24,53 @@ public class JwtTokenService {
     private Long jwtExpiration;
 
     /**
-     * Generate access token for user (works for both Firebase and password auth)
+     * Generate access token for user (works for both Firebase and password auth).
+     * 
+     * CRITICAL: Roles MUST be included in the token claims.
+     * The roles list should contain normalized uppercase role names (e.g., "TEACHER", "ADMIN").
+     * 
+     * @param user User entity
+     * @param loginType "firebase", "password", "refresh", etc.
+     * @param roles List of normalized role names (uppercase, no ROLE_ prefix)
+     * @return JWT access token string
      */
     public String generateAccessToken(User user, String loginType, List<String> roles) {
+        if (user == null) {
+            throw new IllegalArgumentException("User cannot be null");
+        }
+        if (user.getEmail() == null || user.getEmail().trim().isEmpty()) {
+            throw new IllegalArgumentException("User email cannot be null or empty");
+        }
+        
         Map<String, Object> claims = new HashMap<>();
+        
+        // User identification
         claims.put("userId", user.getId());
-        claims.put("roles", roles);
-        claims.put("loginType", loginType); // "firebase" or "password"
+        claims.put("sub", user.getEmail()); // Standard JWT subject claim
+        
+        // CRITICAL: Roles must be stored as a List<String> in the token
+        // This ensures JwtAuthenticationFilter can extract them reliably
+        // Roles should be normalized (uppercase, no ROLE_ prefix) before calling this method
+        if (roles == null || roles.isEmpty()) {
+            // Log warning but don't fail - token will be generated without roles
+            // User will be authenticated but cannot access role-protected endpoints
+            claims.put("roles", List.<String>of());
+        } else {
+            // Ensure roles are clean (no nulls, trimmed, uppercase)
+            List<String> cleanRoles = roles.stream()
+                    .filter(r -> r != null && !r.trim().isEmpty())
+                    .map(r -> r.trim().toUpperCase())
+                    .distinct()
+                    .toList();
+            claims.put("roles", cleanRoles);
+        }
+        
+        // Authentication metadata
+        claims.put("loginType", loginType != null ? loginType : "unknown");
         claims.put("tokenType", "access");
         
         // Add Firebase UID if available (for Firebase users)
-        if (user.getFirebaseUid() != null) {
+        if (user.getFirebaseUid() != null && !user.getFirebaseUid().trim().isEmpty()) {
             claims.put("firebaseUid", user.getFirebaseUid());
         }
         

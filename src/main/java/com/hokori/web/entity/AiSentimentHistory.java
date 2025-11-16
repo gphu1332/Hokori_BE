@@ -16,7 +16,8 @@ public class AiSentimentHistory {
     @Column(name = "user_id")
     private Long userId;
     
-    @Column(columnDefinition = "NVARCHAR(MAX)")
+    @Lob
+    @Column(name = "text", columnDefinition = "TEXT")
     private String text;
     
     @Size(max = 50)
@@ -27,7 +28,8 @@ public class AiSentimentHistory {
     @Column(name = "magnitude")
     private String magnitude;
     
-    @Column(columnDefinition = "NTEXT")
+    @Lob
+    @Column(name = "details", columnDefinition = "TEXT")
     private String details;
     
     @Column(name = "created_at")

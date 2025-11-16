@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseToken;
 import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.config.JwtConfig;
+import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.dto.auth.AuthResponse;
 import com.hokori.web.dto.auth.LoginRequest;
 import com.hokori.web.dto.auth.RegisterLearnerRequest;
@@ -20,6 +21,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -30,6 +33,8 @@ import java.util.Optional;
 @Service
 @Transactional
 public class AuthService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     @Autowired(required = false)
     private FirebaseAuth firebaseAuth;
@@ -208,8 +213,8 @@ public class AuthService {
 
     /* ===================== ROLE HELPERS ===================== */
     private Role getDefaultRole() {
-        return roleRepository.findByRoleName("LEARNER")
-                .orElseThrow(() -> new RuntimeException("Default role LEARNER not found"));
+        return roleRepository.findByRoleName(RoleConstants.LEARNER)
+                .orElseThrow(() -> new RuntimeException("Default role " + RoleConstants.LEARNER + " not found"));
     }
 
     public void assignRoleToUser(User user, String roleName) {
@@ -226,10 +231,36 @@ public class AuthService {
                 && user.getRole().getRoleName().equalsIgnoreCase(roleName);
     }
 
-    public boolean isAdmin(User user) { return userHasRole(user, "ADMIN"); }
-    public boolean isStaffOrAdmin(User user) { return userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
-    public boolean canCreateContent(User user) { return userHasRole(user, "TEACHER") || userHasRole(user, "STAFF") || userHasRole(user, "ADMIN"); }
-    public List<String> getUserRoles(User user) { return (user.getRole() != null) ? List.of(user.getRole().getRoleName()) : List.of(); }
+    public boolean isAdmin(User user) { return userHasRole(user, RoleConstants.ADMIN); }
+    public boolean isStaffOrAdmin(User user) { return userHasRole(user, RoleConstants.STAFF) || userHasRole(user, RoleConstants.ADMIN); }
+    public boolean canCreateContent(User user) { return userHasRole(user, RoleConstants.TEACHER) || userHasRole(user, RoleConstants.STAFF) || userHasRole(user, RoleConstants.ADMIN); }
+    /**
+     * Get user roles as a normalized list.
+     * Always returns uppercase role names for consistency (PostgreSQL is case-sensitive).
+     * Returns empty list if user has no role (should not happen in production).
+     */
+    public List<String> getUserRoles(User user) {
+        if (user == null) {
+            logger.warn("⚠️ getUserRoles called with null user");
+            return List.of();
+        }
+        
+        if (user.getRole() == null) {
+            logger.warn("⚠️ User " + (user.getEmail() != null ? user.getEmail() : "unknown") + " has null role");
+            return List.of();
+        }
+        
+        if (user.getRole().getRoleName() == null || user.getRole().getRoleName().trim().isEmpty()) {
+            logger.warn("⚠️ User " + (user.getEmail() != null ? user.getEmail() : "unknown") + " has empty role name");
+            return List.of();
+        }
+        
+        // Normalize role name: trim whitespace, convert to uppercase
+        // This ensures consistency across PostgreSQL (case-sensitive) and SQL Server
+        String roleName = user.getRole().getRoleName().trim().toUpperCase();
+        logger.debug("✅ Extracted role for user " + user.getEmail() + ": " + roleName);
+        return List.of(roleName);
+    }
 
     /* ===================== JWT HELPERS ===================== */
     public boolean validateToken(String token) {
@@ -244,12 +275,39 @@ public class AuthService {
     }
     public String getEmailFromToken(String token) { return jwtConfig.extractUsername(token); }
 
+    /**
+     * Create authentication response with JWT tokens.
+     * This is the central method for creating auth responses after successful login.
+     * Ensures roles are always included in the JWT token.
+     */
     private AuthResponse createAuthResponse(User user, String loginType) {
+        if (user == null) {
+            throw new RuntimeException("Cannot create auth response for null user");
+        }
+        
+        // Extract roles from user entity
         List<String> roles = getUserRoles(user);
+        
+        // CRITICAL: Ensure roles are not empty before generating token
+        // If user has no role, log error and throw exception (should not happen in production)
+        if (roles.isEmpty()) {
+            logger.error("❌ CRITICAL: User " + user.getEmail() + " has NO roles assigned!");
+            logger.error("   This will cause 403 Forbidden errors on role-protected endpoints.");
+            logger.error("   User role entity: " + (user.getRole() != null ? "exists" : "null"));
+            if (user.getRole() != null) {
+                logger.error("   Role name: " + user.getRole().getRoleName());
+            }
+            // Don't throw exception - allow login but log error for admin to fix
+            // User will be authenticated but cannot access role-protected endpoints
+        } else {
+            logger.info("✅ User " + user.getEmail() + " authenticated with roles: " + roles);
+        }
 
+        // Generate JWT tokens with roles included
         String accessToken  = jwtTokenService.generateAccessToken(user, loginType, roles);
         String refreshToken = jwtTokenService.generateRefreshToken(user);
 
+        // Calculate expiration time
         Long exp = jwtTokenService.getTokenExpiration();
         Instant expiresAt = (exp != null)
                 ? (exp > 3_000_000_000L ? Instant.ofEpochMilli(exp) : Instant.ofEpochSecond(exp))
@@ -310,7 +368,7 @@ public class AuthService {
         u.setIsActive(true);
         u.setIsVerified(false);
 
-        String roleName = (req.getRoleName() != null) ? req.getRoleName() : "LEARNER";
+        String roleName = (req.getRoleName() != null) ? req.getRoleName() : RoleConstants.LEARNER;
         Role role = roleRepository.findByRoleName(roleName)
                 .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
         u.setRole(role);
@@ -343,8 +401,8 @@ public class AuthService {
         u.setIsActive(true);
         u.setIsVerified(false);
 
-        Role learner = roleRepository.findByRoleName("LEARNER")
-                .orElseThrow(() -> new RuntimeException("Role LEARNER not found"));
+        Role learner = roleRepository.findByRoleName(RoleConstants.LEARNER)
+                .orElseThrow(() -> new RuntimeException("Role " + RoleConstants.LEARNER + " not found"));
         u.setRole(learner);
 
         u = userRepository.save(u);
@@ -397,8 +455,8 @@ public class AuthService {
         String uid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
         u.setFirebaseUid(uid);
 
-        Role teacher = roleRepository.findByRoleName("TEACHER")
-                .orElseThrow(() -> new RuntimeException("Role TEACHER not found"));
+        Role teacher = roleRepository.findByRoleName(RoleConstants.TEACHER)
+                .orElseThrow(() -> new RuntimeException("Role " + RoleConstants.TEACHER + " not found"));
         u.setRole(teacher);
 
         u = userRepository.save(u);

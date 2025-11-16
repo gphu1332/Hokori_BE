@@ -13,9 +13,12 @@ import java.util.Optional;
 @Repository
 public interface RoleRepository extends JpaRepository<Role, Long> {
 
-    Optional<Role> findByRoleName(String roleName);
+    // Case-insensitive search for PostgreSQL compatibility
+    @Query("SELECT r FROM Role r WHERE UPPER(r.roleName) = UPPER(:roleName)")
+    Optional<Role> findByRoleName(@Param("roleName") String roleName);
 
-    boolean existsByRoleName(String roleName);
+    @Query("SELECT CASE WHEN COUNT(r) > 0 THEN true ELSE false END FROM Role r WHERE UPPER(r.roleName) = UPPER(:roleName)")
+    boolean existsByRoleName(@Param("roleName") String roleName);
 
     List<Role> findByDescriptionContaining(String description);
 

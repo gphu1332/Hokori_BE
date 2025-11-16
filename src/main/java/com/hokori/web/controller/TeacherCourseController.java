@@ -2,7 +2,6 @@ package com.hokori.web.controller;
 
 import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.dto.course.*;
-import com.hokori.web.entity.User;
 import com.hokori.web.repository.UserRepository;
 import com.hokori.web.service.CourseService;
 import jakarta.validation.Valid;
@@ -26,6 +25,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+/**
+ * Teacher Course Controller.
+ * NOTE: @PreAuthorize annotations use string literals (Spring Security requirement).
+ * Role names reference: RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN
+ */
 @RestController
 @RequestMapping("/api/teacher/courses")
 @RequiredArgsConstructor
@@ -44,12 +48,51 @@ public class TeacherCourseController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
         }
         String email = String.valueOf(auth.getPrincipal());
-        User u = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
-        if (Boolean.FALSE.equals(u.getIsActive())) {
+        // Use native query to avoid loading User entity with LOB fields
+        var statusOpt = userRepository.findUserActiveStatusByEmail(email);
+        if (statusOpt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        }
+        
+        Object[] status = statusOpt.get();
+        // Handle nested array case (PostgreSQL)
+        Object[] actualStatus = status;
+        if (status.length == 1 && status[0] instanceof Object[]) {
+            actualStatus = (Object[]) status[0];
+        }
+        
+        if (actualStatus.length < 2) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid user data");
+        }
+        
+        Long userId = extractLong(actualStatus[0]);
+        Boolean isActive = extractBoolean(actualStatus[1]);
+        
+        if (userId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        }
+        if (Boolean.FALSE.equals(isActive)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is disabled");
         }
-        return u.getId();
+        return userId;
+    }
+    
+    private Long extractLong(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof Number) return ((Number) obj).longValue();
+        try {
+            return Long.parseLong(obj.toString());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    private Boolean extractBoolean(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof Boolean) return (Boolean) obj;
+        if (obj instanceof Number) return ((Number) obj).intValue() != 0;
+        String str = obj.toString().toLowerCase().trim();
+        return "true".equals(str) || "1".equals(str) || "t".equals(str);
     }
 
     // ===== Course =====
@@ -62,7 +105,7 @@ public class TeacherCourseController {
                             content = @Content(schema = @Schema(implementation = CourseRes.class)))
             })
     @PostMapping
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public CourseRes create(@Valid @RequestBody CourseUpsertReq req) {
         return courseService.createCourse(currentUserIdOrThrow(), req);
     }
@@ -70,14 +113,14 @@ public class TeacherCourseController {
     @Operation(summary = "Cập nhật khoá học (UPDATE)",
             description = "Chỉ owner. Nếu đổi title thì cập nhật slug duy nhất.")
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public CourseRes update(@PathVariable Long id, @Valid @RequestBody CourseUpsertReq req) {
         return courseService.updateCourse(id, currentUserIdOrThrow(), req);
     }
 
     @Operation(summary = "Xoá mềm khoá học", description = "Đặt deleted_flag=true (không xoá cứng).")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         courseService.softDelete(id, currentUserIdOrThrow());
@@ -91,14 +134,14 @@ public class TeacherCourseController {
             - KANJI: >= 1 nội dung primary
             """)
     @PutMapping("/{id}/publish")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public CourseRes publish(@PathVariable Long id) {
         return courseService.publish(id, currentUserIdOrThrow());
     }
 
     @Operation(summary = "Unpublish khoá học", description = "Chuyển về DRAFT.")
     @PutMapping("/{id}/unpublish")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public CourseRes unpublish(@PathVariable Long id) {
         return courseService.unpublish(id, currentUserIdOrThrow());
     }
@@ -113,7 +156,7 @@ public class TeacherCourseController {
                     schema = @Schema(implementation = CourseStatus.class))
     })
     @GetMapping
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public Page<CourseRes> listMine(@RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size,
                                     @RequestParam(required = false) String q,
@@ -124,7 +167,7 @@ public class TeacherCourseController {
     @Operation(summary = "Lấy full cây cấu trúc khoá học",
             description = "Course -> Chapters -> Lessons -> Sections -> Contents (dùng cho màn soạn).")
     @GetMapping("/{id}/tree")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public CourseRes tree(@PathVariable Long id) {
         return courseService.getTree(id);
     }
@@ -134,7 +177,7 @@ public class TeacherCourseController {
     @Operation(summary = "Thêm Chapter vào Course",
             description = "Nếu orderIndex null: append (đặt = số chapter hiện tại). `isTrial=true` chỉ được 1 chapter.")
     @PostMapping("/{courseId}/chapters")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public ChapterRes addChapter(@PathVariable Long courseId,
                                  @Valid @RequestBody ChapterUpsertReq req) {
         return courseService.createChapter(courseId, currentUserIdOrThrow(), req);
@@ -142,7 +185,7 @@ public class TeacherCourseController {
 
     @Operation(summary = "Thêm Lesson vào Chapter", description = "Nếu orderIndex null: append.")
     @PostMapping("/chapters/{chapterId}/lessons")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public LessonRes addLesson(@PathVariable Long chapterId,
                                @Valid @RequestBody LessonUpsertReq req) {
         return courseService.createLesson(chapterId, currentUserIdOrThrow(), req);
@@ -151,7 +194,7 @@ public class TeacherCourseController {
     @Operation(summary = "Thêm Section vào Lesson",
             description = "VOCABULARY: require flashcardSetId; GRAMMAR/KANJI: có thể null.")
     @PostMapping("/lessons/{lessonId}/sections")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public SectionRes addSection(@PathVariable Long lessonId,
                                  @Valid @RequestBody SectionUpsertReq req) {
         return courseService.createSection(lessonId, currentUserIdOrThrow(), req);
@@ -165,7 +208,7 @@ public class TeacherCourseController {
             - QUIZ_REF: require quizId
             """)
     @PostMapping("/sections/{sectionId}/contents")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public ContentRes addContent(@PathVariable Long sectionId,
                                  @Valid @RequestBody ContentUpsertReq req) {
         return courseService.createContent(sectionId, currentUserIdOrThrow(), req);
@@ -175,7 +218,7 @@ public class TeacherCourseController {
     // ===== Course detail (metadata) =====
     @Operation(summary = "Chi tiết khoá học (metadata)")
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public CourseRes detail(@PathVariable Long id) {
         return courseService.getDetail(id, currentUserIdOrThrow());
     }
@@ -186,7 +229,7 @@ public class TeacherCourseController {
     // ===== Chapter: update / delete / reorder =====
     @Operation(summary = "Cập nhật Chapter")
     @PutMapping("/chapters/{chapterId}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public ChapterRes updateChapter(@PathVariable Long chapterId,
                                     @Valid @RequestBody ChapterUpsertReq req) {
         return courseService.updateChapter(chapterId, currentUserIdOrThrow(), req);
@@ -195,14 +238,14 @@ public class TeacherCourseController {
     @Operation(summary = "Xoá Chapter", description = "Xoá cứng; tự chuẩn hoá lại orderIndex.")
     @DeleteMapping("/chapters/{chapterId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public void deleteChapter(@PathVariable Long chapterId) {
         courseService.deleteChapter(chapterId, currentUserIdOrThrow());
     }
 
     @Operation(summary = "Đổi thứ tự Chapter")
     @PatchMapping("/chapters/{chapterId}/reorder")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public ChapterRes reorderChapter(@PathVariable Long chapterId,
                                      @RequestBody ReorderReq req) {
         return courseService.reorderChapter(chapterId, currentUserIdOrThrow(),
@@ -212,7 +255,7 @@ public class TeacherCourseController {
     // ===== Lesson: update / delete / reorder =====
     @Operation(summary = "Cập nhật Lesson")
     @PutMapping("/lessons/{lessonId}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public LessonRes updateLesson(@PathVariable Long lessonId,
                                   @Valid @RequestBody LessonUpsertReq req) {
         return courseService.updateLesson(lessonId, currentUserIdOrThrow(), req);
@@ -221,14 +264,14 @@ public class TeacherCourseController {
     @Operation(summary = "Xoá Lesson", description = "Xoá cứng; tự chuẩn hoá lại orderIndex.")
     @DeleteMapping("/lessons/{lessonId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public void deleteLesson(@PathVariable Long lessonId) {
         courseService.deleteLesson(lessonId, currentUserIdOrThrow());
     }
 
     @Operation(summary = "Đổi thứ tự Lesson")
     @PatchMapping("/lessons/{lessonId}/reorder")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public LessonRes reorderLesson(@PathVariable Long lessonId,
                                    @RequestBody ReorderReq req) {
         return courseService.reorderLesson(lessonId, currentUserIdOrThrow(),
@@ -238,7 +281,7 @@ public class TeacherCourseController {
     // ===== Section: update / delete / reorder =====
     @Operation(summary = "Cập nhật Section")
     @PutMapping("/sections/{sectionId}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public SectionRes updateSection(@PathVariable Long sectionId,
                                     @Valid @RequestBody SectionUpsertReq req) {
         return courseService.updateSection(sectionId, currentUserIdOrThrow(), req);
@@ -247,14 +290,14 @@ public class TeacherCourseController {
     @Operation(summary = "Xoá Section", description = "Xoá cứng; tự chuẩn hoá lại orderIndex.")
     @DeleteMapping("/sections/{sectionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public void deleteSection(@PathVariable Long sectionId) {
         courseService.deleteSection(sectionId, currentUserIdOrThrow());
     }
 
     @Operation(summary = "Đổi thứ tự Section")
     @PatchMapping("/sections/{sectionId}/reorder")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public SectionRes reorderSection(@PathVariable Long sectionId,
                                      @RequestBody ReorderReq req) {
         return courseService.reorderSection(sectionId, currentUserIdOrThrow(),
@@ -264,7 +307,7 @@ public class TeacherCourseController {
     // ===== Content: update / delete / reorder =====
     @Operation(summary = "Cập nhật Content trong Section")
     @PutMapping("/sections/contents/{contentId}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public ContentRes updateContent(@PathVariable Long contentId,
                                     @Valid @RequestBody ContentUpsertReq req) {
         return courseService.updateContent(contentId, currentUserIdOrThrow(), req);
@@ -273,14 +316,14 @@ public class TeacherCourseController {
     @Operation(summary = "Xoá Content", description = "Xoá cứng; tự chuẩn hoá lại orderIndex.")
     @DeleteMapping("/sections/contents/{contentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public void deleteContent(@PathVariable Long contentId) {
         courseService.deleteContent(contentId, currentUserIdOrThrow());
     }
 
     @Operation(summary = "Đổi thứ tự Content trong Section")
     @PatchMapping("/sections/contents/{contentId}/reorder")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN')")
     public ContentRes reorderContent(@PathVariable Long contentId,
                                      @RequestBody ReorderReq req) {
         return courseService.reorderContent(contentId, currentUserIdOrThrow(),

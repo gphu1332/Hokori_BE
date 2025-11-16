@@ -1,5 +1,6 @@
 package com.hokori.web.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.hokori.web.Enum.ContentFormat;
 import jakarta.persistence.*;
 import lombok.Getter; import lombok.Setter;
@@ -20,7 +21,9 @@ public class SectionsContent extends BaseEntity {
 
     // payload theo format
     private Long assetId;                         // ASSET (video/pdf/…)
-    @Column(columnDefinition="TEXT") private String richText; // RICH_TEXT
+    @Column(columnDefinition="TEXT")
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
+    private String richText; // RICH_TEXT
     private Long quizId;                          // QUIZ_REF (nếu dùng)
     private Long flashcardSetId;                  // chỉ dùng nếu bạn chọn phương án B
 

@@ -1,5 +1,8 @@
 package com.hokori.web.config;
 
+import com.hokori.web.exception.AIServiceException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -14,6 +17,8 @@ import java.util.Map;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationExceptions(
@@ -39,11 +44,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleRuntimeException(
             RuntimeException ex, WebRequest request) {
         Map<String, Object> response = new HashMap<>();
-        response.put("message", ex.getMessage());
+        
+        // Handle LOB stream errors specifically
+        String message = ex.getMessage();
+        if (message != null && (message.contains("lob stream") || message.contains("LOB"))) {
+            response.put("message", "Unable to access lob stream");
+        } else {
+            response.put("message", message != null ? message : "An error occurred");
+        }
+        
         response.put("status", "error");
         response.put("timestamp", LocalDateTime.now());
         response.put("path", request.getDescription(false));
         
+        // Don't serialize exception details to avoid triggering LOB loading
         return ResponseEntity.badRequest().body(response);
     }
 
@@ -96,6 +110,22 @@ public class GlobalExceptionHandler {
         response.put("path", request.getDescription(false));
         
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    @ExceptionHandler(AIServiceException.class)
+    public ResponseEntity<Map<String, Object>> handleAIServiceException(
+            AIServiceException ex, WebRequest request) {
+        logger.error("AI Service Error [{}]: {}", ex.getServiceName(), ex.getMessage(), ex);
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", ex.getMessage());
+        response.put("status", "error");
+        response.put("errorCode", ex.getErrorCode());
+        response.put("serviceName", ex.getServiceName());
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false));
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
     // Custom exception classes

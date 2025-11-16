@@ -24,10 +24,12 @@ public class AiTranslationHistory {
     @Column(name = "target_language")
     private String targetLanguage;
     
-    @Column(columnDefinition = "NVARCHAR(MAX)")
+    @Lob
+    @Column(name = "original_text", columnDefinition = "TEXT")
     private String originalText;
     
-    @Column(columnDefinition = "NVARCHAR(MAX)")
+    @Lob
+    @Column(name = "translated_text", columnDefinition = "TEXT")
     private String translatedText;
     
     @Column(name = "created_at")

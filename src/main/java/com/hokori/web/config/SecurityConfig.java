@@ -1,8 +1,10 @@
 package com.hokori.web.config;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -15,6 +17,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true) // Enable @PreAuthorize and @PostAuthorize
 public class SecurityConfig {
 
     @Autowired
@@ -30,12 +33,19 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authz -> authz
-                // Public endpoints - no authentication required
+
+                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                // ============================================
+                // PUBLIC ENDPOINTS - No authentication required
+                // ============================================
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/ai/**").permitAll()
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/api/hello").permitAll()
                 .requestMatchers("/api/echo").permitAll()
+                .requestMatchers("/api/debug/jwt").permitAll()
+                .requestMatchers("/api/courses/**").permitAll() // Public marketplace - published courses only
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/v3/api-docs/**").permitAll()
                 .requestMatchers("/swagger-ui/**").permitAll()
@@ -43,17 +53,37 @@ public class SecurityConfig {
                 .requestMatchers("/api-docs/**").permitAll()
                 .requestMatchers("/health").permitAll()
                 
+                // ============================================
+                // ROLE-BASED ENDPOINTS
+                // ============================================
+                // NOTE: Spring Security requires string literals here (cannot use constants).
+                // Role names reference: RoleConstants.LEARNER, RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN
+                
                 // Admin-only endpoints
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN") // RoleConstants.ADMIN
                 
                 // Staff and Admin endpoints
-                .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN")
+                .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN") // RoleConstants.STAFF, RoleConstants.ADMIN
                 
                 // Teacher, Staff, and Admin endpoints
-                .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN")
+                // Note: Individual methods may have stricter @PreAuthorize annotations
+                .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN") // RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN
+                
+                // Learner-only endpoints
+                .requestMatchers("/api/learner/**").hasRole("LEARNER") // RoleConstants.LEARNER
+                
+                // ============================================
+                // AUTHENTICATED ENDPOINTS - Any authenticated user
+                // ============================================
                 
                 // User profile endpoints - authenticated users only
                 .requestMatchers("/api/profile/**").authenticated()
+                
+                // Cart endpoints - authenticated users only
+                .requestMatchers("/api/cart/**").authenticated()
+                
+                // Asset endpoints - authenticated users only (typically TEACHER/ADMIN but checked in service)
+                .requestMatchers("/api/assets/**").authenticated()
                 
                 // All other requests require authentication
                 .anyRequest().authenticated()

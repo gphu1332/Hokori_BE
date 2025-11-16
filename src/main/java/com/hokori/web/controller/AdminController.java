@@ -19,12 +19,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Admin Controller.
+ * NOTE: @PreAuthorize uses string literal (Spring Security requirement).
+ * Role name reference: RoleConstants.ADMIN
+ */
 @RestController
 @RequestMapping("/api/admin")
 @Tag(name = "Admin Management", description = "Administrative functions for user and role management")
 @SecurityRequirement(name = "Bearer Authentication") // chỉ dành cho Swagger UI
 @CrossOrigin(origins = "*")
-@org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')") // ⬅️ BẮT BUỘC LÀ ADMIN
+@org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')") // ⬅️ BẮT BUỘC LÀ ADMIN (RoleConstants.ADMIN)
 public class AdminController {
 
     @Autowired

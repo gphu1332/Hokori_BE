@@ -7,15 +7,22 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.*;
 
+/**
+ * User Controller - Admin only access.
+ * NOTE: @PreAuthorize uses string literal (Spring Security requirement).
+ * Role name reference: RoleConstants.ADMIN
+ */
 @RestController
 @RequestMapping("/api/users")
 @Tag(name = "User Management", description = "User management endpoints")
 @CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('ADMIN')") // Only ADMIN can access user management endpoints
 public class UserController {
 
     @Autowired

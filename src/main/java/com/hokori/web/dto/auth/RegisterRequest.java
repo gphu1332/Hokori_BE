@@ -1,5 +1,6 @@
 package com.hokori.web.dto.auth;
 
+import com.hokori.web.constants.RoleConstants;
 import lombok.Data;
 
 @Data
@@ -20,7 +21,7 @@ public class RegisterRequest {
     }
     public boolean isValidRole(){
         return roleName == null || switch (roleName.toUpperCase()) {
-            case "LEARNER","TEACHER","STAFF","ADMIN" -> true;
+            case RoleConstants.LEARNER, RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN -> true;
             default -> false;
         };
     }

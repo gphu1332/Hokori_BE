@@ -15,6 +15,25 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByFirebaseUid(String firebaseUid);
     Optional<User> findByEmail(String email);
+    
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.role WHERE u.email = :email")
+    Optional<User> findByEmailWithRole(@Param("email") String email);
+    
+    /**
+     * Check if user exists and is active by email (for authentication).
+     * Uses JPQL to select only non-LOB fields to avoid LOB stream issues.
+     * This is simpler and more reliable than native queries.
+     */
+    @Query("SELECT u.id, u.isActive FROM User u WHERE u.email = :email")
+    Optional<Object[]> findUserActiveStatusByEmail(@Param("email") String email);
+    
+    /**
+     * Get role info by email (avoids LOB fields).
+     * Returns: [role_id, role_name, role_description]
+     */
+    @Query(value = "SELECT r.id, r.role_name, r.description FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = :email", nativeQuery = true)
+    Optional<Object[]> findRoleInfoByEmail(@Param("email") String email);
+    
     Optional<User> findByUsername(String username);
 
     boolean existsByEmail(String email);

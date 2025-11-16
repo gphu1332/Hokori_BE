@@ -1,5 +1,6 @@
 package com.hokori.web.service;
 
+import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
 import com.hokori.web.repository.UserRepository;
@@ -7,9 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 @Transactional
@@ -53,8 +52,10 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public boolean userHasRole(Long userId, String roleName) {
+        // Case-insensitive check for PostgreSQL compatibility
         return userRepository.findById(userId)
-                .map(u -> u.getRole() != null && roleName.equals(u.getRole().getRoleName()))
+                .map(u -> u.getRole() != null && u.getRole().getRoleName() != null 
+                    && roleName.equalsIgnoreCase(u.getRole().getRoleName()))
                 .orElse(false);
     }
 
@@ -132,4 +133,32 @@ public class UserService {
         return userRepository.findByIdWithRole(id);
     }
 
+
+    public Map<String, Object> submitTeacherApproval(Long userId) {
+        User u = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+
+        Map<String, Object> res = new HashMap<>();
+
+        // Nếu đã APPROVED thì không cho submit lại
+        if (u.getApprovalStatus() == ApprovalStatus.APPROVED) {
+            res.put("approvalStatus", u.getApprovalStatus());
+            res.put("message", "Already approved");
+            res.put("approvedAt", u.getApprovedAt());
+            return res;
+        }
+
+        // Chuyển sang PENDING (kể cả từ NONE/REJECTED)
+        u.setApprovalStatus(ApprovalStatus.PENDING);
+        u.setApprovedAt(null);
+        u.setApprovedByUserId(null);
+        // Nếu bạn có currentApproveRequest thì giữ nguyên; chưa có thì bỏ qua
+        userRepository.save(u);
+
+        res.put("approvalStatus", u.getApprovalStatus());
+        res.put("approvedAt", u.getApprovedAt());
+        res.put("timestamp", LocalDateTime.now());
+        // res.put("currentApproveRequestId", u.getCurrentApproveRequest()!=null ? u.getCurrentApproveRequest().getId() : null);
+        return res;
+    }
 }
