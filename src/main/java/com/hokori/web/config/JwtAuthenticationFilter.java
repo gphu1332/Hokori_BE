@@ -252,7 +252,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             logger.error("❌ Failed to check user active status: " + e.getMessage());
             logger.error("   Exception type: " + e.getClass().getName());
             logger.warn("   Proceeding with authentication anyway (fail-open to avoid 403)");
-            e.printStackTrace();
+            // Removed printStackTrace() to avoid excessive logging - exception already logged above
             // Fail-open: proceed with authentication if query fails (to avoid 403)
             return true;
         }
@@ -294,7 +294,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } catch (Exception e) {
             logger.error("❌ Failed to get role from database: " + e.getMessage());
             logger.error("   Exception type: " + e.getClass().getName());
-            e.printStackTrace();
+            // Removed printStackTrace() to avoid excessive logging - exception already logged above
         }
         return roles;
     }
@@ -329,7 +329,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } catch (Exception e) {
             logger.error("❌ Error converting roles to authorities: " + e.getMessage(), e);
             logger.error("   Roles list: " + roles);
-            e.printStackTrace();
+            // Removed printStackTrace() to avoid excessive logging - exception already logged above
         }
         
         if (authorities.isEmpty()) {
