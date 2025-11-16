@@ -65,8 +65,9 @@ public class WalletTransaction {
     @Column(
             name = "created_at",
             nullable = false,
-            updatable = false,
-            columnDefinition = "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP" // PostgreSQL compatible for Railway
+            updatable = false
+            // Let Hibernate handle database-specific syntax (works with both SQL Server and PostgreSQL)
+            // Default value set in @PrePersist hook
     )
     private Instant createdAt;
 

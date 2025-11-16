@@ -65,8 +65,8 @@ public class User {
     @Column(
             name = "is_active",
             nullable = false
-            // Với SQL Server: nên để mặc định = 1. Nếu bạn dùng MySQL có thể bỏ columnDefinition.
-            , columnDefinition = "bit not null default 1" // [CHANGED]
+            // Let Hibernate handle database-specific syntax (works with both SQL Server and PostgreSQL)
+            // Default value set in Java code: isActive = true
     )
     private Boolean isActive = true;
 
@@ -74,7 +74,8 @@ public class User {
     @Column(
             name = "is_verified",
             nullable = false
-            , columnDefinition = "bit not null default 0" // [CHANGED]
+            // Let Hibernate handle database-specific syntax (works with both SQL Server and PostgreSQL)
+            // Default value set in Java code: isVerified = false
     )
     private Boolean isVerified = false;
 
@@ -134,8 +135,9 @@ public class User {
     @Column(
             name = "approval_status",
             length = 20,
-            nullable = false,
-            columnDefinition = "varchar(20) not null default 'NONE'" // [CHANGED] default NONE để tránh lỗi khi add cột trên bảng có data (SQL Server)
+            nullable = false
+            // Let Hibernate handle database-specific syntax (works with both SQL Server and PostgreSQL)
+            // Default value set in Java code: approvalStatus = ApprovalStatus.NONE
     )
     private ApprovalStatus approvalStatus = ApprovalStatus.NONE; // NONE/PENDING/APPROVED/REJECTED
 
@@ -162,8 +164,9 @@ public class User {
 
     @Column(
             name = "wallet_balance",
-            nullable = false,
-            columnDefinition = "BIGINT NOT NULL DEFAULT 0" // PostgreSQL compatible for Railway
+            nullable = false
+            // Let Hibernate handle database-specific syntax (works with both SQL Server and PostgreSQL)
+            // Default value set in Java code: walletBalance = 0L
     )
     private Long walletBalance = 0L;
 
@@ -181,8 +184,9 @@ public class User {
     /** Xoá mềm để giữ toàn vẹn dữ liệu */
     @Column(
             name = "deleted_flag",
-            nullable = false,
-            columnDefinition = "bit not null default 0" // [CHANGED] thêm DEFAULT để tránh lỗi khi migrate trên bảng đã có dữ liệu (SQL Server)
+            nullable = false
+            // Let Hibernate handle database-specific syntax (works with both SQL Server and PostgreSQL)
+            // Default value set in Java code: deletedFlag = false
     )
     private Boolean deletedFlag = false;
 
