@@ -291,7 +291,9 @@ public class AIService {
             String detectedFormat = audioFormat;
             if (detectedFormat == null || detectedFormat.trim().isEmpty()) {
                 detectedFormat = detectAudioFormat(audioBytes);
-                logger.debug("Auto-detected audio format: {}", detectedFormat);
+                logger.info("Auto-detected audio format: {} (original: {})", detectedFormat, audioFormat);
+            } else {
+                logger.info("Using provided audio format: {}", detectedFormat);
             }
             
             // Configure recognition based on audio format
@@ -301,24 +303,26 @@ public class AIService {
             
             // Handle different audio formats
             String format = (detectedFormat != null) ? detectedFormat.toLowerCase().trim() : "";
+            logger.info("Processing audio format: '{}' (normalized)", format);
             
             if (format.equals("webm") || format.equals("ogg") || format.contains("opus")) {
                 // WEBM OPUS: Let Google Cloud auto-detect encoding and sample rate from header
                 // Don't set encoding or sample_rate_hertz for container formats
-                logger.debug("Using auto-detection for WEBM/OGG/OPUS format");
+                logger.info("Using auto-detection for WEBM/OGG/OPUS format - NOT setting encoding or sample_rate_hertz");
+                // Intentionally leave encoding and sample_rate_hertz unset
             } else if (format.equals("mp3")) {
                 // MP3: Use MP3 encoding, let Google Cloud detect sample rate
                 configBuilder.setEncoding(RecognitionConfig.AudioEncoding.MP3);
-                logger.debug("Using MP3 encoding with auto-detected sample rate");
+                logger.info("Using MP3 encoding with auto-detected sample rate");
             } else if (format.equals("flac")) {
                 // FLAC: Use FLAC encoding, let Google Cloud detect sample rate
                 configBuilder.setEncoding(RecognitionConfig.AudioEncoding.FLAC);
-                logger.debug("Using FLAC encoding with auto-detected sample rate");
+                logger.info("Using FLAC encoding with auto-detected sample rate");
             } else {
                 // Default: LINEAR16 (WAV) with configured sample rate
+                logger.warn("Using LINEAR16 encoding with sample rate {} (format: '{}')", speechToTextSampleRate, format);
                 configBuilder.setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
                     .setSampleRateHertz(speechToTextSampleRate);
-                logger.debug("Using LINEAR16 encoding with sample rate: {}", speechToTextSampleRate);
             }
             
             RecognitionConfig config = configBuilder.build();
@@ -386,6 +390,7 @@ public class AIService {
         if (audioBytes.length >= 4 && 
             audioBytes[0] == 0x1A && audioBytes[1] == 0x45 && 
             audioBytes[2] == (byte)0xDF && audioBytes[3] == (byte)0xA3) {
+            logger.debug("Detected WEBM format from magic bytes (EBML header)");
             return "webm";
         }
         
