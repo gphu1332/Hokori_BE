@@ -158,7 +158,11 @@ public class User {
     @Column(name = "last_payout_date")
     private LocalDate lastPayoutDate;
 
-    @Column(name = "wallet_balance", nullable = false)
+    @Column(
+            name = "wallet_balance",
+            nullable = false,
+            columnDefinition = "BIGINT NOT NULL DEFAULT 0" // PostgreSQL compatible for Railway
+    )
     private Long walletBalance = 0L;
 
 

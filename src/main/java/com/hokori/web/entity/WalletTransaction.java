@@ -62,7 +62,12 @@ public class WalletTransaction {
     @Column(name = "description", length = 500)
     private String description;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(
+            name = "created_at",
+            nullable = false,
+            updatable = false,
+            columnDefinition = "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP" // PostgreSQL compatible for Railway
+    )
     private Instant createdAt;
 
     // Id user tạo giao dịch (admin / system), có thể null
