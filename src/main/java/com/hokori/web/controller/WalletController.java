@@ -49,10 +49,9 @@ public class WalletController {
     private final UserRepository userRepo;
 
     // ===== Helper: lấy user hiện tại từ JWT =====
-
     /**
      * Lấy user hiện tại đang đăng nhập từ SecurityContext.
-     * - FE chỉ cần truyền Bearer token, không cần truyền userId.
+     * JwtAuthenticationFilter đang set principal = email.
      */
     private User getCurrentUserOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -61,14 +60,16 @@ public class WalletController {
             throw new AccessDeniedException("Unauthenticated");
         }
 
-        String username = auth.getName(); // JwtAuthenticationFilter set username
-        return userRepo.findByUsername(username)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + username));
+        // principal hiện đang là email, không phải username
+        String email = auth.getName();
+        return userRepo.findByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + email));
     }
 
     private Long getCurrentUserIdOrThrow() {
         return getCurrentUserOrThrow().getId();
     }
+
 
     // ===== API: Lấy thông tin ví của chính mình =====
 
