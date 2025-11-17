@@ -52,7 +52,7 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui.html").permitAll()
                 .requestMatchers("/api-docs/**").permitAll()
                 .requestMatchers("/health").permitAll()
-
+                    .requestMatchers("/files/**").permitAll()
 
                     // 👇 Public marketplace courses (chỉ GET)
                 .requestMatchers(HttpMethod.GET,
