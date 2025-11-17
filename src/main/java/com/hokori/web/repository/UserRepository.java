@@ -76,4 +76,24 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("select u from User u left join fetch u.role where u.id = :id")
     Optional<User> findByIdWithRole(@Param("id") Long id);
+
+    // ===== Thêm mới cho wallet (JPQL, không đụng LOB) =====
+
+    /**
+     * Lấy thông tin ví đơn giản theo email.
+     * Trả về mảng 3 phần tử: [id, walletBalance, lastPayoutDate]
+     * => Không select các cột LOB nên tránh lỗi "Unable to access lob stream".
+     */
+    @Query("""
+           SELECT u.id, u.walletBalance, u.lastPayoutDate
+           FROM User u
+           WHERE u.email = :email
+           """)
+    Optional<Object[]> findWalletInfoByEmail(@Param("email") String email);
+
+    /**
+     * Lấy id user theo email (dùng cho adminId, teacherId từ JWT).
+     */
+    @Query("SELECT u.id FROM User u WHERE u.email = :email")
+    Optional<Long> findIdByEmail(@Param("email") String email);
 }

@@ -53,21 +53,20 @@ public class WalletController {
      * Lấy user hiện tại đang đăng nhập từ SecurityContext.
      * JwtAuthenticationFilter đang set principal = email.
      */
-    private User getCurrentUserOrThrow() {
+    private String getCurrentEmailOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()
                 || "anonymousUser".equals(auth.getPrincipal())) {
             throw new AccessDeniedException("Unauthenticated");
         }
-
-        // principal hiện đang là email, không phải username
-        String email = auth.getName();
-        return userRepo.findByEmail(email)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + email));
+        // JwtAuthenticationFilter đang set principal = email
+        return auth.getName();
     }
 
     private Long getCurrentUserIdOrThrow() {
-        return getCurrentUserOrThrow().getId();
+        String email = getCurrentEmailOrThrow();
+        return userRepo.findIdByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + email));
     }
 
 
@@ -102,11 +101,20 @@ public class WalletController {
             @ApiResponse(responseCode = "401", description = "Chưa đăng nhập hoặc token không hợp lệ")
     })
     public WalletSummaryResponse getMyWalletSummary() {
-        User me = getCurrentUserOrThrow();
+        String email = getCurrentEmailOrThrow();
+
+        Object[] row = userRepo.findWalletInfoByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + email));
+
+        Long userId = (Long) row[0];
+        Long walletBalance = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        // đổi kiểu cho đúng với entity của bạn: LocalDate / LocalDateTime / Instant
+        java.time.LocalDate lastPayoutDate = (java.time.LocalDate) row[2];
+
         return WalletSummaryResponse.builder()
-                .userId(me.getId())
-                .walletBalance(me.getWalletBalance())
-                .lastPayoutDate(me.getLastPayoutDate())
+                .userId(userId)
+                .walletBalance(walletBalance)
+                .lastPayoutDate(lastPayoutDate)
                 .build();
     }
 
