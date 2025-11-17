@@ -39,6 +39,24 @@ public class LearnerProgressService {
                 .lastAccessAt(e.getLastAccessAt())
                 .build();
     }
+    
+    /**
+     * List all enrolled courses for a learner
+     */
+    @Transactional(readOnly = true)
+    public List<EnrollmentLiteRes> listEnrolledCourses(Long userId) {
+        List<Enrollment> enrollments = enrollmentRepo.findByUserId(userId);
+        return enrollments.stream()
+                .map(e -> EnrollmentLiteRes.builder()
+                        .enrollmentId(e.getId())
+                        .courseId(e.getCourseId())
+                        .progressPercent(e.getProgressPercent())
+                        .startedAt(e.getStartedAt())
+                        .completedAt(e.getCompletedAt())
+                        .lastAccessAt(e.getLastAccessAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
 
     // ================= Chapter % =================
     @Transactional(readOnly = true)

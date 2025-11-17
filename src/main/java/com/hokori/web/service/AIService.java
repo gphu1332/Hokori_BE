@@ -245,8 +245,21 @@ public class AIService {
     
     /**
      * Convert speech to text using Google Cloud Speech-to-Text API
+     * @param audioData Base64 encoded audio data
+     * @param language Language code (e.g., "ja-JP")
+     * @param audioFormat Audio format (e.g., "wav", "mp3", "ogg", "webm"). If null or empty, defaults to LINEAR16.
      */
     public Map<String, Object> speechToText(String audioData, String language) {
+        return speechToText(audioData, language, null);
+    }
+    
+    /**
+     * Convert speech to text using Google Cloud Speech-to-Text API
+     * @param audioData Base64 encoded audio data
+     * @param language Language code (e.g., "ja-JP")
+     * @param audioFormat Audio format (e.g., "wav", "mp3", "ogg", "webm"). If null or empty, defaults to LINEAR16.
+     */
+    public Map<String, Object> speechToText(String audioData, String language, String audioFormat) {
         if (!googleCloudEnabled || speechClient == null) {
             throw new AIServiceException("Speech-to-Text", 
                 "Google Cloud Speech-to-Text API is not enabled or not configured. Please enable it in application properties.",
@@ -259,7 +272,8 @@ public class AIService {
         }
         
         try {
-            logger.debug("Converting speech to text: language={}, audioDataLength={}", language, audioData.length());
+            logger.debug("Converting speech to text: language={}, audioFormat={}, audioDataLength={}", 
+                language, audioFormat, audioData.length());
             
             // Decode base64 audio data
             byte[] audioBytes;
@@ -273,13 +287,59 @@ public class AIService {
             // Default to Japanese for Vietnamese users learning Japanese
             String langCode = language != null && !language.isEmpty() ? language : "ja-JP";
             
-            // Configure recognition
-            RecognitionConfig config = RecognitionConfig.newBuilder()
-                .setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
-                .setSampleRateHertz(speechToTextSampleRate)
+            // Always detect audio format from magic bytes first (more reliable than FE-provided format)
+            String detectedFormatFromBytes = detectAudioFormat(audioBytes);
+            logger.info("Detected audio format from magic bytes: {}", detectedFormatFromBytes);
+            
+            // Use detected format if FE didn't provide one, or if FE format doesn't match actual format
+            String detectedFormat = audioFormat;
+            if (detectedFormat == null || detectedFormat.trim().isEmpty()) {
+                detectedFormat = detectedFormatFromBytes;
+                logger.info("Using auto-detected format: {} (FE provided: null/empty)", detectedFormat);
+            } else {
+                String feFormat = detectedFormat.toLowerCase().trim();
+                String actualFormat = detectedFormatFromBytes.toLowerCase();
+                
+                // If FE says "wav" but magic bytes say "webm", trust magic bytes (FE might be wrong)
+                if (!feFormat.equals(actualFormat) && actualFormat.equals("webm")) {
+                    logger.warn("Format mismatch: FE provided '{}' but magic bytes detected '{}'. Using detected format.", 
+                        feFormat, actualFormat);
+                    detectedFormat = detectedFormatFromBytes;
+                } else {
+                    logger.info("Using FE-provided format: {} (matches detected: {})", feFormat, actualFormat);
+                }
+            }
+            
+            // Configure recognition based on audio format
+            RecognitionConfig.Builder configBuilder = RecognitionConfig.newBuilder()
                 .setLanguageCode(langCode)
-                .setEnableAutomaticPunctuation(true)
-                .build();
+                .setEnableAutomaticPunctuation(true);
+            
+            // Handle different audio formats
+            String format = (detectedFormat != null) ? detectedFormat.toLowerCase().trim() : "";
+            logger.info("Processing audio format: '{}' (normalized)", format);
+            
+            if (format.equals("webm") || format.equals("ogg") || format.contains("opus")) {
+                // WEBM OPUS: Let Google Cloud auto-detect encoding and sample rate from header
+                // Don't set encoding or sample_rate_hertz for container formats
+                logger.info("Using auto-detection for WEBM/OGG/OPUS format - NOT setting encoding or sample_rate_hertz");
+                // Intentionally leave encoding and sample_rate_hertz unset
+            } else if (format.equals("mp3")) {
+                // MP3: Use MP3 encoding, let Google Cloud detect sample rate
+                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.MP3);
+                logger.info("Using MP3 encoding with auto-detected sample rate");
+            } else if (format.equals("flac")) {
+                // FLAC: Use FLAC encoding, let Google Cloud detect sample rate
+                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.FLAC);
+                logger.info("Using FLAC encoding with auto-detected sample rate");
+            } else {
+                // Default: LINEAR16 (WAV) with configured sample rate
+                logger.warn("Using LINEAR16 encoding with sample rate {} (format: '{}')", speechToTextSampleRate, format);
+                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
+                    .setSampleRateHertz(speechToTextSampleRate);
+            }
+            
+            RecognitionConfig config = configBuilder.build();
             
             RecognitionAudio audio = RecognitionAudio.newBuilder()
                 .setContent(audioBytesString)
@@ -322,6 +382,68 @@ public class AIService {
             logger.error("Speech-to-text API error", e);
             throw new AIServiceException("Speech-to-Text", "Speech-to-text conversion failed: " + e.getMessage(), e);
         }
+    }
+    
+    /**
+     * Detect audio format from magic bytes
+     * WEBM: starts with 0x1A 0x45 0xDF 0xA3
+     * OGG: starts with "OggS"
+     * MP3: starts with 0xFF 0xFB or 0xFF 0xF3 or "ID3"
+     * FLAC: starts with "fLaC"
+     * WAV: starts with "RIFF" and contains "WAVE"
+     */
+    private String detectAudioFormat(byte[] audioBytes) {
+        if (audioBytes == null || audioBytes.length < 4) {
+            // Audio data too small or null - default to webm (browser recording)
+            logger.warn("Audio data too small for format detection (length: {}), defaulting to webm", 
+                audioBytes != null ? audioBytes.length : 0);
+            return "webm";
+        }
+        
+        // Check WEBM (EBML header: 0x1A 0x45 0xDF 0xA3)
+        if (audioBytes.length >= 4 && 
+            audioBytes[0] == 0x1A && audioBytes[1] == 0x45 && 
+            audioBytes[2] == (byte)0xDF && audioBytes[3] == (byte)0xA3) {
+            logger.debug("Detected WEBM format from magic bytes (EBML header)");
+            return "webm";
+        }
+        
+        // Check OGG (starts with "OggS")
+        if (audioBytes.length >= 4 && 
+            audioBytes[0] == 'O' && audioBytes[1] == 'g' && 
+            audioBytes[2] == 'g' && audioBytes[3] == 'S') {
+            return "ogg";
+        }
+        
+        // Check FLAC (starts with "fLaC")
+        if (audioBytes.length >= 4 && 
+            audioBytes[0] == 'f' && audioBytes[1] == 'L' && 
+            audioBytes[2] == 'a' && audioBytes[3] == 'C') {
+            return "flac";
+        }
+        
+        // Check MP3 (starts with 0xFF 0xFB or 0xFF 0xF3 or "ID3")
+        if (audioBytes.length >= 2 && audioBytes[0] == (byte)0xFF && 
+            (audioBytes[1] == (byte)0xFB || audioBytes[1] == (byte)0xF3)) {
+            return "mp3";
+        }
+        if (audioBytes.length >= 3 && 
+            audioBytes[0] == 'I' && audioBytes[1] == 'D' && audioBytes[2] == '3') {
+            return "mp3";
+        }
+        
+        // Check WAV (starts with "RIFF" and contains "WAVE")
+        if (audioBytes.length >= 12 && 
+            audioBytes[0] == 'R' && audioBytes[1] == 'I' && 
+            audioBytes[2] == 'F' && audioBytes[3] == 'F' &&
+            audioBytes[8] == 'W' && audioBytes[9] == 'A' && 
+            audioBytes[10] == 'V' && audioBytes[11] == 'E') {
+            return "wav";
+        }
+        
+        // Default: assume webm (most common for browser recording)
+        logger.warn("Could not detect audio format from magic bytes, defaulting to webm");
+        return "webm";
     }
     
     /**

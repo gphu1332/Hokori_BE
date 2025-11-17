@@ -128,7 +128,8 @@ public class KaiwaPracticeRequest {
                audioFormat.equals("wav") || 
                audioFormat.equals("mp3") || 
                audioFormat.equals("flac") || 
-               audioFormat.equals("ogg");
+               audioFormat.equals("ogg") ||
+               audioFormat.equals("webm");
     }
     
     public boolean isValidSpeed() {

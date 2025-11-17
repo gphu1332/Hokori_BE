@@ -280,7 +280,7 @@ public class AIController {
                         name = "Error Response",
                         value = "{\n" +
                                 "  \"success\": false,\n" +
-                                "  \"message\": \"Invalid audio format. Valid formats: wav, mp3, flac, ogg\",\n" +
+                                "  \"message\": \"Invalid audio format. Valid formats: wav, mp3, flac, ogg, webm\",\n" +
                                 "  \"data\": null\n" +
                                 "}"
                     )
@@ -296,12 +296,13 @@ public class AIController {
         
         try {
             if (!request.isValidAudioFormat()) {
-                return ResponseEntity.ok(ApiResponse.error("Invalid audio format. Valid formats: wav, mp3, flac, ogg"));
+                return ResponseEntity.ok(ApiResponse.error("Invalid audio format. Valid formats: wav, mp3, flac, ogg, webm"));
             }
             
             Map<String, Object> transcriptionResult = aiService.speechToText(
                 request.getAudioData(), 
-                request.getLanguage()
+                request.getLanguage(),
+                request.getAudioFormat()
             );
             logger.debug("Speech-to-text successful: transcript={}, confidence={}", 
                 transcriptionResult.get("transcript"), transcriptionResult.get("confidence"));
@@ -445,7 +446,7 @@ public class AIController {
         
         try {
             if (!request.isValidAudioFormat()) {
-                return ResponseEntity.ok(ApiResponse.error("Invalid audio format. Valid formats: wav, mp3, flac, ogg"));
+                return ResponseEntity.ok(ApiResponse.error("Invalid audio format. Valid formats: wav, mp3, flac, ogg, webm"));
             }
             
             if (!request.isValidLevel()) {
@@ -460,7 +461,8 @@ public class AIController {
                 request.getTargetText(),
                 request.getAudioData(),
                 request.getLanguage(),
-                request.getLevel()
+                request.getLevel(),
+                request.getAudioFormat()
             );
             
             logger.debug("Kaiwa practice successful: overallScore={}, accuracyScore={}", 

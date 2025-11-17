@@ -72,7 +72,11 @@ public class AIResponseFormatter {
         formatted.put("sentimentLabelVi", sentimentLabels.getOrDefault(sentiment, sentiment));
         
         // Add explanation in Vietnamese
-        Float score = (Float) rawResponse.get("score");
+        Float score = null;
+        Object scoreObj = rawResponse.get("score");
+        if (scoreObj != null) {
+            score = ((Number) scoreObj).floatValue();
+        }
         String explanation = getSentimentExplanationVi(score);
         formatted.put("explanationVi", explanation);
         
@@ -111,7 +115,11 @@ public class AIResponseFormatter {
         Map<String, Object> formatted = new HashMap<>(rawResponse);
         
         // Add feedback in Vietnamese
-        Double confidence = (Double) rawResponse.get("confidence");
+        Double confidence = null;
+        Object confidenceObj = rawResponse.get("confidence");
+        if (confidenceObj != null) {
+            confidence = ((Number) confidenceObj).doubleValue();
+        }
         if (confidence != null) {
             String feedbackVi = getPronunciationFeedbackVi(confidence);
             formatted.put("feedbackVi", feedbackVi);
@@ -179,7 +187,11 @@ public class AIResponseFormatter {
         formatted.put("meta", meta);
         
         // Add score labels in Vietnamese
-        Double overallScore = (Double) rawResponse.get("overallScore");
+        Double overallScore = null;
+        Object overallScoreObj = rawResponse.get("overallScore");
+        if (overallScoreObj != null) {
+            overallScore = ((Number) overallScoreObj).doubleValue();
+        }
         if (overallScore != null) {
             String scoreLabelVi = getScoreLabelVi(overallScore);
             formatted.put("scoreLabelVi", scoreLabelVi);

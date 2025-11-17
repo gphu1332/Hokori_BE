@@ -166,19 +166,38 @@ public class SpeakingPracticeService {
      * @return Map containing comparison results, scores, and feedback
      */
     public Map<String, Object> practiceKaiwa(String targetText, String audioData, String language, String level) {
+        return practiceKaiwa(targetText, audioData, language, level, null);
+    }
+    
+    /**
+     * Practice kaiwa (conversation) by comparing user's pronunciation with target text
+     * 
+     * @param targetText The Japanese text user should practice
+     * @param audioData Base64 encoded audio of user's pronunciation
+     * @param language Language code (default: "ja-JP")
+     * @param level JLPT level: N5, N4, N3, N2, N1 (optional, default: N5)
+     * @param audioFormat Audio format (e.g., "wav", "mp3", "ogg", "webm")
+     * @return Map containing comparison results, scores, and feedback
+     */
+    public Map<String, Object> practiceKaiwa(String targetText, String audioData, String language, String level, String audioFormat) {
         // Normalize level (default to N5 if not provided)
         String normalizedLevel = normalizeLevel(level);
         
-        logger.info("Starting kaiwa practice: targetTextLength={}, audioDataLength={}, language={}, level={}", 
+        logger.info("Starting kaiwa practice: targetTextLength={}, audioDataLength={}, language={}, level={}, audioFormat={}", 
             targetText != null ? targetText.length() : 0,
             audioData != null ? audioData.length() : 0,
             language,
-            normalizedLevel);
+            normalizedLevel,
+            audioFormat);
         
         // Step 1: Convert user's audio to text
-        Map<String, Object> speechToTextResult = aiService.speechToText(audioData, language);
+        Map<String, Object> speechToTextResult = aiService.speechToText(audioData, language, audioFormat);
         String userTranscript = (String) speechToTextResult.get("transcript");
-        Double confidence = (Double) speechToTextResult.get("confidence");
+        Double confidence = null;
+        Object confidenceObj = speechToTextResult.get("confidence");
+        if (confidenceObj != null) {
+            confidence = ((Number) confidenceObj).doubleValue();
+        }
         
         if (userTranscript == null || userTranscript.isEmpty()) {
             throw new AIServiceException("Kaiwa Practice", 

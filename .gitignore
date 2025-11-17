@@ -49,6 +49,9 @@ Thumbs.db
 ### AIGUIDE ###
 AIGUIDE/
 
+### FE Source Guide (local only, don't commit to master) ###
+FEsrcGuide/
+
 ### Railway Deployment Guides (local only, don't commit to master) ###
 RAILWAY_*.md
 RAILWAY_*.txt
