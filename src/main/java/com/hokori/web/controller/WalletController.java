@@ -103,19 +103,9 @@ public class WalletController {
     public WalletSummaryResponse getMyWalletSummary() {
         String email = getCurrentEmailOrThrow();
 
-        Object[] row = userRepo.findWalletInfoByEmail(email)
+        // lấy thẳng DTO từ repository, không còn Object[]
+        return userRepo.findWalletSummaryByEmail(email)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + email));
-
-        Long userId = (Long) row[0];
-        Long walletBalance = row[1] != null ? ((Number) row[1]).longValue() : 0L;
-        // đổi kiểu cho đúng với entity của bạn: LocalDate / LocalDateTime / Instant
-        java.time.LocalDate lastPayoutDate = (java.time.LocalDate) row[2];
-
-        return WalletSummaryResponse.builder()
-                .userId(userId)
-                .walletBalance(walletBalance)
-                .lastPayoutDate(lastPayoutDate)
-                .build();
     }
 
     // ===== API: Lịch sử giao dịch ví của chính mình (paged) =====

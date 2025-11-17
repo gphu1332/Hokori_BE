@@ -1,5 +1,6 @@
 package com.hokori.web.repository;
 
+import com.hokori.web.dto.wallet.WalletSummaryResponse;
 import com.hokori.web.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -96,4 +97,22 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     @Query("SELECT u.id FROM User u WHERE u.email = :email")
     Optional<Long> findIdByEmail(@Param("email") String email);
+
+    // ===== Cho wallet (JPQL, không đụng LOB) =====
+
+    /**
+     * Lấy thông tin ví đơn giản theo email.
+     * Trả về luôn DTO WalletSummaryResponse (constructor expression),
+     * tránh phải làm việc với Object[].
+     */
+    @Query("""
+       SELECT new com.hokori.web.dto.wallet.WalletSummaryResponse(
+            u.id,
+            u.walletBalance,
+            u.lastPayoutDate
+       )
+       FROM User u
+       WHERE u.email = :email
+       """)
+    Optional<WalletSummaryResponse> findWalletSummaryByEmail(@Param("email") String email);
 }
