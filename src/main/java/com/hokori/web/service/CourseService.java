@@ -11,18 +11,14 @@ import com.hokori.web.util.SlugUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import jakarta.persistence.criteria.Predicate;
-
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.sql.Timestamp;
 
 @Service
 @RequiredArgsConstructor
@@ -109,28 +105,27 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(c.getId());
-        var chapterDtos = new java.util.ArrayList<ChapterRes>();
+        var chapterDtos = new ArrayList<ChapterRes>();
 
         for (var ch : chapterEntities) {
             var lessonEntities = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(ch.getId());
-            var lessonDtos = new java.util.ArrayList<LessonRes>();
+            var lessonDtos = new ArrayList<LessonRes>();
 
             for (var ls : lessonEntities) {
                 var sectionEntities = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(ls.getId());
-                var sectionDtos = new java.util.ArrayList<SectionRes>();
+                var sectionDtos = new ArrayList<SectionRes>();
 
                 for (var s : sectionEntities) {
                     var contentEntities = contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId());
-                    var contentDtos = new java.util.ArrayList<ContentRes>(contentEntities.size());
+                    var contentDtos = new ArrayList<ContentRes>(contentEntities.size());
                     for (var ct : contentEntities) {
                         contentDtos.add(new ContentRes(
                                 ct.getId(),
                                 ct.getOrderIndex(),
                                 ct.getContentFormat(),
                                 ct.isPrimaryContent(),
-                                ct.getFilePath(),          // CHANGED: dùng filePath thay assetId
+                                ct.getFilePath(),
                                 ct.getRichText(),
-                                ct.getQuizId(),
                                 ct.getFlashcardSetId()
                         ));
                     }
@@ -166,12 +161,11 @@ public class CourseService {
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
-                c.getCoverImagePath(),       // CHANGED: dùng coverImagePath
+                c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 chapterDtos
         );
     }
-
 
     @Transactional(readOnly = true)
     public CourseRes getTrialTree(Long courseId) {
@@ -184,7 +178,7 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public Page<CourseRes> listMine(Long teacherUserId, int page, int size, String q, CourseStatus status) {
-        // Use native query to avoid LOB stream errors on PostgreSQL
+        // Use native query to avoid LOB stream errors
         String statusStr = status != null ? status.name() : null;
         String searchQ = (q != null && !q.isBlank()) ? q.trim() : null;
 
@@ -205,14 +199,13 @@ public class CourseService {
     }
 
     private CourseRes mapCourseMetadataToRes(Object[] metadata) {
-        // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
         }
 
-        // Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, 
-        //          currency, coverImagePath, status, publishedAt, userId, deletedFlag]
+        // [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
+        //  currency, coverImagePath, status, publishedAt, userId, deletedFlag]
         Long id = ((Number) actualMetadata[0]).longValue();
         String title = (String) actualMetadata[1];
         String slug = (String) actualMetadata[2];
@@ -223,9 +216,11 @@ public class CourseService {
         String currency = (String) actualMetadata[7];
         String coverImagePath = (String) actualMetadata[8];
         CourseStatus courseStatus = CourseStatus.valueOf(((String) actualMetadata[9]).toUpperCase());
-        Instant publishedAt = actualMetadata[10] != null ?
-                (actualMetadata[10] instanceof Instant ? (Instant) actualMetadata[10] :
-                        Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[10]).getTime())) : null;
+        Instant publishedAt = actualMetadata[10] != null
+                ? (actualMetadata[10] instanceof Instant
+                ? (Instant) actualMetadata[10]
+                : Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[10]).getTime()))
+                : null;
         Long userId = ((Number) actualMetadata[11]).longValue();
 
         CourseRes res = new CourseRes();
@@ -233,7 +228,7 @@ public class CourseService {
         res.setTitle(title);
         res.setSlug(slug);
         res.setSubtitle(subtitle);
-        res.setDescription(null); // Set to null to avoid LOB loading
+        res.setDescription(null); // tránh LOB
         res.setLevel(level);
         res.setPriceCents(priceCents);
         res.setDiscountedPriceCents(discountedPriceCents);
@@ -242,24 +237,21 @@ public class CourseService {
         res.setStatus(courseStatus);
         res.setPublishedAt(publishedAt);
         res.setUserId(userId);
-        res.setChapters(Collections.emptyList()); // Empty chapters list for lite version
+        res.setChapters(Collections.emptyList());
         return res;
     }
 
     @Transactional(readOnly = true)
     public Page<CourseRes> listPublished(JLPTLevel level, int page, int size) {
-        // Use native query to avoid LOB stream errors on PostgreSQL
         String levelStr = level != null ? level.name() : null;
 
         List<Object[]> metadataList = courseRepo.findPublishedCourseMetadata(levelStr);
 
-        // Manual pagination
         int total = metadataList.size();
         int start = page * size;
         int end = Math.min(start + size, total);
         List<Object[]> pagedList = (start < total) ? metadataList.subList(start, end) : Collections.emptyList();
 
-        // Map to CourseRes (description will be null to avoid LOB loading)
         List<CourseRes> content = pagedList.stream()
                 .map(this::mapCourseMetadataToRes)
                 .collect(Collectors.toList());
@@ -268,7 +260,7 @@ public class CourseService {
     }
 
     // =========================
-    // CHILDREN (trả DTO, tránh fetch tree)
+    // CHILDREN
     // =========================
 
     public ChapterRes createChapter(Long courseId, Long teacherUserId, ChapterUpsertReq r) {
@@ -358,9 +350,8 @@ public class CourseService {
 
         ct.setContentFormat(r.getContentFormat() == null ? ContentFormat.ASSET : r.getContentFormat());
         ct.setPrimaryContent(r.isPrimaryContent());
-        ct.setFilePath(r.getFilePath());          // CHANGED: filePath
+        ct.setFilePath(r.getFilePath());
         ct.setRichText(r.getRichText());
-        ct.setQuizId(r.getQuizId());
         ct.setFlashcardSetId(r.getFlashcardSetId());
 
         SectionsContent saved = contentRepo.save(ct);
@@ -393,43 +384,69 @@ public class CourseService {
 
     private void validateContentPayload(Section section, ContentUpsertReq r) {
         ContentFormat fmt = r.getContentFormat();
-        if (fmt == null || fmt == ContentFormat.ASSET) {
-            // CHANGED: dùng filePath thay vì assetId
-            if (r.getFilePath() == null || r.getFilePath().isBlank())
-                throw bad("filePath is required for ASSET");
 
+        // mặc định ASSET nếu null
+        if (fmt == null || fmt == ContentFormat.ASSET) {
+            // ASSET: require filePath
+            if (r.getFilePath() == null || r.getFilePath().isBlank()) {
+                throw bad("filePath is required for ASSET");
+            }
+
+            // GRAMMAR: chỉ 1 primaryContent (video chính)
             if (section.getStudyType() == ContentType.GRAMMAR && r.isPrimaryContent()) {
                 long primaryCount = section.getContents().stream()
-                        .filter(SectionsContent::isPrimaryContent).count();
-                if (primaryCount >= 1) throw bad("GRAMMAR requires exactly ONE primary video (already set)");
+                        .filter(SectionsContent::isPrimaryContent)
+                        .count();
+                if (primaryCount >= 1) {
+                    throw bad("GRAMMAR requires exactly ONE primary video (already set)");
+                }
             }
 
         } else if (fmt == ContentFormat.RICH_TEXT) {
-            if (r.getRichText() == null || r.getRichText().isBlank())
+            // RICH_TEXT: phải có richText, không được primary
+            if (r.getRichText() == null || r.getRichText().isBlank()) {
                 throw bad("richText is required for RICH_TEXT");
-            if (r.isPrimaryContent()) throw bad("primaryContent must be false for RICH_TEXT");
+            }
+            if (r.isPrimaryContent()) {
+                throw bad("primaryContent must be false for RICH_TEXT");
+            }
 
         } else if (fmt == ContentFormat.FLASHCARD_SET) {
-            if (section.getStudyType() != ContentType.VOCABULARY)
+            // FLASHCARD_SET: chỉ cho VOCAB
+            if (section.getStudyType() != ContentType.VOCABULARY) {
                 throw bad("FLASHCARD_SET only allowed in VOCAB sections");
-            if (r.getFlashcardSetId() == null) throw bad("flashcardSetId required for FLASHCARD_SET");
+            }
+            if (r.getFlashcardSetId() == null) {
+                throw bad("flashcardSetId required for FLASHCARD_SET");
+            }
 
-        } else if (fmt == ContentFormat.QUIZ_REF) {
-            if (r.getQuizId() == null) throw bad("quizId required for QUIZ_REF");
+        } else {
+            // Không còn QUIZ_REF
+            throw bad("Unsupported content format");
         }
     }
 
     private void validateSectionBeforePublish(Section s) {
         if (s.getStudyType() == ContentType.VOCABULARY) {
-            if (s.getFlashcardSetId() == null) throw bad("VOCAB section must link a flashcard set");
+            if (s.getFlashcardSetId() == null) {
+                throw bad("VOCAB section must link a flashcard set");
+            }
 
         } else if (s.getStudyType() == ContentType.GRAMMAR) {
-            long primary = s.getContents().stream().filter(SectionsContent::isPrimaryContent).count();
-            if (primary != 1) throw bad("GRAMMAR section requires exactly ONE primary video");
+            long primary = s.getContents().stream()
+                    .filter(SectionsContent::isPrimaryContent)
+                    .count();
+            if (primary != 1) {
+                throw bad("GRAMMAR section requires exactly ONE primary video");
+            }
 
         } else if (s.getStudyType() == ContentType.KANJI) {
-            long primary = s.getContents().stream().filter(SectionsContent::isPrimaryContent).count();
-            if (primary < 1) throw bad("KANJI section requires at least ONE primary content (video or doc)");
+            long primary = s.getContents().stream()
+                    .filter(SectionsContent::isPrimaryContent)
+                    .count();
+            if (primary < 1) {
+                throw bad("KANJI section requires at least ONE primary content (video or doc)");
+            }
         }
     }
 
@@ -441,7 +458,7 @@ public class CourseService {
         c.setPriceCents(r.getPriceCents());
         c.setDiscountedPriceCents(r.getDiscountedPriceCents());
         if (r.getCurrency() != null) c.setCurrency(r.getCurrency());
-        c.setCoverImagePath(r.getCoverImagePath());   // CHANGED
+        c.setCoverImagePath(r.getCoverImagePath());
     }
 
     private String uniqueSlug(String title) {
@@ -482,7 +499,7 @@ public class CourseService {
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
-                c.getCoverImagePath(),            // CHANGED
+                c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 List.of()
         );
@@ -508,7 +525,7 @@ public class CourseService {
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
-                c.getCoverImagePath(),            // CHANGED
+                c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 chapters
         );
@@ -529,7 +546,7 @@ public class CourseService {
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
-                c.getCoverImagePath(),            // CHANGED
+                c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
                 chapters
         );
@@ -544,7 +561,14 @@ public class CourseService {
     }
 
     private SectionRes toSectionResShallow(Section s) {
-        return new SectionRes(s.getId(), s.getTitle(), s.getOrderIndex(), s.getStudyType(), s.getFlashcardSetId(), List.of());
+        return new SectionRes(
+                s.getId(),
+                s.getTitle(),
+                s.getOrderIndex(),
+                s.getStudyType(),
+                s.getFlashcardSetId(),
+                List.of()
+        );
     }
 
     private SectionRes toSectionResFull(Section s) {
@@ -552,7 +576,14 @@ public class CourseService {
                 .sorted(Comparator.comparing(SectionsContent::getOrderIndex))
                 .map(this::toContentRes)
                 .collect(Collectors.toList());
-        return new SectionRes(s.getId(), s.getTitle(), s.getOrderIndex(), s.getStudyType(), s.getFlashcardSetId(), contents);
+        return new SectionRes(
+                s.getId(),
+                s.getTitle(),
+                s.getOrderIndex(),
+                s.getStudyType(),
+                s.getFlashcardSetId(),
+                contents
+        );
     }
 
     private LessonRes toLessonResFull(Lesson ls) {
@@ -560,7 +591,13 @@ public class CourseService {
                 .sorted(Comparator.comparing(Section::getOrderIndex))
                 .map(this::toSectionResFull)
                 .collect(Collectors.toList());
-        return new LessonRes(ls.getId(), ls.getTitle(), ls.getOrderIndex(), ls.getTotalDurationSec(), sections);
+        return new LessonRes(
+                ls.getId(),
+                ls.getTitle(),
+                ls.getOrderIndex(),
+                ls.getTotalDurationSec(),
+                sections
+        );
     }
 
     private ContentRes toContentRes(SectionsContent c) {
@@ -569,9 +606,8 @@ public class CourseService {
                 c.getOrderIndex(),
                 c.getContentFormat(),
                 c.isPrimaryContent(),
-                c.getFilePath(),        // CHANGED: filePath thay assetId
+                c.getFilePath(),
                 c.getRichText(),
-                c.getQuizId(),
                 c.getFlashcardSetId()
         );
     }
@@ -596,7 +632,6 @@ public class CourseService {
         if (r.getTitle() != null) ch.setTitle(r.getTitle());
         ch.setSummary(r.getSummary());
         if (Boolean.TRUE.equals(r.getIsTrial())) {
-            // set trial duy nhất trong course
             chapterRepo.findByCourse_IdAndIsTrialTrue(ch.getCourse().getId()).ifPresent(old -> {
                 if (!old.getId().equals(ch.getId())) old.setTrial(false);
             });
@@ -709,11 +744,12 @@ public class CourseService {
         // validate theo section hiện tại
         validateContentPayload(c.getSection(), r);
 
-        if (r.getContentFormat() != null) c.setContentFormat(r.getContentFormat());
+        if (r.getContentFormat() != null) {
+            c.setContentFormat(r.getContentFormat());
+        }
         c.setPrimaryContent(r.isPrimaryContent());
-        c.setFilePath(r.getFilePath());   // CHANGED: filePath
+        c.setFilePath(r.getFilePath());
         c.setRichText(r.getRichText());
-        c.setQuizId(r.getQuizId());
         c.setFlashcardSetId(r.getFlashcardSetId());
 
         return toContentRes(c);
@@ -749,11 +785,9 @@ public class CourseService {
                                   java.util.function.BiConsumer<T, Integer> setIndex) {
         if (ordered.isEmpty()) return;
 
-        // clamp
         int max = ordered.size() - 1;
         int idx = Math.max(0, Math.min(newIndex, max));
 
-        // tách target
         T target = null;
         Iterator<T> it = ordered.iterator();
         while (it.hasNext()) {
@@ -768,7 +802,9 @@ public class CourseService {
         if (target == null) throw bad("Target not in list");
 
         ordered.add(idx, target);
-        for (int i = 0; i < ordered.size(); i++) setIndex.accept(ordered.get(i), i);
+        for (int i = 0; i < ordered.size(); i++) {
+            setIndex.accept(ordered.get(i), i);
+        }
     }
 
     private Long extractId(Object o) {
@@ -808,6 +844,5 @@ public class CourseService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
         }
         return getTree(courseId);
-
     }
 }

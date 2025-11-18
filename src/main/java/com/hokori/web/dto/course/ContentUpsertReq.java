@@ -1,16 +1,23 @@
 package com.hokori.web.dto.course;
 
-
 import com.hokori.web.Enum.ContentFormat;
 import lombok.Data;
 
 @Data
 public class ContentUpsertReq {
+
     private Integer orderIndex;
-    private ContentFormat contentFormat; // ASSET/RICH_TEXT/FLASHCARD_SET/QUIZ_REF
+
+    // ASSET / RICH_TEXT / FLASHCARD_SET
+    private ContentFormat contentFormat;
+
     private boolean primaryContent;
+
+    // ASSET
     private String filePath;
+
+    // RICH_TEXT
     private String richText;
-    private Long quizId;
-    private Long flashcardSetId; // chỉ khi dùng phương án B
+
+    private Long flashcardSetId;
 }

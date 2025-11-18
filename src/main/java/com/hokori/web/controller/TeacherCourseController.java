@@ -199,17 +199,17 @@ public class TeacherCourseController {
 
     @Operation(summary = "Thêm Content vào Section",
             description = """
-            - ASSET: require filePath; GRAMMAR chỉ 1 primaryContent=true
-            - RICH_TEXT: require richText; primaryContent=false
-            - FLASHCARD_SET: chỉ cho VOCAB; require flashcardSetId
-            - QUIZ_REF: require quizId
-            """)
+        - ASSET: require filePath; GRAMMAR chỉ 1 primaryContent=true
+        - RICH_TEXT: require richText; primaryContent=false
+        - FLASHCARD_SET: chỉ cho VOCAB; require flashcardSetId
+        """)
     @PostMapping("/sections/{sectionId}/contents")
     @PreAuthorize("hasRole('TEACHER')")
     public ContentRes addContent(@PathVariable Long sectionId,
                                  @Valid @RequestBody ContentUpsertReq req) {
         return courseService.createContent(sectionId, currentUserIdOrThrow(), req);
     }
+
 
     // ====== DTO nhỏ ======
     public record ReorderReq(Integer orderIndex) {}
