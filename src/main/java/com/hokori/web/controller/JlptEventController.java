@@ -8,7 +8,7 @@ import com.hokori.web.dto.jlpt.JlptEventStatusUpdateRequest;
 import com.hokori.web.entity.JlptEvent;
 import com.hokori.web.entity.User;
 import com.hokori.web.repository.JlptEventRepository;
-import com.hokori.web.repository.UserRepository;
+import com.hokori.web.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -20,10 +20,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -36,18 +33,7 @@ import java.util.List;
 public class JlptEventController {
 
     private final JlptEventRepository eventRepo;
-    private final UserRepository userRepo;
-
-    private User getCurrentUserOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()
-                || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new AccessDeniedException("Unauthenticated");
-        }
-        String username = auth.getName();
-        return userRepo.findByUsername(username)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + username));
-    }
+    private final CurrentUserService currentUserService;
 
     // ===== Admin: tạo event =====
     @PostMapping
@@ -70,7 +56,7 @@ public class JlptEventController {
     public JlptEventResponse createEvent(
             @Valid @RequestBody JlptEventCreateRequest req
     ) {
-        User admin = getCurrentUserOrThrow();
+        User admin = currentUserService.getCurrentUserOrThrow();
 
         JlptEvent e = JlptEvent.builder()
                 .createdBy(admin)

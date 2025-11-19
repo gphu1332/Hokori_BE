@@ -5,7 +5,7 @@ import com.hokori.web.dto.flashcard.FlashcardProgressUpdateRequest;
 import com.hokori.web.dto.flashcard.UserFlashcardProgressResponse;
 import com.hokori.web.entity.User;
 import com.hokori.web.entity.UserFlashcardProgress;
-import com.hokori.web.repository.UserRepository;
+import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.FlashcardStudyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -13,14 +13,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -34,18 +30,7 @@ import org.springframework.web.bind.annotation.*;
 public class FlashcardStudyController {
 
     private final FlashcardStudyService studyService;
-    private final UserRepository userRepo;
-
-    private User getCurrentUserOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()
-                || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new AccessDeniedException("Unauthenticated");
-        }
-        String username = auth.getName();
-        return userRepo.findByUsername(username)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + username));
-    }
+    private final CurrentUserService currentUserService;
 
     // ===== Update progress cho 1 flashcard =====
 
@@ -81,7 +66,7 @@ public class FlashcardStudyController {
             @PathVariable Long flashcardId,
             @Valid @RequestBody FlashcardProgressUpdateRequest req
     ) {
-        User current = getCurrentUserOrThrow();
+        User current = currentUserService.getCurrentUserOrThrow();
         UserFlashcardProgress progress = studyService.updateProgress(
                 current,
                 flashcardId,

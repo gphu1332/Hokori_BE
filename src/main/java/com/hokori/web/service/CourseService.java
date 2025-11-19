@@ -10,6 +10,7 @@ import com.hokori.web.repository.*;
 import com.hokori.web.util.SlugUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -38,8 +39,35 @@ public class CourseService {
         Course c = new Course();
         c.setUserId(teacherUserId);
         applyCourse(c, r);
-        c.setSlug(uniqueSlug(r.getTitle()));
-        c = courseRepo.save(c);
+        
+        // Generate unique slug with retry logic to handle race conditions
+        String title = r.getTitle();
+        if (title == null || title.trim().isEmpty()) {
+            title = "Untitled Course";
+        }
+        c.setSlug(generateUniqueSlugWithRetry(title));
+        
+        // Save with retry if duplicate slug constraint violation
+        int maxRetries = 5;
+        int retryCount = 0;
+        while (retryCount < maxRetries) {
+            try {
+                c = courseRepo.save(c);
+                break; // Success, exit retry loop
+            } catch (DataIntegrityViolationException e) {
+                if (e.getMessage() != null && e.getMessage().contains("slug") && e.getMessage().contains("unique")) {
+                    retryCount++;
+                    if (retryCount >= maxRetries) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, 
+                            "Unable to generate unique slug after " + maxRetries + " attempts. Please try again.");
+                    }
+                    // Generate new slug with timestamp to ensure uniqueness
+                    c.setSlug(generateUniqueSlugWithTimestamp(title));
+                } else {
+                    throw e; // Re-throw if it's not a slug constraint violation
+                }
+            }
+        }
 
         // Tự tạo 1 chapter học thử
         Chapter preview = new Chapter();
@@ -55,10 +83,39 @@ public class CourseService {
 
     public CourseRes updateCourse(Long id, Long teacherUserId, @Valid CourseUpsertReq r) {
         Course c = getOwned(id, teacherUserId);
-        String old = c.getSlug();
+        String oldSlug = c.getSlug();
         applyCourse(c, r);
-        if (!SlugUtil.toSlug(r.getTitle()).equals(old)) {
-            c.setSlug(uniqueSlug(r.getTitle()));
+        
+        // Only update slug if title changed
+        String newTitle = r.getTitle();
+        if (newTitle == null || newTitle.trim().isEmpty()) {
+            newTitle = "Untitled Course";
+        }
+        String newSlugBase = SlugUtil.toSlug(newTitle);
+        if (!newSlugBase.equals(oldSlug)) {
+            // Generate unique slug (excluding current course from check)
+            c.setSlug(generateUniqueSlugForUpdate(newTitle, id));
+            
+            // Retry save if duplicate slug constraint violation
+            int maxRetries = 5;
+            int retryCount = 0;
+            while (retryCount < maxRetries) {
+                try {
+                    c = courseRepo.save(c);
+                    break; // Success
+                } catch (DataIntegrityViolationException e) {
+                    if (e.getMessage() != null && e.getMessage().contains("slug") && e.getMessage().contains("unique")) {
+                        retryCount++;
+                        if (retryCount >= maxRetries) {
+                            throw new ResponseStatusException(HttpStatus.CONFLICT, 
+                                "Unable to generate unique slug after " + maxRetries + " attempts. Please try again.");
+                        }
+                        c.setSlug(generateUniqueSlugWithTimestamp(newTitle));
+                    } else {
+                        throw e;
+                    }
+                }
+            }
         }
         return toCourseResLite(c);
     }
@@ -522,13 +579,136 @@ public class CourseService {
         c.setCoverImagePath(r.getCoverImagePath());
     }
 
+    /**
+     * Generate unique slug - checks all records (including deleted) for uniqueness
+     * This method is kept for backward compatibility but uses the same logic as generateUniqueSlugWithRetry
+     */
     private String uniqueSlug(String title) {
-        String base = SlugUtil.toSlug(title);
-        String s = base;
-        int i = 1;
-        while (courseRepo.findBySlugAndDeletedFlagFalse(s).isPresent()) {
-            s = base + "-" + (++i);
+        return generateUniqueSlugWithRetry(title);
+    }
+    
+    /**
+     * Generate unique slug with retry logic to handle race conditions.
+     * Checks all records (including deleted) because unique constraint applies to entire table.
+     * Compatible with PostgreSQL on Railway.
+     */
+    private String generateUniqueSlugWithRetry(String title) {
+        if (title == null || title.trim().isEmpty()) {
+            title = "untitled-course";
         }
+        String base = SlugUtil.toSlug(title);
+        if (base.isEmpty()) {
+            base = "untitled-course";
+        }
+        
+        // First try base slug
+        String s = base;
+        if (!courseRepo.existsBySlug(s)) {
+            return s;
+        }
+        
+        // If exists, try with incremental number
+        int i = 1;
+        while (i <= 1000) {
+            s = base + "-" + i;
+            if (!courseRepo.existsBySlug(s)) {
+                return s;
+            }
+            i++;
+        }
+        
+        // Fallback: use timestamp to ensure uniqueness (handles race conditions)
+        return generateUniqueSlugWithTimestamp(title);
+    }
+    
+    /**
+     * Generate unique slug for update operation - excludes current course from check.
+     * This prevents false positives when updating a course with the same slug.
+     * Checks all records (including deleted) because unique constraint applies to entire table.
+     */
+    private String generateUniqueSlugForUpdate(String title, Long excludeCourseId) {
+        if (title == null || title.trim().isEmpty()) {
+            title = "untitled-course";
+        }
+        String base = SlugUtil.toSlug(title);
+        if (base.isEmpty()) {
+            base = "untitled-course";
+        }
+        
+        // First try base slug - check if exists AND not the current course
+        String s = base;
+        if (!courseRepo.existsBySlug(s)) {
+            return s; // Slug doesn't exist, use it
+        }
+        // Slug exists, check if it's the current course
+        Optional<Course> existing = courseRepo.findBySlugAndDeletedFlagFalse(s);
+        if (existing.isPresent() && existing.get().getId().equals(excludeCourseId)) {
+            return s; // It's the current course, keep the slug
+        }
+        
+        // Slug exists and belongs to different course, try with incremental number
+        int i = 1;
+        while (i <= 1000) {
+            s = base + "-" + i;
+            if (!courseRepo.existsBySlug(s)) {
+                return s; // Found available slug
+            }
+            // Check if it's the current course
+            existing = courseRepo.findBySlugAndDeletedFlagFalse(s);
+            if (existing.isPresent() && existing.get().getId().equals(excludeCourseId)) {
+                return s; // It's the current course, keep the slug
+            }
+            i++;
+        }
+        
+        // Fallback: use timestamp to ensure uniqueness
+        return generateUniqueSlugWithTimestamp(title);
+    }
+    
+    /**
+     * Generate unique slug with timestamp to ensure uniqueness in race conditions.
+     * Used as fallback when incremental numbering fails or during concurrent requests.
+     * Compatible with PostgreSQL on Railway.
+     */
+    private String generateUniqueSlugWithTimestamp(String title) {
+        if (title == null || title.trim().isEmpty()) {
+            title = "untitled-course";
+        }
+        String base = SlugUtil.toSlug(title);
+        if (base.isEmpty()) {
+            base = "untitled-course";
+        }
+        
+        // Use timestamp + random suffix for better uniqueness
+        long timestamp = System.currentTimeMillis();
+        int randomSuffix = (int) (Math.random() * 1000); // 0-999
+        String suffix = timestamp + "-" + randomSuffix;
+        
+        // Ensure total length doesn't exceed 180 chars (slug column limit)
+        int maxBaseLength = 180 - suffix.length() - 1; // -1 for dash
+        if (maxBaseLength < 1) {
+            maxBaseLength = 1;
+        }
+        if (base.length() > maxBaseLength) {
+            base = base.substring(0, maxBaseLength);
+        }
+        
+        String s = base + "-" + suffix;
+        
+        // Double-check uniqueness (very unlikely but possible)
+        int retry = 0;
+        while (courseRepo.existsBySlug(s) && retry < 10) {
+            randomSuffix = (int) (Math.random() * 10000);
+            suffix = timestamp + "-" + randomSuffix;
+            maxBaseLength = 180 - suffix.length() - 1;
+            if (maxBaseLength < 1) maxBaseLength = 1;
+            if (base.length() > maxBaseLength) {
+                base = base.substring(0, maxBaseLength);
+            }
+            s = base + "-" + suffix;
+            retry++;
+        }
+        
         return s;
     }
 

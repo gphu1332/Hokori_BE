@@ -15,6 +15,9 @@ import java.util.Optional;
 public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecificationExecutor<Course> {
 
     Optional<Course> findBySlugAndDeletedFlagFalse(String slug);
+    
+    // Check if slug exists (including deleted) - for unique constraint validation
+    boolean existsBySlug(String slug);
 
     // ⚠️ KHÔNG dùng @EntityGraph ở đây để tránh multiple bag fetch
     Optional<Course> findByIdAndDeletedFlagFalse(Long id);

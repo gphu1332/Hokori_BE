@@ -7,7 +7,7 @@ import com.hokori.web.entity.JlptTest;
 import com.hokori.web.entity.User;
 import com.hokori.web.repository.JlptEventRepository;
 import com.hokori.web.repository.JlptTestRepository;
-import com.hokori.web.repository.UserRepository;
+import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.JlptTestService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -19,10 +19,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -37,22 +34,7 @@ public class JlptTestController {
     private final JlptTestService jlptTestService;
     private final JlptEventRepository eventRepo;
     private final JlptTestRepository testRepo;
-    private final UserRepository userRepo;
-
-    private User getCurrentUserOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()
-                || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new AccessDeniedException("Unauthenticated");
-        }
-        String username = auth.getName();
-        return userRepo.findByUsername(username)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + username));
-    }
-
-    private Long getCurrentUserIdOrThrow() {
-        return getCurrentUserOrThrow().getId();
-    }
+    private final CurrentUserService currentUserService;
 
     // ===== Moderator: tạo test trong 1 event =====
 
@@ -75,7 +57,7 @@ public class JlptTestController {
             @PathVariable Long eventId,
             @Valid @RequestBody JlptTestCreateRequest req
     ) {
-        User moderator = getCurrentUserOrThrow();
+        User moderator = currentUserService.getCurrentUserOrThrow();
         JlptEvent event = eventRepo.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("Event not found"));
 
@@ -127,7 +109,7 @@ public class JlptTestController {
             @PathVariable Long testId,
             @Valid @RequestBody JlptQuestionCreateRequest req
     ) {
-        User moderator = getCurrentUserOrThrow();
+        User moderator = currentUserService.getCurrentUserOrThrow();
         JlptQuestionWithOptionsResponse question =
                 jlptTestService.createQuestion(testId, moderator, req);
         return question;
@@ -155,7 +137,7 @@ public class JlptTestController {
             @PathVariable Long questionId,
             @Valid @RequestBody JlptOptionCreateRequest req
     ) {
-        User moderator = getCurrentUserOrThrow();
+        User moderator = currentUserService.getCurrentUserOrThrow();
         return jlptTestService.createOption(questionId, moderator, req);
     }
 
@@ -204,7 +186,7 @@ public class JlptTestController {
             @PathVariable Long testId,
             @Valid @RequestBody JlptAnswerSubmitRequest req
     ) {
-        Long userId = getCurrentUserIdOrThrow();
+        Long userId = currentUserService.getCurrentUserId();
         jlptTestService.submitAnswer(testId, userId, req);
     }
 
@@ -227,7 +209,7 @@ public class JlptTestController {
     public JlptTestResultResponse getMyResult(
             @PathVariable Long testId
     ) {
-        Long userId = getCurrentUserIdOrThrow();
+        Long userId = currentUserService.getCurrentUserId();
         return jlptTestService.getResultForUser(testId, userId);
     }
 }

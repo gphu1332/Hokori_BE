@@ -13,7 +13,7 @@ import com.hokori.web.entity.SectionsContent;
 import com.hokori.web.entity.User;
 import com.hokori.web.repository.FlashcardSetRepository;
 import com.hokori.web.repository.SectionsContentRepository;
-import com.hokori.web.repository.UserRepository;
+import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.FlashcardSetService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -29,8 +29,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -51,25 +49,8 @@ public class FlashcardSetController {
 
     private final FlashcardSetService flashcardSetService;
     private final FlashcardSetRepository setRepo;
-    private final UserRepository userRepo;
+    private final CurrentUserService currentUserService;
     private final SectionsContentRepository sectionsContentRepo;
-
-    // ===== Helper: current user =====
-
-    private User getCurrentUserOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()
-                || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new AccessDeniedException("Unauthenticated");
-        }
-        String username = auth.getName();
-        return userRepo.findByUsername(username)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + username));
-    }
-
-    private Long getCurrentUserIdOrThrow() {
-        return getCurrentUserOrThrow().getId();
-    }
 
     // ===== 1. Learner tạo set cá nhân =====
 
@@ -100,7 +81,7 @@ public class FlashcardSetController {
     public FlashcardSetResponse createPersonalSet(
             @Valid @RequestBody FlashcardSetCreateRequest req
     ) {
-        User current = getCurrentUserOrThrow();
+        User current = currentUserService.getCurrentUserOrThrow();
         FlashcardSet set = flashcardSetService.createPersonalSet(
                 current,
                 req.getTitle(),
@@ -141,7 +122,7 @@ public class FlashcardSetController {
     public FlashcardSetResponse createCourseVocabSet(
             @Valid @RequestBody CourseVocabSetCreateRequest req
     ) {
-        User current = getCurrentUserOrThrow();
+        User current = currentUserService.getCurrentUserOrThrow();
 
         // 1. Lấy SectionsContent mà teacher muốn gắn flashcard
         SectionsContent sectionContent = sectionsContentRepo.findById(req.getSectionContentId())
@@ -192,7 +173,7 @@ public class FlashcardSetController {
             )
             @RequestParam(required = false) FlashcardSetType type
     ) {
-        Long userId = getCurrentUserIdOrThrow();
+        Long userId = currentUserService.getCurrentUserId();
         List<FlashcardSet> sets;
         if (type != null) {
             sets = setRepo.findByCreatedBy_IdAndTypeAndDeletedFlagFalse(userId, type);
@@ -240,7 +221,7 @@ public class FlashcardSetController {
             @PathVariable Long setId,
             @Valid @RequestBody FlashcardCreateRequest req
     ) {
-        User current = getCurrentUserOrThrow();
+        User current = currentUserService.getCurrentUserOrThrow();
         FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
         if (!set.getCreatedBy().getId().equals(current.getId())) {
             throw new AccessDeniedException("You are not the owner of this flashcard set");
