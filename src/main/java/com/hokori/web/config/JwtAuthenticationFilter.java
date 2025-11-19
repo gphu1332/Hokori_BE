@@ -39,9 +39,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private UserRepository userRepository;
 
+    private static final String FILTER_APPLIED = "JWT_FILTER_APPLIED";
+    
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
                                     FilterChain filterChain) throws ServletException, IOException {
+        
+        // Prevent filter from running multiple times for the same request
+        if (request.getAttribute(FILTER_APPLIED) != null) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        request.setAttribute(FILTER_APPLIED, Boolean.TRUE);
         
         // Reduced logging to avoid Railway rate limit (500 logs/sec)
         // String path = request.getRequestURI();
@@ -125,7 +134,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         
-        filterChain.doFilter(request, response);
+        // Ensure filterChain.doFilter is always called, even if there's an exception
+        try {
+            filterChain.doFilter(request, response);
+        } catch (Exception e) {
+            logger.error("❌ Exception in filter chain after JWT processing: " + e.getMessage(), e);
+            throw e; // Re-throw to let Spring Security handle it
+        }
     }
     
     /**
