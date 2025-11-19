@@ -69,6 +69,9 @@ public class SecurityConfig {
                 // Admin-only endpoints
                 .requestMatchers("/api/admin/**").hasRole("ADMIN") // RoleConstants.ADMIN
                 
+                // Moderator-only endpoints
+                .requestMatchers("/api/moderator/**").hasRole("MODERATOR") // RoleConstants.MODERATOR
+                
                 // Staff and Admin endpoints
                 .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN") // RoleConstants.STAFF, RoleConstants.ADMIN
                 

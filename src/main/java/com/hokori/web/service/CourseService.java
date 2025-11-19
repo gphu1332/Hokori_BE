@@ -73,8 +73,16 @@ public class CourseService {
         getOwned(id, teacherUserId).setDeletedFlag(true);
     }
 
-    public CourseRes publish(Long id, Long teacherUserId) {
+    /**
+     * Submit course for moderator approval (changed from direct publish)
+     */
+    public CourseRes submitForApproval(Long id, Long teacherUserId) {
         Course c = getOwned(id, teacherUserId);
+
+        // Chỉ cho phép submit từ DRAFT
+        if (c.getStatus() != CourseStatus.DRAFT) {
+            throw bad("Course must be in DRAFT status to submit for approval");
+        }
 
         // Đúng 1 chapter học thử
         long trialCount = chapterRepo.countByCourse_IdAndIsTrialTrue(id);
@@ -87,8 +95,40 @@ public class CourseService {
                 )
         );
 
+        // Chuyển sang PENDING_APPROVAL thay vì PUBLISHED
+        c.setStatus(CourseStatus.PENDING_APPROVAL);
+        return toCourseResLite(c);
+    }
+
+    /**
+     * Approve course by moderator (publish course)
+     */
+    public CourseRes approveCourse(Long id, Long moderatorUserId) {
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        if (c.getStatus() != CourseStatus.PENDING_APPROVAL) {
+            throw bad("Course must be in PENDING_APPROVAL status to approve");
+        }
+
         c.setStatus(CourseStatus.PUBLISHED);
         c.setPublishedAt(Instant.now());
+        return toCourseResLite(c);
+    }
+
+    /**
+     * Reject course by moderator (back to DRAFT)
+     */
+    public CourseRes rejectCourse(Long id, Long moderatorUserId, String reason) {
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        if (c.getStatus() != CourseStatus.PENDING_APPROVAL) {
+            throw bad("Course must be in PENDING_APPROVAL status to reject");
+        }
+
+        c.setStatus(CourseStatus.DRAFT);
+        // TODO: Có thể lưu rejection reason vào một field riêng nếu cần
         return toCourseResLite(c);
     }
 
@@ -267,6 +307,17 @@ public class CourseService {
                 .collect(Collectors.toList());
 
         return new PageImpl<>(content, PageRequest.of(page, size, Sort.by("publishedAt").descending()), total);
+    }
+
+    /**
+     * List courses pending approval (for moderator)
+     */
+    @Transactional(readOnly = true)
+    public List<CourseRes> listPendingApprovalCourses() {
+        List<Object[]> metadataList = courseRepo.findPendingApprovalCourses();
+        return metadataList.stream()
+                .map(this::mapCourseMetadataToRes)
+                .collect(Collectors.toList());
     }
 
     // =========================

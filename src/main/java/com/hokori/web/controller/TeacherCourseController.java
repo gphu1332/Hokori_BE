@@ -94,16 +94,18 @@ public class TeacherCourseController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Publish khoá học", description = """
-        Validate cấu trúc trước khi PUBLISHED:
+    @Operation(summary = "Submit khoá học để duyệt", description = """
+        Submit course để moderator duyệt:
+        - Validate cấu trúc trước khi submit:
         - VOCABULARY: phải có flashcardSetId
         - GRAMMAR: đúng 1 nội dung primary (video)
         - KANJI: >= 1 nội dung primary
+        - Chuyển status sang PENDING_APPROVAL
         """)
-    @PutMapping("/{id}/publish")
+    @PutMapping("/{id}/submit-for-approval")
     @PreAuthorize("hasRole('TEACHER')")
-    public CourseRes publish(@PathVariable Long id) {
-        return courseService.publish(id, currentUserIdOrThrow());
+    public CourseRes submitForApproval(@PathVariable Long id) {
+        return courseService.submitForApproval(id, currentUserIdOrThrow());
     }
 
     @Operation(summary = "Unpublish khoá học", description = "Chuyển về DRAFT.")

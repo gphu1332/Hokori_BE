@@ -35,7 +35,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     boolean existsByIdAndUserIdAndDeletedFlagFalse(Long id, Long userId);
     
     /**
-     * Get course metadata without LOB fields (avoids LOB stream error).
+     * Get course metadata without LOB fields (avoids LOB stream error on PostgreSQL).
+     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
      * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
      */
     @Query(value = """
@@ -48,6 +49,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     
     /**
      * List courses metadata without LOB fields for pagination.
+     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
+     * Uses CONCAT and LOWER functions supported by both databases.
      * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
      */
     @Query(value = """
@@ -66,6 +69,7 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     
     /**
      * List published courses metadata without LOB fields.
+     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
      * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
      */
     @Query(value = """
@@ -81,6 +85,7 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     
     /**
      * Get course price without loading LOB fields (for cart operations).
+     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
      * Returns: [id, priceCents, deletedFlag]
      */
     @Query(value = """
@@ -89,4 +94,19 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.id = :id AND c.deleted_flag = false
         """, nativeQuery = true)
     Optional<Object[]> findCoursePriceById(@Param("id") Long id);
+    
+    /**
+     * List courses pending approval (for moderator).
+     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
+     */
+    @Query(value = """
+        SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag
+        FROM course c
+        WHERE c.deleted_flag = false 
+          AND c.status = 'PENDING_APPROVAL'
+        ORDER BY c.updated_at DESC
+        """, nativeQuery = true)
+    List<Object[]> findPendingApprovalCourses();
 }
