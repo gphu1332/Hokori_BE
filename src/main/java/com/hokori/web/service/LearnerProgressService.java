@@ -51,8 +51,20 @@ public class LearnerProgressService {
             actualMetadata = (Object[]) metadata[0];
         }
         
+        // Validate array length
+        if (actualMetadata.length < 10 || actualMetadata[9] == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course metadata: missing status");
+        }
+        
         // Check status (at index 9)
-        CourseStatus status = CourseStatus.valueOf(((String) actualMetadata[9]).toUpperCase());
+        CourseStatus status;
+        try {
+            status = CourseStatus.valueOf(actualMetadata[9].toString().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course status: " + actualMetadata[9]);
+        }
         if (status != CourseStatus.PUBLISHED) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Course is not published");
         }

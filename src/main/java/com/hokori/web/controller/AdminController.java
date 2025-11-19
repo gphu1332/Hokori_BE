@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -40,6 +41,9 @@ public class AdminController {
 
     @Autowired
     private CurrentUserService currentUserService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     // =================================================================================
     // ROLE MANAGEMENT
@@ -321,6 +325,36 @@ public class AdminController {
             return ResponseEntity.ok(ApiResponse.success("Default roles initialized successfully", "All default roles have been created"));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("Failed to initialize roles: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * TEMPORARY: Fix course_status_check constraint to allow PENDING_APPROVAL
+     * TODO: Remove this endpoint after fixing the constraint
+     */
+    @PostMapping("/database/fix-course-status-constraint")
+    @Operation(summary = "[TEMPORARY] Fix course status constraint", 
+               description = "Fix course_status_check constraint to allow PENDING_APPROVAL status. Remove after use.")
+    public ResponseEntity<ApiResponse<String>> fixCourseStatusConstraint() {
+        try {
+            // Drop existing constraint if exists
+            jdbcTemplate.execute("ALTER TABLE course DROP CONSTRAINT IF EXISTS course_status_check");
+            
+            // Add new constraint with PENDING_APPROVAL
+            jdbcTemplate.execute(
+                "ALTER TABLE course " +
+                "ADD CONSTRAINT course_status_check " +
+                "CHECK (status IN ('DRAFT', 'PENDING_APPROVAL', 'PUBLISHED', 'ARCHIVED'))"
+            );
+            
+            return ResponseEntity.ok(ApiResponse.success(
+                "Course status constraint fixed successfully", 
+                "Constraint now allows: DRAFT, PENDING_APPROVAL, PUBLISHED, ARCHIVED"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(
+                ApiResponse.error("Failed to fix constraint: " + e.getMessage())
+            );
         }
     }
 

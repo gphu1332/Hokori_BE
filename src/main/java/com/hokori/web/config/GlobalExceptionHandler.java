@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.server.ResponseStatusException;
@@ -165,6 +166,38 @@ public class GlobalExceptionHandler {
         logger.warn("NoResourceFoundException: {}", resourcePath);
         
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrityViolationException(
+            DataIntegrityViolationException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        String message = ex.getMessage();
+        
+        // Check for specific constraint violations
+        if (message != null) {
+            if (message.contains("course_status_check")) {
+                response.put("message", "Database constraint error: Course status constraint violation. " +
+                    "Please ensure the database constraint allows 'PENDING_APPROVAL' status.");
+                response.put("errorCode", "COURSE_STATUS_CONSTRAINT_ERROR");
+            } else if (message.contains("unique constraint") || message.contains("duplicate key")) {
+                response.put("message", "Duplicate entry: This record already exists");
+            } else if (message.contains("foreign key constraint")) {
+                response.put("message", "Referential integrity error: Related record not found");
+            } else {
+                response.put("message", "Database constraint violation: " + message);
+            }
+        } else {
+            response.put("message", "Database constraint violation");
+        }
+        
+        response.put("status", "error");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false));
+        
+        logger.error("DataIntegrityViolationException: {}", message, ex);
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
     // Custom exception classes

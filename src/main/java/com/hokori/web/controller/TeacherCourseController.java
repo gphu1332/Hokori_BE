@@ -108,6 +108,20 @@ public class TeacherCourseController {
         return courseService.submitForApproval(id, currentUserIdOrThrow());
     }
 
+    /**
+     * Backward compatibility endpoint - redirects to submit-for-approval
+     * @deprecated Use /{id}/submit-for-approval instead
+     */
+    @Operation(summary = "[DEPRECATED] Submit khoá học để duyệt", 
+               description = "Deprecated: Use /{id}/submit-for-approval instead")
+    @PutMapping("/{id}/publish")
+    @PreAuthorize("hasRole('TEACHER')")
+    @Deprecated
+    public CourseRes publish(@PathVariable Long id) {
+        // Redirect to submit-for-approval for backward compatibility
+        return courseService.submitForApproval(id, currentUserIdOrThrow());
+    }
+
     @Operation(summary = "Unpublish khoá học", description = "Chuyển về DRAFT.")
     @PutMapping("/{id}/unpublish")
     @PreAuthorize("hasRole('TEACHER')")

@@ -132,6 +132,9 @@ public class CourseService {
 
     /**
      * Submit course for moderator approval (changed from direct publish)
+     * 
+     * NOTE: Currently only requires title. Content validation (chapters, lessons, sections) 
+     * will be added later when content management is implemented.
      */
     public CourseRes submitForApproval(Long id, Long teacherUserId) {
         Course c = getOwned(id, teacherUserId);
@@ -141,16 +144,27 @@ public class CourseService {
             throw bad("Course must be in DRAFT status to submit for approval");
         }
 
-        // Đúng 1 chapter học thử
-        long trialCount = chapterRepo.countByCourse_IdAndIsTrialTrue(id);
-        if (trialCount != 1) throw bad("Course must have exactly ONE trial chapter");
+        // Validate title is not empty
+        if (c.getTitle() == null || c.getTitle().trim().isEmpty()) {
+            throw bad("Course title is required");
+        }
 
-        // Validate cấu trúc
+        // Đúng 1 chapter học thử (tự động tạo khi tạo course)
+        long trialCount = chapterRepo.countByCourse_IdAndIsTrialTrue(id);
+        if (trialCount != 1) {
+            throw bad("Course must have exactly ONE trial chapter");
+        }
+
+        // TODO: Validate cấu trúc sections khi có nội dung
+        // Hiện tại chỉ cần title và trial chapter là đủ để submit
+        // Validation sections sẽ được thêm sau khi có nội dung
+        /*
         c.getChapters().forEach(ch ->
                 ch.getLessons().forEach(ls ->
                         ls.getSections().forEach(this::validateSectionBeforePublish)
                 )
         );
+        */
 
         // Chuyển sang PENDING_APPROVAL thay vì PUBLISHED
         c.setStatus(CourseStatus.PENDING_APPROVAL);
@@ -306,29 +320,43 @@ public class CourseService {
     }
 
     private CourseRes mapCourseMetadataToRes(Object[] metadata) {
+        if (metadata == null || metadata.length == 0) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Invalid metadata array");
+        }
+        
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
         }
+        
+        // Validate array length (should have at least 12 elements)
+        if (actualMetadata.length < 12) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Course metadata array too short: expected at least 12 elements, got " + actualMetadata.length);
+        }
 
         // [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
         //  currency, coverImagePath, status, publishedAt, userId, deletedFlag]
-        Long id = ((Number) actualMetadata[0]).longValue();
-        String title = (String) actualMetadata[1];
-        String slug = (String) actualMetadata[2];
-        String subtitle = (String) actualMetadata[3];
-        JLPTLevel level = JLPTLevel.valueOf(((String) actualMetadata[4]).toUpperCase());
+        Long id = actualMetadata[0] != null ? ((Number) actualMetadata[0]).longValue() : null;
+        String title = actualMetadata[1] != null ? actualMetadata[1].toString() : null;
+        String slug = actualMetadata[2] != null ? actualMetadata[2].toString() : null;
+        String subtitle = actualMetadata[3] != null ? actualMetadata[3].toString() : null;
+        JLPTLevel level = actualMetadata[4] != null 
+            ? JLPTLevel.valueOf(actualMetadata[4].toString().toUpperCase()) 
+            : JLPTLevel.N5;
         Long priceCents = actualMetadata[5] != null ? ((Number) actualMetadata[5]).longValue() : null;
         Long discountedPriceCents = actualMetadata[6] != null ? ((Number) actualMetadata[6]).longValue() : null;
-        String currency = (String) actualMetadata[7];
-        String coverImagePath = (String) actualMetadata[8];
-        CourseStatus courseStatus = CourseStatus.valueOf(((String) actualMetadata[9]).toUpperCase());
+        String currency = actualMetadata[7] != null ? actualMetadata[7].toString() : "VND";
+        String coverImagePath = actualMetadata[8] != null ? actualMetadata[8].toString() : null;
+        CourseStatus courseStatus = actualMetadata[9] != null
+            ? CourseStatus.valueOf(actualMetadata[9].toString().toUpperCase())
+            : CourseStatus.DRAFT;
         Instant publishedAt = actualMetadata[10] != null
                 ? (actualMetadata[10] instanceof Instant
                 ? (Instant) actualMetadata[10]
                 : Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[10]).getTime()))
                 : null;
-        Long userId = ((Number) actualMetadata[11]).longValue();
+        Long userId = actualMetadata[11] != null ? ((Number) actualMetadata[11]).longValue() : null;
 
         CourseRes res = new CourseRes();
         res.setId(id);
@@ -723,6 +751,12 @@ public class CourseService {
             actualMetadata = (Object[]) metadata[0];
         }
         
+        // Validate array length
+        if (actualMetadata.length < 12 || actualMetadata[11] == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course metadata: missing userId");
+        }
+        
         Long userId = ((Number) actualMetadata[11]).longValue(); // userId is at index 11
         if (!Objects.equals(userId, teacherUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
@@ -1099,8 +1133,20 @@ public class CourseService {
             actualMetadata = (Object[]) metadata[0];
         }
         
+        // Validate array length
+        if (actualMetadata.length < 10 || actualMetadata[9] == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course metadata: missing status");
+        }
+        
         // Check status (at index 9)
-        CourseStatus status = CourseStatus.valueOf(((String) actualMetadata[9]).toUpperCase());
+        CourseStatus status;
+        try {
+            status = CourseStatus.valueOf(actualMetadata[9].toString().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course status: " + actualMetadata[9]);
+        }
         if (status != CourseStatus.PUBLISHED) {
             // Ẩn sự tồn tại nếu chưa publish
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
