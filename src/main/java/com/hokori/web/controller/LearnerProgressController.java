@@ -29,6 +29,12 @@ public class LearnerProgressController {
         return progressService.listEnrolledCourses(uid());
     }
 
+    @Operation(summary = "Enroll vào khóa học", description = "Đăng ký học khóa học. Course phải ở trạng thái PUBLISHED.")
+    @PostMapping("/courses/{courseId}/enroll")
+    public EnrollmentLiteRes enroll(@PathVariable Long courseId) {
+        return progressService.enrollCourse(uid(), courseId);
+    }
+
     @Operation(summary = "Lấy enrollment lite của tôi với 1 course")
     @GetMapping("/courses/{courseId}/enrollment")
     public EnrollmentLiteRes getEnrollment(@PathVariable Long courseId) {

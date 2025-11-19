@@ -1,5 +1,6 @@
 package com.hokori.web.service;
 
+import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.dto.progress.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 public class LearnerProgressService {
 
     private final EnrollmentRepository enrollmentRepo;
+    private final CourseRepository courseRepo;
     private final ChapterRepository chapterRepo;
     private final LessonRepository lessonRepo;
     private final SectionRepository sectionRepo;
@@ -26,6 +28,56 @@ public class LearnerProgressService {
     private final UserContentProgressRepository ucpRepo;
 
     // ================= Enrollment =================
+    
+    /**
+     * Enroll learner into a course
+     */
+    public EnrollmentLiteRes enrollCourse(Long userId, Long courseId) {
+        // Check if already enrolled
+        if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Already enrolled in this course");
+        }
+        
+        // Check if course exists and is PUBLISHED (use native query to avoid LOB stream error)
+        var courseMetadataOpt = courseRepo.findCourseMetadataById(courseId);
+        if (courseMetadataOpt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+        }
+        
+        Object[] metadata = courseMetadataOpt.get();
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+        
+        // Check status (at index 9)
+        CourseStatus status = CourseStatus.valueOf(((String) actualMetadata[9]).toUpperCase());
+        if (status != CourseStatus.PUBLISHED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Course is not published");
+        }
+        
+        // Create enrollment
+        Enrollment enrollment = Enrollment.builder()
+                .userId(userId)
+                .courseId(courseId)
+                .progressPercent(0)
+                .startedAt(Instant.now())
+                .lastAccessAt(Instant.now())
+                .build();
+        
+        Enrollment saved = enrollmentRepo.save(enrollment);
+        
+        return EnrollmentLiteRes.builder()
+                .enrollmentId(saved.getId())
+                .courseId(saved.getCourseId())
+                .progressPercent(saved.getProgressPercent())
+                .startedAt(saved.getStartedAt())
+                .completedAt(saved.getCompletedAt())
+                .lastAccessAt(saved.getLastAccessAt())
+                .build();
+    }
+    
     @Transactional(readOnly = true)
     public EnrollmentLiteRes getEnrollment(Long userId, Long courseId) {
         Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
