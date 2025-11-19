@@ -93,8 +93,13 @@ public final class CourseMapper {
 
     public static ContentRes toContentRes(SectionsContent ct) {
         return new ContentRes(
-                ct.getId(), ct.getOrderIndex(), ct.getContentFormat(), ct.isPrimaryContent(),
-                ct.getFilePath(), ct.getRichText(), ct.getQuizId(), ct.getFlashcardSetId()
+                ct.getId(),
+                ct.getOrderIndex(),
+                ct.getContentFormat(),
+                ct.isPrimaryContent(),
+                ct.getFilePath(),
+                ct.getRichText(),
+                ct.getFlashcardSetId()
         );
     }
 

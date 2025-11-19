@@ -4,7 +4,8 @@ import com.hokori.web.Enum.ContentFormat;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
-@Data @AllArgsConstructor
+@Data
+@AllArgsConstructor
 public class ContentRes {
     private Long id;
     private Integer orderIndex;
@@ -12,6 +13,5 @@ public class ContentRes {
     private boolean primaryContent;
     private String filePath;
     private String richText;
-    private Long quizId;
     private Long flashcardSetId;
 }

@@ -49,26 +49,26 @@ public class WalletController {
     private final UserRepository userRepo;
 
     // ===== Helper: lấy user hiện tại từ JWT =====
-
     /**
      * Lấy user hiện tại đang đăng nhập từ SecurityContext.
-     * - FE chỉ cần truyền Bearer token, không cần truyền userId.
+     * JwtAuthenticationFilter đang set principal = email.
      */
-    private User getCurrentUserOrThrow() {
+    private String getCurrentEmailOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()
                 || "anonymousUser".equals(auth.getPrincipal())) {
             throw new AccessDeniedException("Unauthenticated");
         }
-
-        String username = auth.getName(); // JwtAuthenticationFilter set username
-        return userRepo.findByUsername(username)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + username));
+        // JwtAuthenticationFilter đang set principal = email
+        return auth.getName();
     }
 
     private Long getCurrentUserIdOrThrow() {
-        return getCurrentUserOrThrow().getId();
+        String email = getCurrentEmailOrThrow();
+        return userRepo.findIdByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + email));
     }
+
 
     // ===== API: Lấy thông tin ví của chính mình =====
 
@@ -101,12 +101,11 @@ public class WalletController {
             @ApiResponse(responseCode = "401", description = "Chưa đăng nhập hoặc token không hợp lệ")
     })
     public WalletSummaryResponse getMyWalletSummary() {
-        User me = getCurrentUserOrThrow();
-        return WalletSummaryResponse.builder()
-                .userId(me.getId())
-                .walletBalance(me.getWalletBalance())
-                .lastPayoutDate(me.getLastPayoutDate())
-                .build();
+        String email = getCurrentEmailOrThrow();
+
+        // lấy thẳng DTO từ repository, không còn Object[]
+        return userRepo.findWalletSummaryByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + email));
     }
 
     // ===== API: Lịch sử giao dịch ví của chính mình (paged) =====
