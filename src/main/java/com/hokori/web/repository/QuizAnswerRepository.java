@@ -34,7 +34,7 @@ public interface QuizAnswerRepository extends JpaRepository<QuizAnswer, Long> {
         SELECT q.id
         FROM questions q
         WHERE q.quiz_id = :quizId 
-          AND (q.deleted_flag IS NULL OR q.deleted_flag = 0)
+          AND (q.deleted_flag IS NULL OR q.deleted_flag = false)
           AND q.id NOT IN (
               SELECT a.question_id FROM quiz_answers a WHERE a.attempt_id = :attemptId
           )

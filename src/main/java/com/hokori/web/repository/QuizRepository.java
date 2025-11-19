@@ -33,7 +33,7 @@ public interface QuizRepository extends JpaRepository<Quiz, Long> {
         SELECT q.id, q.lesson_id, q.title, q.description, q.total_questions, 
                q.time_limit_sec, q.pass_score_percent, q.created_at, q.updated_at, q.deleted_flag
         FROM quizzes q
-        WHERE q.lesson_id = :lessonId AND (q.deleted_flag IS NULL OR q.deleted_flag = 0)
+        WHERE q.lesson_id = :lessonId AND (q.deleted_flag IS NULL OR q.deleted_flag = false)
         """, nativeQuery = true)
     Optional<Object[]> findQuizMetadataByLessonId(@Param("lessonId") Long lessonId);
 }

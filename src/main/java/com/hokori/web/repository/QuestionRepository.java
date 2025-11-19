@@ -34,7 +34,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
         SELECT q.id, q.quiz_id, q.content, q.question_type, q.explanation, 
                q.order_index, q.created_at, q.updated_at, q.deleted_flag
         FROM questions q
-        WHERE q.quiz_id = :quizId AND (q.deleted_flag IS NULL OR q.deleted_flag = 0)
+        WHERE q.quiz_id = :quizId AND (q.deleted_flag IS NULL OR q.deleted_flag = false)
         ORDER BY q.order_index ASC
         """, nativeQuery = true)
     List<Object[]> findQuestionMetadataByQuizId(@Param("quizId") Long quizId);

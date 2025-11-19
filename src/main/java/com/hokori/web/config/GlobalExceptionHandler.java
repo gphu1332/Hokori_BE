@@ -10,6 +10,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -126,6 +128,43 @@ public class GlobalExceptionHandler {
         response.put("path", request.getDescription(false));
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatusException(
+            ResponseStatusException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", ex.getReason() != null ? ex.getReason() : ex.getMessage());
+        response.put("status", "error");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false));
+        
+        logger.debug("ResponseStatusException: {} - {}", ex.getStatusCode(), ex.getReason());
+        
+        return ResponseEntity.status(ex.getStatusCode()).body(response);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResourceFoundException(
+            NoResourceFoundException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        String resourcePath = ex.getResourcePath();
+        
+        // Check if URL has duplicate /api/api
+        if (resourcePath != null && resourcePath.contains("/api/api")) {
+            response.put("message", "Invalid URL: duplicate '/api' detected. Please check your API base URL configuration.");
+            response.put("suggestedPath", resourcePath.replace("/api/api", "/api"));
+        } else {
+            response.put("message", "Resource not found: " + resourcePath);
+        }
+        
+        response.put("status", "error");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false));
+        
+        logger.warn("NoResourceFoundException: {}", resourcePath);
+        
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
     // Custom exception classes
