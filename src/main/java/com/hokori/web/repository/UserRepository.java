@@ -115,4 +115,44 @@ public interface UserRepository extends JpaRepository<User, Long> {
        WHERE u.email = :email
        """)
     Optional<WalletSummaryResponse> findWalletSummaryByEmail(@Param("email") String email);
+    
+    /**
+     * Get user profile metadata without loading LOB fields (avoids LOB stream error on PostgreSQL).
+     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
+     * Returns: [id, email, username, displayName, avatarUrl, phoneNumber, isActive, isVerified, 
+     *          lastLoginAt, createdAt, approvalStatus, approvedAt, profileApprovalRequestId,
+     *          yearsOfExperience, bio, websiteUrl, linkedin, bankAccountNumber, bankAccountName,
+     *          bankName, bankBranchName, lastPayoutDate]
+     */
+    @Query(value = """
+        SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.phone_number, 
+               u.is_active, u.is_verified, u.last_login_at, u.created_at,
+               u.approval_status, u.approved_at, u.profile_approval_request_id,
+               u.years_of_experience, u.bio, u.website_url, u.linkedin,
+               u.bank_account_number, u.bank_account_name, u.bank_name, u.bank_branch_name,
+               u.last_payout_date
+        FROM users u
+        WHERE u.email = :email
+        """, nativeQuery = true)
+    Optional<Object[]> findUserProfileMetadataByEmail(@Param("email") String email);
+    
+    /**
+     * Get user profile metadata by ID (avoids LOB stream error).
+     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
+     * Returns: [id, email, username, displayName, avatarUrl, phoneNumber, isActive, isVerified, 
+     *          lastLoginAt, createdAt, approvalStatus, approvedAt, profileApprovalRequestId,
+     *          yearsOfExperience, bio, websiteUrl, linkedin, bankAccountNumber, bankAccountName,
+     *          bankName, bankBranchName, lastPayoutDate]
+     */
+    @Query(value = """
+        SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.phone_number, 
+               u.is_active, u.is_verified, u.last_login_at, u.created_at,
+               u.approval_status, u.approved_at, u.profile_approval_request_id,
+               u.years_of_experience, u.bio, u.website_url, u.linkedin,
+               u.bank_account_number, u.bank_account_name, u.bank_name, u.bank_branch_name,
+               u.last_payout_date
+        FROM users u
+        WHERE u.id = :id
+        """, nativeQuery = true)
+    Optional<Object[]> findUserProfileMetadataById(@Param("id") Long id);
 }

@@ -25,22 +25,37 @@ public class LearnerQuizService {
     private final OptionRepository optionRepo;
 
     public AttemptDto startAttempt(Long lessonId, Long userId, StartAttemptReq req) {
-        Quiz quiz = quizRepo.findByLesson_Id(lessonId)
-                .orElseThrow(() -> new EntityNotFoundException("Quiz not found for lesson " + lessonId));
+        // Use native query to avoid LOB stream error
+        var quizMetadataOpt = quizRepo.findQuizMetadataByLessonId(lessonId);
+        if (quizMetadataOpt.isEmpty()) {
+            throw new EntityNotFoundException("Quiz not found for lesson " + lessonId);
+        }
+        
+        Object[] qMeta = quizMetadataOpt.get();
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        Long quizId = ((Number) actualQMeta[0]).longValue();
+        String quizTitle = actualQMeta[2] != null ? actualQMeta[2].toString() : null;
+        
+        // Get Quiz entity reference for QuizAttempt (only need ID)
+        Quiz quizRef = quizRepo.getReferenceById(quizId);
 
         if (req == null || !Boolean.TRUE.equals(req.forceNew())) {
-            var last = attemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quiz.getId());
+            var last = attemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quizId);
             if (!last.isEmpty() && last.get(0).getStatus() == QuizAttempt.Status.IN_PROGRESS) {
-                return toDto(last.get(0), quiz.getTitle());
+                return toDto(last.get(0), quizTitle);
             }
         }
 
         QuizAttempt a = new QuizAttempt();
         a.setUserId(userId);
-        a.setQuiz(quiz);
-        a.setTotalQuestions(attemptRepo.countQuestions(quiz.getId()));
+        a.setQuiz(quizRef);
+        a.setTotalQuestions(attemptRepo.countQuestions(quizId));
         attemptRepo.save(a);
-        return toDto(a, quiz.getTitle());
+        return toDto(a, quizTitle);
     }
 
     @Transactional(readOnly = true)
@@ -50,24 +65,52 @@ public class LearnerQuizService {
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
             throw new RuntimeException("Attempt not in progress");
 
-        var unanswered = answerRepo.findUnanswered(a.getQuiz().getId(), a.getId());
-        if (unanswered.isEmpty()) return null;
+        // Use native query to avoid LOB stream error
+        var unansweredIds = answerRepo.findUnansweredQuestionIds(a.getQuiz().getId(), a.getId());
+        if (unansweredIds.isEmpty()) return null;
 
-        Question q = unanswered.get(0);
+        Long questionId = unansweredIds.get(0);
+        
+        // Get question metadata using native query
+        var questionMetadataOpt = questionRepo.findQuestionMetadataById(questionId);
+        if (questionMetadataOpt.isEmpty()) {
+            throw new EntityNotFoundException("Question not found");
+        }
+        
+        Object[] qMeta = questionMetadataOpt.get();
+        // Handle nested array case (PostgreSQL)
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Metadata: [id, quizId, content, questionType, explanation, orderIndex, createdAt, updatedAt, deletedFlag]
+        Long qId = ((Number) actualQMeta[0]).longValue();
+        String content = actualQMeta[2] != null ? actualQMeta[2].toString() : null;
+        String questionType = actualQMeta[3] != null ? actualQMeta[3].toString() : null;
+        Integer orderIndex = actualQMeta[5] != null ? ((Number) actualQMeta[5]).intValue() : null;
 
-        var opts = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(q.getId())
-                .stream()
-                .map(o -> new PlayOptionDto(o.getId(), o.getContent()))
+        // Get options metadata using native query
+        var optsMeta = optionRepo.findOptionMetadataByQuestionId(questionId);
+        List<PlayOptionDto> opts = optsMeta.stream()
+                .map(optMeta -> {
+                    // Handle nested array case
+                    Object[] actualOptMeta = optMeta;
+                    if (optMeta.length == 1 && optMeta[0] instanceof Object[]) {
+                        actualOptMeta = (Object[]) optMeta[0];
+                    }
+                    // Metadata: [id, questionId, content, isCorrect, orderIndex, createdAt, updatedAt]
+                    Long optId = ((Number) actualOptMeta[0]).longValue();
+                    String optContent = actualOptMeta[2] != null ? actualOptMeta[2].toString() : null;
+                    return new PlayOptionDto(optId, optContent);
+                })
                 .toList();
 
-        // questionType có thể là String hoặc Enum → toString() an toàn
-        String questionTypeStr = (q.getQuestionType() != null) ? q.getQuestionType().toString() : null;
-
         return new PlayQuestionDto(
-                q.getId(),
-                q.getContent(),
-                questionTypeStr,
-                q.getOrderIndex(),
+                qId,
+                content,
+                questionType,
+                orderIndex,
                 opts
         );
     }

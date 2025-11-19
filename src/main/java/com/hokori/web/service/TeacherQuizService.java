@@ -48,9 +48,29 @@ public class TeacherQuizService {
 
     public QuizDto getQuizByLesson(Long lessonId){
         requireOwner(lessonId);
-        var quiz = quizRepo.findByLesson_Id(lessonId)
-                .orElseThrow(() -> new RuntimeException("Quiz not found for this lesson"));
-        return mapper.toDto(quiz);
+        // Use native query to avoid LOB stream error
+        var quizMetadataOpt = quizRepo.findQuizMetadataByLessonId(lessonId);
+        if (quizMetadataOpt.isEmpty()) {
+            throw new RuntimeException("Quiz not found for this lesson");
+        }
+        
+        Object[] qMeta = quizMetadataOpt.get();
+        // Handle nested array case (PostgreSQL)
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Metadata: [id, lessonId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
+        return new QuizDto(
+                ((Number) actualQMeta[0]).longValue(),
+                ((Number) actualQMeta[1]).longValue(),
+                actualQMeta[2] != null ? actualQMeta[2].toString() : null,
+                actualQMeta[3] != null ? actualQMeta[3].toString() : null,
+                actualQMeta[4] != null ? ((Number) actualQMeta[4]).intValue() : null,
+                actualQMeta[5] != null ? ((Number) actualQMeta[5]).intValue() : null,
+                actualQMeta[6] != null ? ((Number) actualQMeta[6]).intValue() : null
+        );
     }
 
     public QuizDto createQuiz(Long lessonId, QuizUpsertReq req){
@@ -71,8 +91,30 @@ public class TeacherQuizService {
         q.setPassScorePercent(req.passScorePercent());
         q.setTotalQuestions(0);
 
-        q = quizRepo.save(q);
-        return mapper.toDto(q);
+        Quiz saved = quizRepo.save(q);
+        
+        // Use native query to avoid LOB stream error when returning response
+        var quizMetadataOpt = quizRepo.findQuizMetadataById(saved.getId());
+        if (quizMetadataOpt.isEmpty()) {
+            throw new RuntimeException("Failed to retrieve created quiz");
+        }
+        
+        Object[] qMeta = quizMetadataOpt.get();
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Metadata: [id, lessonId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
+        return new QuizDto(
+                ((Number) actualQMeta[0]).longValue(),
+                ((Number) actualQMeta[1]).longValue(),
+                actualQMeta[2] != null ? actualQMeta[2].toString() : null,
+                actualQMeta[3] != null ? actualQMeta[3].toString() : null,
+                actualQMeta[4] != null ? ((Number) actualQMeta[4]).intValue() : null,
+                actualQMeta[5] != null ? ((Number) actualQMeta[5]).intValue() : null,
+                actualQMeta[6] != null ? ((Number) actualQMeta[6]).intValue() : null
+        );
     }
 
     public QuizDto updateQuiz(Long lessonId, Long quizId, QuizUpsertReq req){
@@ -86,20 +128,91 @@ public class TeacherQuizService {
         if (req.timeLimitSec() != null) q.setTimeLimitSec(req.timeLimitSec());
         if (req.passScorePercent() != null) q.setPassScorePercent(req.passScorePercent());
 
-        return mapper.toDto(quizRepo.save(q));
+        quizRepo.save(q);
+        
+        // Use native query to avoid LOB stream error when returning response
+        var quizMetadataOpt = quizRepo.findQuizMetadataById(quizId);
+        if (quizMetadataOpt.isEmpty()) {
+            throw new RuntimeException("Failed to retrieve updated quiz");
+        }
+        
+        Object[] qMeta = quizMetadataOpt.get();
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Metadata: [id, lessonId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
+        return new QuizDto(
+                ((Number) actualQMeta[0]).longValue(),
+                ((Number) actualQMeta[1]).longValue(),
+                actualQMeta[2] != null ? actualQMeta[2].toString() : null,
+                actualQMeta[3] != null ? actualQMeta[3].toString() : null,
+                actualQMeta[4] != null ? ((Number) actualQMeta[4]).intValue() : null,
+                actualQMeta[5] != null ? ((Number) actualQMeta[5]).intValue() : null,
+                actualQMeta[6] != null ? ((Number) actualQMeta[6]).intValue() : null
+        );
     }
 
     /* ---------- Questions ---------- */
 
     public List<QuestionWithOptionsDto> listQuestions(Long lessonId, Long quizId){
         requireOwner(lessonId);
-        var quiz = getQuizOrThrow(quizId);
-        if (!quiz.getLesson().getId().equals(lessonId))
+        // Check quiz belongs to lesson using native query
+        var quizMetadataOpt = quizRepo.findQuizMetadataById(quizId);
+        if (quizMetadataOpt.isEmpty()) {
+            throw new RuntimeException("Quiz not found");
+        }
+        
+        Object[] qMeta = quizMetadataOpt.get();
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        Long lessonIdFromQuiz = ((Number) actualQMeta[1]).longValue();
+        if (!lessonIdFromQuiz.equals(lessonId)) {
             throw new RuntimeException("Quiz doesn't belong to this lesson");
+        }
 
-        var questions = questionRepo.findByQuiz_IdOrderByOrderIndexAsc(quizId);
-        return questions.stream()
-                .map(q -> mapper.toDto(q, optionRepo.findByQuestion_IdOrderByOrderIndexAsc(q.getId())))
+        // Use native query to avoid LOB stream error
+        var questionsMeta = questionRepo.findQuestionMetadataByQuizId(quizId);
+        return questionsMeta.stream()
+                .map(qMetaArray -> {
+                    // Handle nested array case
+                    Object[] actualQMetaArray = qMetaArray;
+                    if (qMetaArray.length == 1 && qMetaArray[0] instanceof Object[]) {
+                        actualQMetaArray = (Object[]) qMetaArray[0];
+                    }
+                    
+                    // Question metadata: [id, quizId, content, questionType, explanation, orderIndex, createdAt, updatedAt, deletedFlag]
+                    Long qId = ((Number) actualQMetaArray[0]).longValue();
+                    String content = actualQMetaArray[2] != null ? actualQMetaArray[2].toString() : null;
+                    String questionType = actualQMetaArray[3] != null ? actualQMetaArray[3].toString() : null;
+                    String explanation = actualQMetaArray[4] != null ? actualQMetaArray[4].toString() : null;
+                    Integer orderIndex = actualQMetaArray[5] != null ? ((Number) actualQMetaArray[5]).intValue() : null;
+                    
+                    // Get options metadata
+                    var optsMeta = optionRepo.findOptionMetadataByQuestionId(qId);
+                    List<OptionDto> options = optsMeta.stream()
+                            .map(optMetaArray -> {
+                                Object[] actualOptMetaArray = optMetaArray;
+                                if (optMetaArray.length == 1 && optMetaArray[0] instanceof Object[]) {
+                                    actualOptMetaArray = (Object[]) optMetaArray[0];
+                                }
+                                // Option metadata: [id, questionId, content, isCorrect, orderIndex, createdAt, updatedAt]
+                                Long optId = ((Number) actualOptMetaArray[0]).longValue();
+                                String optContent = actualOptMetaArray[2] != null ? actualOptMetaArray[2].toString() : null;
+                                Boolean isCorrect = actualOptMetaArray[3] != null ? 
+                                    (actualOptMetaArray[3] instanceof Boolean ? (Boolean) actualOptMetaArray[3] :
+                                     ((Number) actualOptMetaArray[3]).intValue() != 0) : false;
+                                Integer optOrderIndex = actualOptMetaArray[4] != null ? ((Number) actualOptMetaArray[4]).intValue() : null;
+                                return new OptionDto(optId, optContent, isCorrect, optOrderIndex);
+                            })
+                            .toList();
+                    
+                    return new QuestionWithOptionsDto(qId, content, explanation, questionType, orderIndex, options);
+                })
                 .toList();
     }
 
@@ -117,10 +230,30 @@ public class TeacherQuizService {
         int nextOrder = (int) (questionRepo.countByQuiz_Id(quizId) + 1);
         qu.setOrderIndex(req.orderIndex() == null ? nextOrder : req.orderIndex());
 
-        qu = questionRepo.save(qu);
+        Question saved = questionRepo.save(qu);
         refreshTotalQuestions(quiz);
 
-        return mapper.toDto(qu, List.of());
+        // Use native query to avoid LOB stream error when returning response
+        var questionMetadataOpt = questionRepo.findQuestionMetadataById(saved.getId());
+        if (questionMetadataOpt.isEmpty()) {
+            throw new RuntimeException("Failed to retrieve created question");
+        }
+        
+        Object[] qMeta = questionMetadataOpt.get();
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Question metadata: [id, quizId, content, questionType, explanation, orderIndex, createdAt, updatedAt, deletedFlag]
+        Long qId = ((Number) actualQMeta[0]).longValue();
+        String content = actualQMeta[2] != null ? actualQMeta[2].toString() : null;
+        String questionType = actualQMeta[3] != null ? actualQMeta[3].toString() : null;
+        String explanation = actualQMeta[4] != null ? actualQMeta[4].toString() : null;
+        Integer orderIndex = actualQMeta[5] != null ? ((Number) actualQMeta[5]).intValue() : null;
+        
+        // Options are empty for new question
+        return new QuestionWithOptionsDto(qId, content, explanation, questionType, orderIndex, List.of());
     }
 
     public QuestionWithOptionsDto updateQuestion(Long lessonId, Long questionId, QuestionUpsertReq req){
@@ -134,9 +267,47 @@ public class TeacherQuizService {
         if (req.questionType() != null) qu.setQuestionType(req.questionType());
         if (req.orderIndex() != null) qu.setOrderIndex(req.orderIndex());
 
-        qu = questionRepo.save(qu);
-        var opts = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(qu.getId());
-        return mapper.toDto(qu, opts);
+        questionRepo.save(qu);
+        
+        // Use native query to avoid LOB stream error when returning response
+        var questionMetadataOpt = questionRepo.findQuestionMetadataById(questionId);
+        if (questionMetadataOpt.isEmpty()) {
+            throw new RuntimeException("Failed to retrieve updated question");
+        }
+        
+        Object[] qMeta = questionMetadataOpt.get();
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Question metadata: [id, quizId, content, questionType, explanation, orderIndex, createdAt, updatedAt, deletedFlag]
+        Long qId = ((Number) actualQMeta[0]).longValue();
+        String content = actualQMeta[2] != null ? actualQMeta[2].toString() : null;
+        String questionType = actualQMeta[3] != null ? actualQMeta[3].toString() : null;
+        String explanation = actualQMeta[4] != null ? actualQMeta[4].toString() : null;
+        Integer orderIndex = actualQMeta[5] != null ? ((Number) actualQMeta[5]).intValue() : null;
+        
+        // Get options metadata using native query
+        var optsMeta = optionRepo.findOptionMetadataByQuestionId(questionId);
+        List<OptionDto> options = optsMeta.stream()
+                .map(optMetaArray -> {
+                    Object[] actualOptMetaArray = optMetaArray;
+                    if (optMetaArray.length == 1 && optMetaArray[0] instanceof Object[]) {
+                        actualOptMetaArray = (Object[]) optMetaArray[0];
+                    }
+                    // Option metadata: [id, questionId, content, isCorrect, orderIndex, createdAt, updatedAt]
+                    Long optId = ((Number) actualOptMetaArray[0]).longValue();
+                    String optContent = actualOptMetaArray[2] != null ? actualOptMetaArray[2].toString() : null;
+                    Boolean isCorrect = actualOptMetaArray[3] != null ? 
+                        (actualOptMetaArray[3] instanceof Boolean ? (Boolean) actualOptMetaArray[3] :
+                         ((Number) actualOptMetaArray[3]).intValue() != 0) : false;
+                    Integer optOrderIndex = actualOptMetaArray[4] != null ? ((Number) actualOptMetaArray[4]).intValue() : null;
+                    return new OptionDto(optId, optContent, isCorrect, optOrderIndex);
+                })
+                .toList();
+        
+        return new QuestionWithOptionsDto(qId, content, explanation, questionType, orderIndex, options);
     }
 
     public void deleteQuestion(Long lessonId, Long questionId){
@@ -171,8 +342,25 @@ public class TeacherQuizService {
             o.setOrderIndex(r.orderIndex() == null ? 0 : r.orderIndex());
             optionRepo.save(o);
         }
-        return optionRepo.findByQuestion_IdOrderByOrderIndexAsc(questionId)
-                .stream().map(mapper::toDto).toList();
+        
+        // Use native query to avoid LOB stream error when returning response
+        var optsMeta = optionRepo.findOptionMetadataByQuestionId(questionId);
+        return optsMeta.stream()
+                .map(optMetaArray -> {
+                    Object[] actualOptMetaArray = optMetaArray;
+                    if (optMetaArray.length == 1 && optMetaArray[0] instanceof Object[]) {
+                        actualOptMetaArray = (Object[]) optMetaArray[0];
+                    }
+                    // Option metadata: [id, questionId, content, isCorrect, orderIndex, createdAt, updatedAt]
+                    Long optId = ((Number) actualOptMetaArray[0]).longValue();
+                    String optContent = actualOptMetaArray[2] != null ? actualOptMetaArray[2].toString() : null;
+                    Boolean isCorrect = actualOptMetaArray[3] != null ? 
+                        (actualOptMetaArray[3] instanceof Boolean ? (Boolean) actualOptMetaArray[3] :
+                         ((Number) actualOptMetaArray[3]).intValue() != 0) : false;
+                    Integer optOrderIndex = actualOptMetaArray[4] != null ? ((Number) actualOptMetaArray[4]).intValue() : null;
+                    return new OptionDto(optId, optContent, isCorrect, optOrderIndex);
+                })
+                .toList();
     }
 
     public OptionDto updateOption(Long lessonId, Long optionId, OptionUpsertReq req){
@@ -204,7 +392,29 @@ public class TeacherQuizService {
             }
         }
 
-        return mapper.toDto(optionRepo.save(o));
+        optionRepo.save(o);
+        
+        // Use native query to avoid LOB stream error when returning response
+        var optionMetadataOpt = optionRepo.findOptionMetadataById(optionId);
+        if (optionMetadataOpt.isEmpty()) {
+            throw new RuntimeException("Failed to retrieve updated option");
+        }
+        
+        Object[] optMeta = optionMetadataOpt.get();
+        Object[] actualOptMeta = optMeta;
+        if (optMeta.length == 1 && optMeta[0] instanceof Object[]) {
+            actualOptMeta = (Object[]) optMeta[0];
+        }
+        
+        // Option metadata: [id, questionId, content, isCorrect, orderIndex, createdAt, updatedAt]
+        Long optId = ((Number) actualOptMeta[0]).longValue();
+        String optContent = actualOptMeta[2] != null ? actualOptMeta[2].toString() : null;
+        Boolean isCorrect = actualOptMeta[3] != null ? 
+            (actualOptMeta[3] instanceof Boolean ? (Boolean) actualOptMeta[3] :
+             ((Number) actualOptMeta[3]).intValue() != 0) : false;
+        Integer optOrderIndex = actualOptMeta[4] != null ? ((Number) actualOptMeta[4]).intValue() : null;
+        
+        return new OptionDto(optId, optContent, isCorrect, optOrderIndex);
     }
 
     public void deleteOption(Long lessonId, Long optionId){
