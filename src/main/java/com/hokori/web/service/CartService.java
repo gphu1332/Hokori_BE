@@ -60,22 +60,27 @@ public class CartService {
             throw new IllegalStateException("COURSE_OWNED");
         }
 
-        Course course = courseRepo.findById(req.courseId())
+        // Use native query to avoid LOB stream error (don't load description field)
+        Object[] courseData = courseRepo.findCoursePriceById(req.courseId())
                 .orElseThrow(() -> new IllegalArgumentException("COURSE_NOT_FOUND"));
-        long price = course.getPriceCents(); // đổi getter nếu tên khác
+        Long courseId = ((Number) courseData[0]).longValue();
+        Long priceCents = courseData[1] != null ? ((Number) courseData[1]).longValue() : 0L;
+        
+        // Use getReference to avoid loading full entity
+        Course courseRef = courseRepo.getReferenceById(courseId);
 
-        CartItem item = itemRepo.findByCart_IdAndCourse_Id(cart.getId(), course.getId())
+        CartItem item = itemRepo.findByCart_IdAndCourse_Id(cart.getId(), courseId)
                 .map(ci -> {
                     ci.setQuantity(ci.getQuantity() + qty);
-                    ci.setTotalPrice(price * ci.getQuantity());
+                    ci.setTotalPrice(priceCents * ci.getQuantity());
                     return ci;
                 })
                 .orElseGet(() -> {
                     CartItem ci = new CartItem();
                     ci.setCart(cart);
-                    ci.setCourse(course);
+                    ci.setCourse(courseRef);
                     ci.setQuantity(qty);
-                    ci.setTotalPrice(price * qty);
+                    ci.setTotalPrice(priceCents * qty);
                     return ci;
                 });
 
@@ -93,9 +98,13 @@ public class CartService {
 
         if (req.quantity() != null) {
             if (req.quantity() < 1) throw new IllegalArgumentException("BAD_QUANTITY");
-            long price = item.getCourse().getPriceCents(); // đổi getter nếu khác
+            // Use native query to avoid LOB stream error when accessing course price
+            Long courseId = item.getCourse().getId();
+            Object[] courseData = courseRepo.findCoursePriceById(courseId)
+                    .orElseThrow(() -> new IllegalArgumentException("COURSE_NOT_FOUND"));
+            Long priceCents = courseData[1] != null ? ((Number) courseData[1]).longValue() : 0L;
             item.setQuantity(req.quantity());
-            item.setTotalPrice(price * req.quantity());
+            item.setTotalPrice(priceCents * req.quantity());
         }
         if (req.selected() != null) item.setSelected(req.selected());
 

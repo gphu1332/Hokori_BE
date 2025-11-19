@@ -78,4 +78,15 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         ORDER BY c.published_at DESC
         """, nativeQuery = true)
     List<Object[]> findPublishedCourseMetadata(@Param("level") String level);
+    
+    /**
+     * Get course price without loading LOB fields (for cart operations).
+     * Returns: [id, priceCents, deletedFlag]
+     */
+    @Query(value = """
+        SELECT c.id, c.price_cents, c.deleted_flag
+        FROM course c
+        WHERE c.id = :id AND c.deleted_flag = false
+        """, nativeQuery = true)
+    Optional<Object[]> findCoursePriceById(@Param("id") Long id);
 }

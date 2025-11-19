@@ -10,6 +10,8 @@ import com.google.cloud.speech.v1.SpeechSettings;
 import com.google.cloud.texttospeech.v1.TextToSpeechClient;
 import com.google.cloud.texttospeech.v1.TextToSpeechSettings;
 import com.google.api.gax.core.FixedCredentialsProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +30,8 @@ import java.nio.charset.StandardCharsets;
  */
 @Configuration
 public class GoogleCloudConfig {
+    
+    private static final Logger logger = LoggerFactory.getLogger(GoogleCloudConfig.class);
     
     @Value("${google.cloud.project-id:hokori-web}")
     private String projectId;
@@ -70,10 +74,10 @@ public class GoogleCloudConfig {
                 InputStream credentialsStream = new ByteArrayInputStream(
                     jsonCredentials.getBytes(StandardCharsets.UTF_8));
                 GoogleCredentials credentials = GoogleCredentials.fromStream(credentialsStream);
-                System.out.println("✅ Google Cloud credentials loaded from environment variables");
+                logger.info("✅ Google Cloud credentials loaded from environment variables");
                 return credentials;
             } catch (Exception e) {
-                System.out.println("⚠️ Failed to load Google Cloud from env vars, trying file: " + e.getMessage());
+                logger.warn("⚠️ Failed to load Google Cloud from env vars, trying file: {}", e.getMessage());
             }
         }
         
@@ -85,17 +89,17 @@ public class GoogleCloudConfig {
         if (resource.exists()) {
             InputStream serviceAccount = resource.getInputStream();
             GoogleCredentials credentials = GoogleCredentials.fromStream(serviceAccount);
-            System.out.println("✅ Google Cloud credentials loaded from file: " + resourcePath);
+            logger.info("✅ Google Cloud credentials loaded from file: {}", resourcePath);
             return credentials;
         }
         
         // Option 3: Try default credentials (if running on GCP)
         try {
             GoogleCredentials credentials = GoogleCredentials.getApplicationDefault();
-            System.out.println("✅ Google Cloud credentials loaded from default application credentials");
+            logger.info("✅ Google Cloud credentials loaded from default application credentials");
             return credentials;
         } catch (Exception e) {
-            System.out.println("⚠️ Failed to load default credentials: " + e.getMessage());
+            logger.warn("⚠️ Failed to load default credentials: {}", e.getMessage());
         }
         
         throw new IOException("Google Cloud credentials not found. Please configure credentials file or environment variables.");
@@ -162,10 +166,10 @@ public class GoogleCloudConfig {
                 .setProjectId(projectId)
                 .build();
             Translate translate = options.getService();
-            System.out.println("✅ Cloud Translation API client initialized");
+            logger.info("✅ Cloud Translation API client initialized");
             return translate;
         } catch (Exception e) {
-            System.out.println("❌ Failed to initialize Cloud Translation API: " + e.getMessage());
+            logger.error("❌ Failed to initialize Cloud Translation API: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -187,10 +191,10 @@ public class GoogleCloudConfig {
                 .build();
             
             LanguageServiceClient client = LanguageServiceClient.create(settings);
-            System.out.println("✅ Cloud Natural Language API client initialized");
+            logger.info("✅ Cloud Natural Language API client initialized");
             return client;
         } catch (Exception e) {
-            System.out.println("❌ Failed to initialize Cloud Natural Language API: " + e.getMessage());
+            logger.error("❌ Failed to initialize Cloud Natural Language API: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -209,10 +213,10 @@ public class GoogleCloudConfig {
                 .setCredentialsProvider(() -> credentials)
                 .build();
             SpeechClient client = SpeechClient.create(settings);
-            System.out.println("✅ Cloud Speech-to-Text API client initialized");
+            logger.info("✅ Cloud Speech-to-Text API client initialized");
             return client;
         } catch (Exception e) {
-            System.out.println("❌ Failed to initialize Cloud Speech-to-Text API: " + e.getMessage());
+            logger.error("❌ Failed to initialize Cloud Speech-to-Text API: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -231,10 +235,10 @@ public class GoogleCloudConfig {
                 .setCredentialsProvider(() -> credentials)
                 .build();
             TextToSpeechClient client = TextToSpeechClient.create(settings);
-            System.out.println("✅ Cloud Text-to-Speech API client initialized");
+            logger.info("✅ Cloud Text-to-Speech API client initialized");
             return client;
         } catch (Exception e) {
-            System.out.println("❌ Failed to initialize Cloud Text-to-Speech API: " + e.getMessage());
+            logger.error("❌ Failed to initialize Cloud Text-to-Speech API: {}", e.getMessage(), e);
             return null;
         }
     }

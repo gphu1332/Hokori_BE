@@ -2,6 +2,8 @@ package com.hokori.web.config;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,6 +18,8 @@ import java.net.URI;
  */
 @Configuration
 public class DataSourceConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(DataSourceConfig.class);
 
     @Bean
     @Primary
@@ -38,9 +42,9 @@ public class DataSourceConfig {
                 // Build JDBC URL
                 String jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s", host, port, database);
                 
-                System.out.println("✅ Parsed DATABASE_URL: " + jdbcUrl);
-                System.out.println("✅ Database: " + database);
-                System.out.println("✅ Host: " + host + ":" + port);
+                logger.info("✅ Parsed DATABASE_URL: {}", jdbcUrl);
+                logger.info("✅ Database: {}", database);
+                logger.info("✅ Host: {}:{}", host, port);
                 
                 // Configure HikariCP
                 HikariConfig config = new HikariConfig();
@@ -58,8 +62,7 @@ public class DataSourceConfig {
                 
                 return new HikariDataSource(config);
             } catch (Exception e) {
-                System.err.println("❌ Failed to parse DATABASE_URL: " + e.getMessage());
-                e.printStackTrace();
+                logger.error("❌ Failed to parse DATABASE_URL: {}", e.getMessage(), e);
                 throw new RuntimeException("Failed to configure DataSource from DATABASE_URL", e);
             }
         }

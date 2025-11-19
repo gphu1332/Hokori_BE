@@ -105,10 +105,15 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public CourseRes getTree(Long id) {
-        var c = courseRepo.findByIdAndDeletedFlagFalse(id)
+        // Use native query to check existence and avoid LOB loading
+        Object[] metadata = courseRepo.findCourseMetadataById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Map metadata to CourseRes (without description to avoid LOB)
+        CourseRes courseRes = mapCourseMetadataToRes(metadata);
+        Long courseId = courseRes.getId();
 
-        var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(c.getId());
+        var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
         var chapterDtos = new java.util.ArrayList<ChapterRes>();
 
         for (var ch : chapterEntities) {
@@ -162,24 +167,29 @@ public class CourseService {
             ));
         }
 
-        return new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
-                c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
-                c.getCoverImagePath(),       // CHANGED: dùng coverImagePath
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                chapterDtos
-        );
+        // Set chapters to courseRes and return
+        courseRes.setChapters(chapterDtos);
+        return courseRes;
     }
 
 
     @Transactional(readOnly = true)
     public CourseRes getTrialTree(Long courseId) {
-        Course c = courseRepo.findByIdAndDeletedFlagFalse(courseId)
+        // Use native query to check existence and avoid LOB loading
+        Object[] metadata = courseRepo.findCourseMetadataById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Map metadata to CourseRes (without description to avoid LOB)
+        CourseRes courseRes = mapCourseMetadataToRes(metadata);
+        
         Chapter trial = chapterRepo.findByCourse_IdAndIsTrialTrue(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No trial chapter"));
-        return toCourseResWithChapters(c, List.of(trial));
+        
+        // Convert trial chapter to DTO
+        List<ChapterRes> chapterDtos = List.of(toChapterResShallow(trial));
+        courseRes.setChapters(chapterDtos);
+        
+        return courseRes;
     }
 
     @Transactional(readOnly = true)
@@ -455,12 +465,23 @@ public class CourseService {
     }
 
     private Course getOwned(Long id, Long teacherUserId) {
-        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+        // Use native query to check ownership without loading LOB fields
+        Object[] metadata = courseRepo.findCourseMetadataById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        if (!Objects.equals(c.getUserId(), teacherUserId)) {
+        
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+        
+        Long userId = ((Number) actualMetadata[11]).longValue(); // userId is at index 11
+        if (!Objects.equals(userId, teacherUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
         }
-        return c;
+        
+        // Use getReferenceById to avoid loading full entity with LOB
+        return courseRepo.getReferenceById(id);
     }
 
     private void assertOwner(Long courseId, Long teacherUserId) {
@@ -801,13 +822,22 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public CourseRes getPublishedTree(Long courseId) {
-        var c = courseRepo.findByIdAndDeletedFlagFalse(courseId)
+        // Use native query to check status without loading LOB fields
+        Object[] metadata = courseRepo.findCourseMetadataById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        if (c.getStatus() != CourseStatus.PUBLISHED) {
+        
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+        
+        // Check status (at index 9)
+        CourseStatus status = CourseStatus.valueOf(((String) actualMetadata[9]).toUpperCase());
+        if (status != CourseStatus.PUBLISHED) {
             // Ẩn sự tồn tại nếu chưa publish
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
         }
         return getTree(courseId);
-
     }
 }

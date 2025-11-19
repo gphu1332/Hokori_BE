@@ -4,6 +4,8 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.auth.FirebaseAuth;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -19,6 +21,8 @@ import java.nio.charset.StandardCharsets;
 @Configuration
 @ConditionalOnProperty(name = "firebase.enabled", havingValue = "true", matchIfMissing = false)
 public class FirebaseConfig {
+    
+    private static final Logger logger = LoggerFactory.getLogger(FirebaseConfig.class);
     
     @Value("${firebase.project-id}")
     private String projectId;
@@ -56,9 +60,9 @@ public class FirebaseConfig {
                         InputStream credentialsStream = new ByteArrayInputStream(
                             jsonCredentials.getBytes(StandardCharsets.UTF_8));
                         credentials = GoogleCredentials.fromStream(credentialsStream);
-                        System.out.println("✅ Firebase credentials loaded from environment variables");
+                        logger.info("✅ Firebase credentials loaded from environment variables");
                     } catch (Exception e) {
-                        System.out.println("⚠️ Failed to load Firebase from env vars, trying file: " + e.getMessage());
+                        logger.warn("⚠️ Failed to load Firebase from env vars, trying file: {}", e.getMessage());
                     }
                 }
                 
@@ -71,7 +75,7 @@ public class FirebaseConfig {
                     if (resource.exists()) {
                         InputStream serviceAccount = resource.getInputStream();
                         credentials = GoogleCredentials.fromStream(serviceAccount);
-                        System.out.println("✅ Firebase credentials loaded from file: " + resourcePath);
+                        logger.info("✅ Firebase credentials loaded from file: {}", resourcePath);
                     }
                 }
                 
@@ -83,20 +87,19 @@ public class FirebaseConfig {
                             .build();
                     
                     FirebaseApp.initializeApp(options);
-                    System.out.println("✅ Firebase initialized successfully with project: " + projectId);
+                    logger.info("✅ Firebase initialized successfully with project: {}", projectId);
                 } else {
-                    System.out.println("❌ Firebase credentials not found. Please configure:");
-                    System.out.println("   - Upload firebase-service-account.json to Railway, OR");
-                    System.out.println("   - Set FIREBASE_* environment variables");
-                    System.out.println("Firebase features will be disabled. Username/password auth will still work.");
+                    logger.warn("❌ Firebase credentials not found. Please configure:");
+                    logger.warn("   - Upload firebase-service-account.json to Railway, OR");
+                    logger.warn("   - Set FIREBASE_* environment variables");
+                    logger.warn("Firebase features will be disabled. Username/password auth will still work.");
                 }
             } else {
-                System.out.println("✅ Firebase already initialized");
+                logger.info("✅ Firebase already initialized");
             }
         } catch (Exception e) {
-            System.out.println("❌ Failed to initialize Firebase: " + e.getMessage());
-            System.out.println("Firebase features will be disabled. Username/password auth will still work.");
-            e.printStackTrace();
+            logger.error("❌ Failed to initialize Firebase: {}", e.getMessage(), e);
+            logger.warn("Firebase features will be disabled. Username/password auth will still work.");
         }
     }
     
@@ -136,7 +139,7 @@ public class FirebaseConfig {
         try {
             return FirebaseAuth.getInstance();
         } catch (Exception e) {
-            System.out.println("Firebase Auth not available: " + e.getMessage());
+            logger.warn("Firebase Auth not available: {}", e.getMessage());
             return null;
         }
     }

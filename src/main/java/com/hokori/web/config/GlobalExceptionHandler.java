@@ -83,7 +83,7 @@ public class GlobalExceptionHandler {
         response.put("path", request.getDescription(false));
         
         // Log the actual exception for debugging
-        ex.printStackTrace();
+        logger.error("Unexpected error occurred", ex);
         
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
