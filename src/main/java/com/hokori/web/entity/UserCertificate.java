@@ -38,6 +38,12 @@ public class UserCertificate {
     @Column(name = "file_size_bytes")          private Long fileSizeBytes;
     @Column(name = "storage_provider", length = 50) private String storageProvider;
 
+
+
+
+
+
+    
     // Verify (tuỳ dùng)
     @Column(name = "verified_by") private Long verifiedBy;
     @Column(name = "verified_at") private LocalDateTime verifiedAt;
