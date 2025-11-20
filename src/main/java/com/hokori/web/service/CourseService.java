@@ -523,9 +523,9 @@ public class CourseService {
     // =========================
 
     private void validateSectionByStudyType(Section s) {
-        if (s.getStudyType() == ContentType.VOCABULARY && s.getFlashcardSetId() == null) {
-            throw bad("VOCABULARY section requires flashcardSetId");
-        }
+//        if (s.getStudyType() == ContentType.VOCABULARY && s.getFlashcardSetId() == null) {
+//            throw bad("VOCABULARY section requires flashcardSetId");
+//        }
     }
 
     private void validateContentPayload(Section section, ContentUpsertReq r) {
