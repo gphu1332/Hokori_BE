@@ -16,7 +16,7 @@ public class AiSentimentHistory {
     @Column(name = "user_id")
     private Long userId;
     
-    @Lob
+//    @Lob
     @Column(name = "text", columnDefinition = "TEXT")
     private String text;
     
@@ -28,7 +28,7 @@ public class AiSentimentHistory {
     @Column(name = "magnitude")
     private String magnitude;
     
-    @Lob
+//    @Lob
     @Column(name = "details", columnDefinition = "TEXT")
     private String details;
     

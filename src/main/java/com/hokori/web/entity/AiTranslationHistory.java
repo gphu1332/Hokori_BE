@@ -24,11 +24,11 @@ public class AiTranslationHistory {
     @Column(name = "target_language")
     private String targetLanguage;
     
-    @Lob
+//    @Lob
     @Column(name = "original_text", columnDefinition = "TEXT")
     private String originalText;
     
-    @Lob
+//    @Lob
     @Column(name = "translated_text", columnDefinition = "TEXT")
     private String translatedText;
     
