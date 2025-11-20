@@ -42,7 +42,7 @@ public class UserCertificate {
     @Column(name = "verified_by") private Long verifiedBy;
     @Column(name = "verified_at") private LocalDateTime verifiedAt;
 
-    @Column(name = "note") @Lob private String note;
+    @Column(name = "note") private String note;
 
     // Audit
     @Column(name = "created_at") private LocalDateTime createdAt;
