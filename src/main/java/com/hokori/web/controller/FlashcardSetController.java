@@ -298,4 +298,80 @@ public class FlashcardSetController {
                 .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found for this sectionContent"));
         return FlashcardSetResponse.fromEntity(set);
     }
+
+    // ===== 8. Xoá 1 flashcard trong set =====
+
+    @DeleteMapping("/{setId}/cards/{cardId}")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(
+            summary = "Xoá 1 flashcard trong set",
+            description = """
+                - Learner: chỉ được xoá card trong set PERSONAL của chính mình.
+                - Teacher: chỉ được xoá card trong set COURSE_VOCAB do mình tạo.
+
+                Điều kiện:
+                - Chỉ chủ sở hữu set (created_by_user_id) mới được xoá card.
+                """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Xoá flashcard thành công"),
+            @ApiResponse(responseCode = "403", description = "Không phải owner của set"),
+            @ApiResponse(responseCode = "404", description = "Set hoặc flashcard không tồn tại")
+    })
+    @ResponseStatus(code = org.springframework.http.HttpStatus.NO_CONTENT)
+    public void deleteCard(
+            @PathVariable Long setId,
+            @PathVariable Long cardId
+    ) {
+        User current = currentUserService.getCurrentUserOrThrow();
+
+        // 1. Lấy set và check owner
+        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        if (!set.getCreatedBy().getId().equals(current.getId())) {
+            throw new AccessDeniedException("You are not the owner of this flashcard set");
+        }
+
+        // 2. Xoá card trong set (business logic ở service)
+        flashcardSetService.deleteCardFromSet(setId, cardId);
+    }
+
+    // ===== 9. Xoá 1 flashcard set (soft delete) =====
+
+    @DeleteMapping("/{setId}")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(
+            summary = "Xoá 1 flashcard set (soft delete)",
+            description = """
+                - Learner: chỉ được xoá set PERSONAL do chính mình tạo.
+                - Teacher: chỉ được xoá set COURSE_VOCAB do mình tạo.
+                
+                Thực hiện xoá mềm:
+                - Đặt deleted_flag = true cho set.
+                - (Tuỳ chọn) xoá mềm luôn các card bên trong set.
+                """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Xoá set thành công"),
+            @ApiResponse(responseCode = "403", description = "Không phải owner của set"),
+            @ApiResponse(responseCode = "404", description = "Set không tồn tại")
+    })
+    @ResponseStatus(code = org.springframework.http.HttpStatus.NO_CONTENT)
+    public void deleteSet(
+            @PathVariable Long setId
+    ) {
+        User current = currentUserService.getCurrentUserOrThrow();
+
+        // 1. Lấy set
+        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+
+        // 2. Check owner
+        if (!set.getCreatedBy().getId().equals(current.getId())) {
+            throw new AccessDeniedException("You are not the owner of this flashcard set");
+        }
+
+        // 3. Soft delete set (và card nếu muốn)
+        flashcardSetService.softDeleteSet(setId);
+    }
+
+
 }

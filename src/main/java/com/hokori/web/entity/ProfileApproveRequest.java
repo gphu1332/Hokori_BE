@@ -32,7 +32,7 @@ public class ProfileApproveRequest {
     @Column(name = "reviewed_by")  private Long reviewedBy;
     @Column(name = "reviewed_at")  private LocalDateTime reviewedAt;
 
-    @Lob @Column(name = "note") private String note;
+    @Column(name = "note") private String note;
 
     // Items
     @OneToMany(mappedBy = "request", cascade = CascadeType.ALL, orphanRemoval = true)

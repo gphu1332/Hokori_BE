@@ -139,7 +139,7 @@ public class TeacherApprovalController {
             }
     )
     public ResponseEntity<ApiResponse<Void>> deleteCertificate(@PathVariable Long id){
-        approvalService.deleteCertificate(meId(), id);
+        approvalService.deleteCertificate(id, meId());
         return ResponseEntity.ok(ApiResponse.success("Deleted", null));
     }
 

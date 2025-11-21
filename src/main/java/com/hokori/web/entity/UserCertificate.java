@@ -37,12 +37,13 @@ public class UserCertificate {
     @Column(name = "mime_type", length = 100)  private String mimeType;
     @Column(name = "file_size_bytes")          private Long fileSizeBytes;
     @Column(name = "storage_provider", length = 50) private String storageProvider;
+    
 
     // Verify (tuỳ dùng)
     @Column(name = "verified_by") private Long verifiedBy;
     @Column(name = "verified_at") private LocalDateTime verifiedAt;
 
-    @Column(name = "note") @Lob private String note;
+    @Column(name = "note") private String note;
 
     // Audit
     @Column(name = "created_at") private LocalDateTime createdAt;

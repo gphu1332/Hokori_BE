@@ -9,8 +9,10 @@ import com.hokori.web.repository.ProfileApproveRequestRepository;
 import com.hokori.web.repository.UserCertificateRepository;
 import com.hokori.web.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -69,10 +71,29 @@ public class TeacherApprovalService {
         return mapper.toDto(certRepo.save(c));
     }
 
-    public void deleteCertificate(Long userId, Long certId){
-        UserCertificate c = certRepo.findById(certId).orElseThrow();
-        if (!c.getUser().getId().equals(userId)) throw new IllegalArgumentException("Not your certificate");
-        certRepo.delete(c);
+    public void deleteCertificate(Long certId, Long currentUserId) {
+        // 1. Tìm cert
+        UserCertificate cert = certRepo.findById(certId)
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Certificate not found"));
+
+        // 2. Check quyền sở hữu
+        if (!cert.getUser().getId().equals(currentUserId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Bạn không có quyền xoá certificate này");
+        }
+
+        // 3. Nếu còn đang được dùng trong profile_approve_request_item → cắt liên kết
+        List<ProfileApproveRequestItem> items =
+                itemRepo.findBySourceCertificate_Id(certId);
+
+        for (ProfileApproveRequestItem item : items) {
+            item.setSourceCertificate(null);  // source_certificate_id -> NULL
+        }
+        itemRepo.saveAll(items);
+
+        // 4. Xoá cert
+        certRepo.delete(cert);
     }
 
     /* ===== Submit Approval ===== */

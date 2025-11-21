@@ -7,4 +7,8 @@ import java.util.List;
 
 public interface ProfileApproveRequestItemRepository extends JpaRepository<ProfileApproveRequestItem, Long> {
     List<ProfileApproveRequestItem> findByRequest_Id(Long requestId);
+
+    boolean existsBySourceCertificate_Id(Long certificateId);
+
+    List<ProfileApproveRequestItem> findBySourceCertificate_Id(Long certificateId);
 }

@@ -10,8 +10,10 @@ import com.hokori.web.repository.FlashcardRepository;
 import com.hokori.web.repository.FlashcardSetRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -78,5 +80,42 @@ public class FlashcardSetService {
     public List<Flashcard> listCards(Long setId) {
         FlashcardSet set = getSetOrThrow(setId);
         return cardRepo.findBySetAndDeletedFlagFalseOrderByOrderIndexAsc(set);
+    }
+
+    @Transactional
+    public void deleteCardFromSet(Long setId, Long cardId) {
+        Flashcard card = cardRepo.findById(cardId)
+                .orElseThrow(() -> new EntityNotFoundException("Flashcard not found"));
+
+        // Đảm bảo card thuộc đúng set
+        if (!card.getSet().getId().equals(setId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Flashcard does not belong to this set"
+            );
+        }
+
+        // Nếu xoá cứng:
+        cardRepo.delete(card);
+    }
+
+    @Transactional
+    public void softDeleteSet(Long setId) {
+        FlashcardSet set = getSetOrThrow(setId);
+
+        // Nếu đã xoá rồi thì bỏ qua
+        if (set.isDeletedFlag()) {
+            return;
+        }
+
+        // 1. Soft delete set
+        set.setDeletedFlag(true);
+
+        // 2. Soft delete các card thuộc set (nếu entity Flashcard có deletedFlag)
+        if (set.getCards() != null) {
+            for (Flashcard card : set.getCards()) {
+                card.setDeletedFlag(true);
+            }
+        }
     }
 }

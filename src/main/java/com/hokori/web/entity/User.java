@@ -117,7 +117,7 @@ public class User {
     @Column(name = "current_jlpt_level", length = 10)
     private JLPTLevel currentJlptLevel = JLPTLevel.N5;
 
-    @Lob
+//    @Lob
     @Column(name = "bio")
     @JsonIgnore // Prevent serialization to avoid LOB stream errors (use DTO/mapper instead)
     private String bio;
