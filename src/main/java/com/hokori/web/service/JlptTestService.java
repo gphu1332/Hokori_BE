@@ -153,4 +153,115 @@ public class JlptTestService {
                 .score(score)
                 .build();
     }
+
+    @Transactional
+    public JlptTestResponse updateTest(Long testId,
+                                       User moderator,
+                                       JlptTestUpdateRequest req) {
+        JlptTest test = testRepo.findById(testId)
+                .orElseThrow(() -> new EntityNotFoundException("Test not found"));
+
+        // TODO: nếu cần kiểm tra moderator có quyền với event/test này thì thêm ở đây
+
+        test.setLevel(req.getLevel());
+        test.setDurationMin(req.getDurationMin());
+        test.setTotalScore(req.getTotalScore());
+        test.setResult(req.getResultNote());
+
+        // test đang được quản lý bởi JPA, chỉ cần return, không cần save()
+        return JlptTestResponse.fromEntity(test);
+    }
+
+    @Transactional
+    public void softDeleteTest(Long testId, User moderator) {
+        JlptTest test = testRepo.findById(testId)
+                .orElseThrow(() -> new EntityNotFoundException("Test not found"));
+
+        // TODO: kiểm tra quyền nếu muốn
+        test.setDeletedFlag(true);
+    }
+
+
+    @Transactional
+    public JlptQuestionWithOptionsResponse updateQuestion(Long testId,
+                                                          Long questionId,
+                                                          User moderator,
+                                                          JlptQuestionUpdateRequest req) {
+        JlptQuestion q = questionRepo.findById(questionId)
+                .orElseThrow(() -> new EntityNotFoundException("Question not found"));
+
+        if (!q.getTest().getId().equals(testId)) {
+            throw new IllegalArgumentException("Question does not belong to this test");
+        }
+
+        // TODO: kiểm tra quyền nếu cần
+
+        q.setContent(req.getContent());
+        q.setQuestionType(req.getQuestionType());
+        q.setExplanation(req.getExplanation());
+        q.setOrderIndex(req.getOrderIndex());
+        q.setAudioPath(req.getAudioPath());
+        q.setImagePath(req.getImagePath());
+        q.setImageAltText(req.getImageAltText());
+
+        // load options để trả về giống getQuestionsWithOptions
+        List<JlptOption> options = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(q.getId());
+        List<JlptOptionResponse> optionDtos = options.stream()
+                .map(JlptOptionResponse::fromEntity)
+                .toList();
+
+        return JlptQuestionWithOptionsResponse.fromEntity(q, optionDtos);
+    }
+
+    @Transactional
+    public void softDeleteQuestion(Long testId,
+                                   Long questionId,
+                                   User moderator) {
+        JlptQuestion q = questionRepo.findById(questionId)
+                .orElseThrow(() -> new EntityNotFoundException("Question not found"));
+
+        if (!q.getTest().getId().equals(testId)) {
+            throw new IllegalArgumentException("Question does not belong to this test");
+        }
+
+        q.setDeletedFlag(true);
+    }
+
+
+    @Transactional
+    public JlptOptionResponse updateOption(Long questionId,
+                                           Long optionId,
+                                           User moderator,
+                                           JlptOptionUpdateRequest req) {
+        JlptOption o = optionRepo.findById(optionId)
+                .orElseThrow(() -> new EntityNotFoundException("Option not found"));
+
+        if (!o.getQuestion().getId().equals(questionId)) {
+            throw new IllegalArgumentException("Option does not belong to this question");
+        }
+
+        // TODO: kiểm tra quyền nếu cần
+
+        o.setContent(req.getContent());
+        o.setIsCorrect(Boolean.TRUE.equals(req.getCorrect()));
+        o.setOrderIndex(req.getOrderIndex());
+        o.setImagePath(req.getImagePath());
+        o.setImageAltText(req.getImageAltText());
+
+        return JlptOptionResponse.fromEntity(o);
+    }
+
+    @Transactional
+    public void deleteOption(Long questionId,
+                             Long optionId,
+                             User moderator) {
+        JlptOption o = optionRepo.findById(optionId)
+                .orElseThrow(() -> new EntityNotFoundException("Option not found"));
+
+        if (!o.getQuestion().getId().equals(questionId)) {
+            throw new IllegalArgumentException("Option does not belong to this question");
+        }
+
+        optionRepo.delete(o);   // Option không có deletedFlag nên xoá cứng
+    }
 }

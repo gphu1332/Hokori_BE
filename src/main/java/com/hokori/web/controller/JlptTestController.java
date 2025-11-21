@@ -212,4 +212,119 @@ public class JlptTestController {
         Long userId = currentUserService.getCurrentUserId();
         return jlptTestService.getResultForUser(testId, userId);
     }
+
+    // ===== Moderator/Admin: cập nhật 1 test =====
+
+    @PutMapping("/tests/{testId}")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @Operation(
+            summary = "Cập nhật JLPT Test",
+            description = "Sửa level, duration, totalScore, resultNote của 1 test."
+    )
+    @ApiResponse(
+            responseCode = "200",
+            description = "OK",
+            content = @Content(schema = @Schema(implementation = JlptTestResponse.class))
+    )
+    public JlptTestResponse updateTest(
+            @PathVariable Long testId,
+            @Valid @RequestBody JlptTestUpdateRequest req
+    ) {
+        User moderator = currentUserService.getCurrentUserOrThrow();
+        return jlptTestService.updateTest(testId, moderator, req);
+    }
+
+    // ===== Moderator/Admin: xoá mềm 1 test =====
+
+    @DeleteMapping("/tests/{testId}")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Xoá mềm JLPT Test",
+            description = "Đặt deleted_flag = true, không xoá kết quả làm bài."
+    )
+    public void deleteTest(
+            @PathVariable Long testId
+    ) {
+        User moderator = currentUserService.getCurrentUserOrThrow();
+        jlptTestService.softDeleteTest(testId, moderator);
+    }
+
+    // ===== Moderator: cập nhật 1 câu hỏi =====
+
+    @PutMapping("/tests/{testId}/questions/{questionId}")
+    @PreAuthorize("hasRole('MODERATOR')")
+    @Operation(
+            summary = "Moderator chỉnh sửa câu hỏi",
+            description = "Sửa nội dung, type, giải thích, thứ tự, media của 1 câu hỏi."
+    )
+    @ApiResponse(
+            responseCode = "200",
+            description = "OK",
+            content = @Content(schema = @Schema(implementation = JlptQuestionWithOptionsResponse.class))
+    )
+    public JlptQuestionWithOptionsResponse updateQuestion(
+            @PathVariable Long testId,
+            @PathVariable Long questionId,
+            @Valid @RequestBody JlptQuestionUpdateRequest req
+    ) {
+        User moderator = currentUserService.getCurrentUserOrThrow();
+        return jlptTestService.updateQuestion(testId, questionId, moderator, req);
+    }
+
+    // ===== Moderator: xoá mềm câu hỏi =====
+
+    @DeleteMapping("/tests/{testId}/questions/{questionId}")
+    @PreAuthorize("hasRole('MODERATOR')")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Moderator xoá câu hỏi",
+            description = "Đặt deleted_flag = true. Các câu trả lời cũ vẫn giữ."
+    )
+    public void deleteQuestion(
+            @PathVariable Long testId,
+            @PathVariable Long questionId
+    ) {
+        User moderator = currentUserService.getCurrentUserOrThrow();
+        jlptTestService.softDeleteQuestion(testId, questionId, moderator);
+    }
+
+    // ===== Moderator: cập nhật 1 option =====
+
+    @PutMapping("/questions/{questionId}/options/{optionId}")
+    @PreAuthorize("hasRole('MODERATOR')")
+    @Operation(
+            summary = "Moderator chỉnh sửa option của câu hỏi",
+            description = "Sửa nội dung, cờ đúng/sai, thứ tự, image cho 1 option."
+    )
+    @ApiResponse(
+            responseCode = "200",
+            description = "OK",
+            content = @Content(schema = @Schema(implementation = JlptOptionResponse.class))
+    )
+    public JlptOptionResponse updateOption(
+            @PathVariable Long questionId,
+            @PathVariable Long optionId,
+            @Valid @RequestBody JlptOptionUpdateRequest req
+    ) {
+        User moderator = currentUserService.getCurrentUserOrThrow();
+        return jlptTestService.updateOption(questionId, optionId, moderator, req);
+    }
+
+    // ===== Moderator: xoá 1 option =====
+
+    @DeleteMapping("/questions/{questionId}/options/{optionId}")
+    @PreAuthorize("hasRole('MODERATOR')")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Moderator xoá option",
+            description = "Xoá cứng bản ghi option khỏi DB."
+    )
+    public void deleteOption(
+            @PathVariable Long questionId,
+            @PathVariable Long optionId
+    ) {
+        User moderator = currentUserService.getCurrentUserOrThrow();
+        jlptTestService.deleteOption(questionId, optionId, moderator);
+    }
 }
