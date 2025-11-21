@@ -2,6 +2,7 @@
 package com.hokori.web.service;
 
 import com.hokori.web.Enum.FlashcardSetType;
+import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.entity.Flashcard;
 import com.hokori.web.entity.FlashcardSet;
 import com.hokori.web.entity.SectionsContent;
@@ -80,6 +81,45 @@ public class FlashcardSetService {
     public List<Flashcard> listCards(Long setId) {
         FlashcardSet set = getSetOrThrow(setId);
         return cardRepo.findBySetAndDeletedFlagFalseOrderByOrderIndexAsc(set);
+    }
+
+    public FlashcardSet updateSet(Long setId,
+                                  String title,
+                                  String description,
+                                  String level) {
+        FlashcardSet set = getSetOrThrow(setId);
+
+        set.setTitle(title);
+        set.setDescription(description);
+        set.setLevel(level);
+
+        return set;
+    }
+
+
+    public Flashcard updateCardInSet(Long setId,
+                                     Long cardId,
+                                     String frontText,
+                                     String backText,
+                                     String reading,
+                                     String exampleSentence,
+                                     Integer orderIndex) {
+
+        Flashcard card = cardRepo.findById(cardId)
+                .orElseThrow(() -> new EntityNotFoundException("Flashcard not found"));
+
+        // Đảm bảo card thuộc đúng set
+        if (!card.getSet().getId().equals(setId)) {
+            throw new IllegalArgumentException("Flashcard does not belong to this set");
+        }
+
+        card.setFrontText(frontText);
+        card.setBackText(backText);
+        card.setReading(reading);
+        card.setExampleSentence(exampleSentence);
+        card.setOrderIndex(orderIndex);
+
+        return card;
     }
 
     @Transactional

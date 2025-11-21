@@ -2,11 +2,7 @@
 package com.hokori.web.controller;
 
 import com.hokori.web.Enum.FlashcardSetType;
-import com.hokori.web.dto.flashcard.CourseVocabSetCreateRequest;
-import com.hokori.web.dto.flashcard.FlashcardCreateRequest;
-import com.hokori.web.dto.flashcard.FlashcardResponse;
-import com.hokori.web.dto.flashcard.FlashcardSetCreateRequest;
-import com.hokori.web.dto.flashcard.FlashcardSetResponse;
+import com.hokori.web.dto.flashcard.*;
 import com.hokori.web.entity.Flashcard;
 import com.hokori.web.entity.FlashcardSet;
 import com.hokori.web.entity.SectionsContent;
@@ -237,6 +233,83 @@ public class FlashcardSetController {
         );
         return FlashcardResponse.fromEntity(card);
     }
+
+
+    // ===== 5.1 Cập nhật metadata của 1 flashcard set (title/description/level) =====
+
+    @PutMapping("/{setId}")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(
+            summary = "Cập nhật flashcard set (title / description / level)",
+            description = """
+                - Learner: chỉ được sửa set PERSONAL của chính mình.
+                - Teacher: chỉ được sửa set COURSE_VOCAB do mình tạo.
+
+                Cập nhật metadata:
+                - title
+                - description
+                - level (JLPT)
+                """
+    )
+    public FlashcardSetResponse updateSet(
+            @PathVariable Long setId,
+            @Valid @RequestBody FlashcardSetUpdateRequest req
+    ) {
+        User current = currentUserService.getCurrentUserOrThrow();
+        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+
+        if (!set.getCreatedBy().getId().equals(current.getId())) {
+            throw new AccessDeniedException("You are not the owner of this flashcard set");
+        }
+
+        FlashcardSet updated = flashcardSetService.updateSet(
+                setId,
+                req.title(),
+                req.description(),
+                req.level()
+        );
+        return FlashcardSetResponse.fromEntity(updated);
+    }
+
+    // ===== 5.2 Cập nhật 1 flashcard trong set =====
+
+    @PutMapping("/{setId}/cards/{cardId}")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(
+            summary = "Cập nhật 1 flashcard trong set",
+            description = """
+                - Learner: chỉ sửa card trong set PERSONAL của chính mình.
+                - Teacher: chỉ sửa card trong set COURSE_VOCAB do mình tạo.
+
+                Điều kiện:
+                - Chỉ chủ sở hữu set (created_by_user_id) mới được sửa card.
+                """
+    )
+    public FlashcardResponse updateCard(
+            @PathVariable Long setId,
+            @PathVariable Long cardId,
+            @Valid @RequestBody FlashcardUpdateRequest req
+    ) {
+        User current = currentUserService.getCurrentUserOrThrow();
+        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+
+        if (!set.getCreatedBy().getId().equals(current.getId())) {
+            throw new AccessDeniedException("You are not the owner of this flashcard set");
+        }
+
+        Flashcard card = flashcardSetService.updateCardInSet(
+                setId,
+                cardId,
+                req.frontText(),
+                req.backText(),
+                req.reading(),
+                req.exampleSentence(),
+                req.orderIndex()
+        );
+        return FlashcardResponse.fromEntity(card);
+    }
+
+
 
     // ===== 6. Lấy danh sách card trong 1 set =====
 
