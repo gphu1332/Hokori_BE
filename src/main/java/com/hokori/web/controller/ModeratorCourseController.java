@@ -72,6 +72,32 @@ public class ModeratorCourseController {
     }
 
     @Operation(
+            summary = "Chi tiết course đang chờ duyệt (FULL TREE)",
+            description = "Xem toàn bộ nội dung course (chapters -> lessons -> sections -> contents) để review trước khi approve/reject"
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "Course detail with full tree",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = ApiResponse.class)
+                    )
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Course is not pending approval"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - Not MODERATOR"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Course not found")
+    })
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<ApiResponse<CourseRes>> getDetail(
+            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long id) {
+        CourseRes course = courseService.getPendingApprovalTree(id);
+        return ResponseEntity.ok(ApiResponse.success("OK", course));
+    }
+
+    @Operation(
             summary = "Approve course (publish)",
             description = "Duyệt và publish course. Chuyển status từ PENDING_APPROVAL sang PUBLISHED."
     )

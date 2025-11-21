@@ -31,6 +31,7 @@ public class CourseService {
     private final LessonRepository lessonRepo;
     private final SectionRepository sectionRepo;
     private final SectionsContentRepository contentRepo;
+    private final UserRepository userRepo;
 
     // =========================
     // COURSE
@@ -329,14 +330,14 @@ public class CourseService {
             actualMetadata = (Object[]) metadata[0];
         }
         
-        // Validate array length (should have at least 12 elements)
-        if (actualMetadata.length < 12) {
+        // Validate array length (should have at least 13 elements now with teacherName)
+        if (actualMetadata.length < 13) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
-                "Course metadata array too short: expected at least 12 elements, got " + actualMetadata.length);
+                "Course metadata array too short: expected at least 13 elements, got " + actualMetadata.length);
         }
 
         // [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
-        //  currency, coverImagePath, status, publishedAt, userId, deletedFlag]
+        //  currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
         Long id = actualMetadata[0] != null ? ((Number) actualMetadata[0]).longValue() : null;
         String title = actualMetadata[1] != null ? actualMetadata[1].toString() : null;
         String slug = actualMetadata[2] != null ? actualMetadata[2].toString() : null;
@@ -357,6 +358,7 @@ public class CourseService {
                 : Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[10]).getTime()))
                 : null;
         Long userId = actualMetadata[11] != null ? ((Number) actualMetadata[11]).longValue() : null;
+        String teacherName = actualMetadata[13] != null ? actualMetadata[13].toString() : null;
 
         CourseRes res = new CourseRes();
         res.setId(id);
@@ -372,6 +374,7 @@ public class CourseService {
         res.setStatus(courseStatus);
         res.setPublishedAt(publishedAt);
         res.setUserId(userId);
+        res.setTeacherName(teacherName);
         res.setChapters(Collections.emptyList());
         return res;
     }
@@ -780,15 +783,35 @@ public class CourseService {
     // MAPPERS
     // =========================
 
+    /**
+     * Helper method to get teacher name (displayName or username) from userId
+     */
+    private String getTeacherName(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        Optional<User> userOpt = userRepo.findById(userId);
+        if (userOpt.isEmpty()) {
+            return null;
+        }
+        User u = userOpt.get();
+        return (u.getDisplayName() != null && !u.getDisplayName().isEmpty()) 
+            ? u.getDisplayName() 
+            : u.getUsername();
+    }
+
     private CourseRes toCourseResLite(Course c) {
-        return new CourseRes(
+        CourseRes res = new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
                 c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                null, // teacherName - will set below
                 List.of()
         );
+        res.setTeacherName(getTeacherName(c.getUserId()));
+        return res;
     }
 
     private CourseRes toCourseResFull(Course c) {
@@ -807,14 +830,17 @@ public class CourseService {
                                 )).collect(Collectors.toList())
                 )).collect(Collectors.toList());
 
-        return new CourseRes(
+        CourseRes res = new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
                 c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                null, // teacherName - will set below
                 chapters
         );
+        res.setTeacherName(getTeacherName(c.getUserId()));
+        return res;
     }
 
     private CourseRes toCourseResWithChapters(Course c, List<Chapter> include) {
@@ -828,14 +854,17 @@ public class CourseService {
                                 .collect(Collectors.toList())
                 )).collect(Collectors.toList());
 
-        return new CourseRes(
+        CourseRes res = new CourseRes(
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
                 c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
                 c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                null, // teacherName - will set below
                 chapters
         );
+        res.setTeacherName(getTeacherName(c.getUserId()));
+        return res;
     }
 
     private ChapterRes toChapterResShallow(Chapter ch) {
@@ -1150,6 +1179,43 @@ public class CourseService {
         if (status != CourseStatus.PUBLISHED) {
             // Ẩn sự tồn tại nếu chưa publish
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
+        }
+        return getTree(courseId);
+    }
+
+    /**
+     * Get full tree of a course pending approval (for moderator review)
+     * Only allows access to courses with PENDING_APPROVAL status
+     */
+    @Transactional(readOnly = true)
+    public CourseRes getPendingApprovalTree(Long courseId) {
+        // Use native query to check status without loading LOB fields
+        Object[] metadata = courseRepo.findCourseMetadataById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+        
+        // Validate array length
+        if (actualMetadata.length < 10 || actualMetadata[9] == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course metadata: missing status");
+        }
+        
+        // Check status (at index 9)
+        CourseStatus status;
+        try {
+            status = CourseStatus.valueOf(actualMetadata[9].toString().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course status: " + actualMetadata[9]);
+        }
+        if (status != CourseStatus.PENDING_APPROVAL) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Course is not pending approval. Current status: " + status);
         }
         return getTree(courseId);
     }

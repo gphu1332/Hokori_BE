@@ -40,12 +40,14 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     /**
      * Get course metadata without LOB fields (avoids LOB stream error on PostgreSQL).
      * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
-               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag,
+               COALESCE(u.display_name, u.username) as teacher_name
         FROM course c
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE c.id = :id AND c.deleted_flag = false
         """, nativeQuery = true)
     Optional<Object[]> findCourseMetadataById(@Param("id") Long id);
@@ -54,12 +56,14 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
      * List courses metadata without LOB fields for pagination.
      * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
      * Uses CONCAT and LOWER functions supported by both databases.
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
-               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag,
+               COALESCE(u.display_name, u.username) as teacher_name
         FROM course c
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE c.deleted_flag = false 
           AND c.user_id = :userId
           AND (:status IS NULL OR c.status = :status)
@@ -73,12 +77,14 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     /**
      * List published courses metadata without LOB fields.
      * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
-               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag,
+               COALESCE(u.display_name, u.username) as teacher_name
         FROM course c
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE c.deleted_flag = false 
           AND c.status = 'PUBLISHED'
           AND (:level IS NULL OR c.level = :level)
@@ -101,12 +107,14 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     /**
      * List courses pending approval (for moderator).
      * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag]
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
-               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag,
+               COALESCE(u.display_name, u.username) as teacher_name
         FROM course c
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE c.deleted_flag = false 
           AND c.status = 'PENDING_APPROVAL'
         ORDER BY c.updated_at DESC

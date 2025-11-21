@@ -27,5 +27,6 @@ public class CourseRes {
     private CourseStatus status;
     private Instant publishedAt;
     private Long userId;
+    private String teacherName; // Tên giáo viên (displayName hoặc username)
     private List<ChapterRes> chapters;
 }
