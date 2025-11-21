@@ -562,9 +562,9 @@ public class CourseService {
             if (section.getStudyType() != ContentType.VOCABULARY) {
                 throw bad("FLASHCARD_SET only allowed in VOCAB sections");
             }
-            if (r.getFlashcardSetId() == null) {
-                throw bad("flashcardSetId required for FLASHCARD_SET");
-            }
+            // ❌ KHÔNG bắt buộc flashcardSetId nữa
+            // cho phép tạo content FLASHCARD_SET "placeholder" với flashcardSetId = null
+            // flashcardSetId sẽ được gán sau khi tạo flashcard set ở module flashcards.
 
         } else {
             // Không còn QUIZ_REF
