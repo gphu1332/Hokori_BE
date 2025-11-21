@@ -19,6 +19,7 @@ public final class CourseMapper {
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(), c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                null, // teacherName - will be set by service layer if needed
                 mapChaptersDeepSafe(c) // an toàn với LAZY
         );
     }
@@ -29,6 +30,7 @@ public final class CourseMapper {
                 c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(), c.getDescription(), c.getLevel(),
                 c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverImagePath(),
                 c.getStatus(), c.getPublishedAt(), c.getUserId(),
+                null, // teacherName - will be set by service layer if needed
                 List.of(toChapterResDeep(trial))
         );
     }

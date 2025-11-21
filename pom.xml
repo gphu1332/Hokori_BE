@@ -190,7 +190,6 @@
                 </configuration>
             </plugin>
             <!-- Maven Compiler Plugin - Đảm bảo Lombok annotation processor hoạt động -->
-            <!-- Spring Boot parent POM đã quản lý Lombok version, không cần specify version -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -198,6 +197,7 @@
                     <source>17</source>
                     <target>17</target>
                     <!-- Lombok annotation processor sẽ tự động được detect từ dependencies -->
+                    <!-- Spring Boot parent POM quản lý Lombok version -->
                 </configuration>
             </plugin>
         </plugins>
