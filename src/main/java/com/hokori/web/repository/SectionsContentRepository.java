@@ -23,4 +23,14 @@ public interface SectionsContentRepository extends JpaRepository<SectionsContent
         WHERE sc.id = :sectionContentId
         """)
     Optional<Long> findCourseIdBySectionContentId(@Param("sectionContentId") Long sectionContentId);
+    
+    /**
+     * Get course owner userId from sectionContentId (for teacher validation)
+     */
+    @Query("""
+        SELECT sc.section.lesson.chapter.course.userId 
+        FROM SectionsContent sc 
+        WHERE sc.id = :sectionContentId
+        """)
+    Optional<Long> findCourseOwnerIdBySectionContentId(@Param("sectionContentId") Long sectionContentId);
 }

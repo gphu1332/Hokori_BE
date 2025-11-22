@@ -11,6 +11,8 @@ import com.hokori.web.repository.FlashcardSetRepository;
 import com.hokori.web.repository.SectionsContentRepository;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.FlashcardSetService;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -124,9 +126,16 @@ public class FlashcardSetController {
         SectionsContent sectionContent = sectionsContentRepo.findById(req.getSectionContentId())
                 .orElseThrow(() -> new EntityNotFoundException("SectionsContent not found"));
 
-        // TODO (optional): kiểm tra current có phải owner của course/section này không
+        // 2. Kiểm tra teacher có phải owner của course này không
+        Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(req.getSectionContentId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+        
+        if (!courseOwnerId.equals(current.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                "You are not the owner of this course. Only the course owner can create flashcard sets for course vocabulary.");
+        }
 
-        // 2. Tạo set type COURSE_VOCAB và gắn với sectionContent
+        // 3. Tạo set type COURSE_VOCAB và gắn với sectionContent
         FlashcardSet set = flashcardSetService.createCourseVocabSet(
                 current,
                 sectionContent,
@@ -367,8 +376,36 @@ public class FlashcardSetController {
     public FlashcardSetResponse getSetBySectionContent(
             @PathVariable Long sectionContentId
     ) {
+        User current = currentUserService.getCurrentUserOrThrow();
+        
+        // Get flashcard set
         FlashcardSet set = setRepo.findBySectionContent_IdAndDeletedFlagFalse(sectionContentId)
                 .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found for this sectionContent"));
+        
+        // Validation: 
+        // - Nếu là COURSE_VOCAB: chỉ cho phép teacher (owner của course) hoặc learner (đã enroll)
+        // - Nếu là PERSONAL: chỉ cho phép người tạo
+        if (set.getType() == FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
+            // Check nếu teacher là owner của course
+            Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
+                    .orElse(null);
+            
+            // Nếu không phải course owner, có thể là learner đã enroll (nhưng nên dùng endpoint riêng)
+            // Hoặc có thể là teacher khác → không cho phép
+            if (courseOwnerId != null && !courseOwnerId.equals(current.getId())) {
+                // Không phải owner → có thể là learner, nhưng endpoint này không check enrollment
+                // Nên để FE dùng endpoint riêng cho learner
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You are not authorized to view this flashcard set. " +
+                    "If you are a learner, please use /api/learner/contents/{sectionContentId}/flashcard-set");
+            }
+        } else if (set.getType() == FlashcardSetType.PERSONAL) {
+            // PERSONAL: chỉ cho phép người tạo
+            if (!set.getCreatedBy().getId().equals(current.getId())) {
+                throw new AccessDeniedException("You are not the owner of this flashcard set");
+            }
+        }
+        
         return FlashcardSetResponse.fromEntity(set);
     }
 
