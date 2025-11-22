@@ -80,4 +80,13 @@ public class LearnerQuizController {
     public ResponseEntity<ApiResponse<List<AttemptDto>>> history(@PathVariable Long lessonId){
         return ResponseEntity.ok(ApiResponse.success("OK", service.history(lessonId, me())));
     }
+
+    @Operation(
+            summary = "Xem thông tin quiz trước khi làm",
+            description = "Lấy metadata của quiz (title, description, số câu hỏi, thời gian, điểm đậu). Yêu cầu đã enroll vào course."
+    )
+    @GetMapping("/info")
+    public ResponseEntity<ApiResponse<com.hokori.web.dto.quiz.QuizInfoDto>> getQuizInfo(@PathVariable Long lessonId){
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getQuizInfo(lessonId, me())));
+    }
 }

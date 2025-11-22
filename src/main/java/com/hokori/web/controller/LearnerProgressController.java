@@ -1,5 +1,6 @@
 package com.hokori.web.controller;
 
+import com.hokori.web.dto.course.LessonRes;
 import com.hokori.web.dto.progress.*;
 import com.hokori.web.service.LearnerProgressService;
 import com.hokori.web.service.CurrentUserService;
@@ -64,5 +65,24 @@ public class LearnerProgressController {
     public ContentProgressRes updateProgress(@PathVariable Long contentId,
                                              @RequestBody ContentProgressUpsertReq req) {
         return progressService.updateContentProgress(uid(), contentId, req);
+    }
+
+    @Operation(
+            summary = "Chi tiết lesson với nội dung đầy đủ",
+            description = "Xem lesson detail với sections và contents (filePath, richText). Chỉ được phép nếu đã enroll vào course."
+    )
+    @GetMapping("/lessons/{lessonId}/detail")
+    public LessonRes getLessonDetail(@PathVariable Long lessonId) {
+        return progressService.getLessonDetail(uid(), lessonId);
+    }
+
+    @Operation(
+            summary = "Lấy flashcard set của section content trong khóa học",
+            description = "Lấy flashcard set (COURSE_VOCAB) gắn với section content. Chỉ được phép nếu đã enroll vào course."
+    )
+    @GetMapping("/contents/{sectionContentId}/flashcard-set")
+    public com.hokori.web.dto.flashcard.FlashcardSetResponse getFlashcardSet(
+            @PathVariable Long sectionContentId) {
+        return progressService.getFlashcardSetForContent(uid(), sectionContentId);
     }
 }

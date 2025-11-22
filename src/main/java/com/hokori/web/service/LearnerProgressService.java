@@ -1,6 +1,8 @@
 package com.hokori.web.service;
 
 import com.hokori.web.Enum.CourseStatus;
+import com.hokori.web.dto.course.*;
+import com.hokori.web.dto.flashcard.FlashcardSetResponse;
 import com.hokori.web.dto.progress.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
@@ -26,6 +28,8 @@ public class LearnerProgressService {
     private final SectionRepository sectionRepo;
     private final SectionsContentRepository contentRepo;
     private final UserContentProgressRepository ucpRepo;
+    private final QuizRepository quizRepo;
+    private final FlashcardSetRepository flashcardSetRepo;
 
     // ================= Enrollment =================
     
@@ -277,5 +281,94 @@ public class LearnerProgressService {
         long completed = (total == 0) ? 0 : ucpRepo.countCompletedInList(e.getId(), allTrackableContentIds);
         int percent = (total == 0) ? 100 : (int)Math.round(100.0 * completed / total);
         e.setProgressPercent(percent);
+    }
+
+    // ============== Get Lesson Detail with Full Content (for enrolled learners) ==============
+    /**
+     * Get lesson detail with sections and contents (filePath, richText) for enrolled learner.
+     * Only accessible if learner is enrolled in the course.
+     */
+    @Transactional(readOnly = true)
+    public LessonRes getLessonDetail(Long userId, Long lessonId) {
+        // Get courseId from lesson
+        Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+
+        // Check enrollment
+        Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled in this course"));
+
+        // Get lesson entity
+        Lesson lesson = lessonRepo.findById(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+
+        // Get sections with contents
+        List<Section> sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId);
+        List<SectionRes> sectionResList = new ArrayList<>(sections.size());
+
+        for (Section section : sections) {
+            List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(section.getId());
+            List<ContentRes> contentResList = new ArrayList<>(contents.size());
+
+            for (SectionsContent content : contents) {
+                contentResList.add(new ContentRes(
+                        content.getId(),
+                        content.getOrderIndex(),
+                        content.getContentFormat(),
+                        content.isPrimaryContent(),
+                        content.getFilePath(),
+                        content.getRichText(),
+                        content.getFlashcardSetId()
+                ));
+            }
+
+            sectionResList.add(new SectionRes(
+                    section.getId(),
+                    section.getTitle(),
+                    section.getOrderIndex(),
+                    section.getStudyType(),
+                    section.getFlashcardSetId(),
+                    contentResList
+            ));
+        }
+
+        // Get quizId if exists
+        Long quizId = quizRepo.findByLesson_Id(lessonId)
+                .map(Quiz::getId)
+                .orElse(null);
+
+        // Build and return LessonRes
+        return new LessonRes(
+                lesson.getId(),
+                lesson.getTitle(),
+                lesson.getOrderIndex(),
+                lesson.getTotalDurationSec(),
+                sectionResList,
+                quizId
+        );
+    }
+
+    // ============== Get Flashcard Set for Course Content (for enrolled learners) ==============
+    /**
+     * Get flashcard set (COURSE_VOCAB) attached to a section content.
+     * Only accessible if learner is enrolled in the course.
+     */
+    @Transactional(readOnly = true)
+    public FlashcardSetResponse getFlashcardSetForContent(Long userId, Long sectionContentId) {
+        // Get courseId from sectionContent
+        Long courseId = contentRepo.findCourseIdBySectionContentId(sectionContentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section content not found"));
+
+        // Check enrollment
+        enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                    "You must enroll in this course to access flashcard sets"));
+
+        // Get flashcard set
+        FlashcardSet set = flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalse(sectionContentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                    "Flashcard set not found for this section content"));
+
+        return FlashcardSetResponse.fromEntity(set);
     }
 }

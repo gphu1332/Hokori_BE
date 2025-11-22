@@ -15,4 +15,6 @@ public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, Long> 
         select count(q) from Question q where q.quiz.id = :quizId
     """)
     int countQuestions(@Param("quizId") Long quizId);
+    
+    long countByUserIdAndQuiz_Id(Long userId, Long quizId);
 }

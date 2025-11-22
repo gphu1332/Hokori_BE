@@ -5,8 +5,10 @@ import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -24,7 +26,25 @@ public class LearnerQuizService {
     private final QuestionRepository questionRepo;
     private final OptionRepository optionRepo;
 
+    /**
+     * Helper method to check enrollment and get courseId from lessonId
+     */
+    private Long checkEnrollmentAndGetCourseId(Long lessonId, Long userId) {
+        Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
+                .orElseThrow(() -> new EntityNotFoundException("Lesson not found"));
+        
+        if (!enrollRepo.existsByUserIdAndCourseId(userId, courseId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                "You must enroll in this course before taking the quiz");
+        }
+        
+        return courseId;
+    }
+
     public AttemptDto startAttempt(Long lessonId, Long userId, StartAttemptReq req) {
+        // Check enrollment first
+        checkEnrollmentAndGetCourseId(lessonId, userId);
+        
         // Use native query to avoid LOB stream error
         var quizMetadataOpt = quizRepo.findQuizMetadataByLessonId(lessonId);
         if (quizMetadataOpt.isEmpty()) {
@@ -62,6 +82,13 @@ public class LearnerQuizService {
     public PlayQuestionDto nextQuestion(Long attemptId, Long userId) {
         QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
+        
+        // Check enrollment via quiz's lesson
+        Quiz quiz = a.getQuiz();
+        if (quiz.getLesson() != null) {
+            checkEnrollmentAndGetCourseId(quiz.getLesson().getId(), userId);
+        }
+        
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
             throw new RuntimeException("Attempt not in progress");
 
@@ -118,6 +145,14 @@ public class LearnerQuizService {
     public void answer(Long attemptId, Long userId, Long questionId, AnswerReq req) {
         QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
+        
+        // Check enrollment via quiz's lesson
+        Quiz quiz = a.getQuiz();
+        Lesson lesson = quiz.getLesson();
+        if (lesson != null) {
+            checkEnrollmentAndGetCourseId(lesson.getId(), userId);
+        }
+        
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
             throw new RuntimeException("Attempt not in progress");
 
@@ -142,6 +177,14 @@ public class LearnerQuizService {
     public AttemptDto submit(Long attemptId, Long userId) {
         QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
+        
+        // Check enrollment via quiz's lesson
+        Quiz quiz = a.getQuiz();
+        Lesson lesson = quiz.getLesson();
+        if (lesson != null) {
+            checkEnrollmentAndGetCourseId(lesson.getId(), userId);
+        }
+        
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
             throw new RuntimeException("Attempt already submitted");
 
@@ -173,6 +216,13 @@ public class LearnerQuizService {
     public AttemptDetailDto detail(Long attemptId, Long userId) {
         QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
+        
+        // Check enrollment via quiz's lesson
+        Quiz quiz = a.getQuiz();
+        Lesson lesson = quiz.getLesson();
+        if (lesson != null) {
+            checkEnrollmentAndGetCourseId(lesson.getId(), userId);
+        }
 
         var answers = answerRepo.findByAttempt_Id(a.getId());
         Map<Long, QuizAnswer> map = new HashMap<>();
@@ -199,12 +249,57 @@ public class LearnerQuizService {
 
     @Transactional(readOnly = true)
     public List<AttemptDto> history(Long lessonId, Long userId) {
+        // Check enrollment first
+        checkEnrollmentAndGetCourseId(lessonId, userId);
+        
         Quiz quiz = quizRepo.findByLesson_Id(lessonId)
                 .orElseThrow(() -> new EntityNotFoundException("Quiz not found"));
         return attemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quiz.getId())
                 .stream()
                 .map(x -> toDto(x, quiz.getTitle()))
                 .toList();
+    }
+    
+    /**
+     * Get quiz info (metadata) for a lesson - requires enrollment
+     */
+    @Transactional(readOnly = true)
+    public com.hokori.web.dto.quiz.QuizInfoDto getQuizInfo(Long lessonId, Long userId) {
+        // Check enrollment first
+        checkEnrollmentAndGetCourseId(lessonId, userId);
+        
+        // Use native query to avoid LOB stream error
+        var quizMetadataOpt = quizRepo.findQuizMetadataByLessonId(lessonId);
+        if (quizMetadataOpt.isEmpty()) {
+            throw new EntityNotFoundException("Quiz not found for lesson " + lessonId);
+        }
+        
+        Object[] qMeta = quizMetadataOpt.get();
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Metadata: [id, lessonId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
+        Long quizId = ((Number) actualQMeta[0]).longValue();
+        String title = actualQMeta[2] != null ? actualQMeta[2].toString() : null;
+        String description = actualQMeta[3] != null ? actualQMeta[3].toString() : null;
+        Integer totalQuestions = actualQMeta[4] != null ? ((Number) actualQMeta[4]).intValue() : null;
+        Integer timeLimitSec = actualQMeta[5] != null ? ((Number) actualQMeta[5]).intValue() : null;
+        Integer passScorePercent = actualQMeta[6] != null ? ((Number) actualQMeta[6]).intValue() : null;
+        
+        // Get attempt history count
+        long attemptCount = attemptRepo.countByUserIdAndQuiz_Id(userId, quizId);
+        
+        return new com.hokori.web.dto.quiz.QuizInfoDto(
+                quizId,
+                title,
+                description,
+                totalQuestions,
+                timeLimitSec,
+                passScorePercent,
+                attemptCount
+        );
     }
 
     private AttemptDto toDto(QuizAttempt a, String quizTitle) {
