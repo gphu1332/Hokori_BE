@@ -135,8 +135,12 @@ public class FlashcardSetService {
             );
         }
 
-        // Nếu xoá cứng:
-        cardRepo.delete(card);
+        // Soft delete thay vì hard delete để tránh foreign key constraint violation
+        // (flashcard có thể được reference từ user_flashcard_progress)
+        if (!card.isDeletedFlag()) {
+            card.setDeletedFlag(true);
+            cardRepo.save(card);
+        }
     }
 
     @Transactional
