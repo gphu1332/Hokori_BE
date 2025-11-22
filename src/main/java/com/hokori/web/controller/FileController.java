@@ -54,7 +54,14 @@ public class FileController {
             FileStorage fileStorage = fileStorageService.getFile(filePath);
             
             if (fileStorage == null) {
-                log.warn("File not found: {}", filePath);
+                // Log as debug for missing files (common for old files uploaded before DB migration)
+                // Only log as warn for new uploads (files that should exist)
+                if (filePath.startsWith("courses/") && filePath.contains("/cover/")) {
+                    // Cover images might be from old filesystem storage
+                    log.debug("Cover image not found in database (may be from old storage): {}", filePath);
+                } else {
+                    log.warn("File not found: {}", filePath);
+                }
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found: " + filePath);
             }
 
