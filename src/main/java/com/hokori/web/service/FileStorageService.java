@@ -23,21 +23,46 @@ public class FileStorageService {
      */
     public String store(MultipartFile file, String subFolder) {
         try {
+            // Validate file
+            if (file == null || file.isEmpty()) {
+                throw new IllegalArgumentException("File is empty or null");
+            }
+            
+            // Validate file size (max 512MB as configured in application.yml)
+            long maxSize = 512L * 1024 * 1024; // 512MB
+            if (file.getSize() > maxSize) {
+                throw new IllegalArgumentException("File size exceeds maximum limit of 512MB");
+            }
+            
             // Generate unique file name
             String original = file.getOriginalFilename();
             String ext = "";
             if (original != null && original.contains(".")) {
                 ext = original.substring(original.lastIndexOf("."));
             }
-            String fileName = UUID.randomUUID() + ext;
-            String filePath = subFolder + "/" + fileName;
-
-            // Check if file already exists
-            if (fileStorageRepository.existsByFilePathAndDeletedFlagFalse(filePath)) {
-                // If exists, generate new UUID
-                fileName = UUID.randomUUID() + ext;
+            
+            // Retry loop to ensure unique filePath (handle race condition)
+            String filePath;
+            int maxRetries = 10;
+            int retryCount = 0;
+            
+            do {
+                String fileName = UUID.randomUUID() + ext;
                 filePath = subFolder + "/" + fileName;
-            }
+                retryCount++;
+                
+                // Check if file already exists
+                if (fileStorageRepository.existsByFilePathAndDeletedFlagFalse(filePath)) {
+                    if (retryCount >= maxRetries) {
+                        throw new RuntimeException("Failed to generate unique file path after " + maxRetries + " attempts");
+                    }
+                    // Retry with new UUID
+                    continue;
+                }
+                
+                // File path is unique, break loop
+                break;
+            } while (retryCount < maxRetries);
 
             // Read file bytes
             byte[] fileData = file.getBytes();
@@ -58,8 +83,10 @@ public class FileStorageService {
             fileStorageRepository.save(fileStorage);
 
             return filePath;
+        } catch (IllegalArgumentException e) {
+            throw e; // Re-throw validation errors
         } catch (IOException e) {
-            throw new RuntimeException("Cannot store file", e);
+            throw new RuntimeException("Cannot store file: " + e.getMessage(), e);
         }
     }
 

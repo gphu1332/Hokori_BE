@@ -177,6 +177,15 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is deleted");
         }
 
+        // Xóa avatar cũ nếu có (soft delete)
+        if (user.getAvatarUrl() != null && !user.getAvatarUrl().isEmpty()) {
+            // Extract filePath from avatarUrl (remove /files/ prefix if exists)
+            String oldFilePath = user.getAvatarUrl().startsWith("/files/")
+                ? user.getAvatarUrl().substring("/files/".length())
+                : user.getAvatarUrl();
+            fileStorageService.deleteFile(oldFilePath);
+        }
+
         // lưu vào thư mục uploads/avatars/{userId}
         String subFolder = "avatars/" + userId;
         String relativePath = fileStorageService.store(file, subFolder);

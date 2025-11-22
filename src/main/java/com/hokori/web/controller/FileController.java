@@ -12,6 +12,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+
 @Slf4j
 @RestController
 @RequestMapping("/files")
@@ -47,6 +50,14 @@ public class FileController {
             // Remove query string if exists
             if (filePath.contains("?")) {
                 filePath = filePath.substring(0, filePath.indexOf("?"));
+            }
+            
+            // Decode URL encoding (e.g., %20 -> space, %2F -> /)
+            try {
+                filePath = URLDecoder.decode(filePath, StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                log.warn("Failed to decode filePath: {}", filePath, e);
+                // Continue with original filePath if decoding fails
             }
             
             log.debug("Looking for file with path: {}", filePath);
