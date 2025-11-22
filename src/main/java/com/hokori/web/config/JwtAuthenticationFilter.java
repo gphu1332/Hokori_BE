@@ -401,6 +401,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                path.startsWith("/swagger-ui/") ||
                path.equals("/swagger-ui.html") ||
                path.startsWith("/api-docs/") ||
-               path.equals("/health");
+               path.equals("/health") ||
+               path.startsWith("/files/"); // Skip JWT filter for file serving (public endpoint)
     }
 }
