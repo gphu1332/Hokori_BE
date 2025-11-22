@@ -35,8 +35,8 @@ public class FileStorage extends BaseEntity {
     /**
      * Binary data của file
      * PostgreSQL sẽ dùng BYTEA type
+     * Note: Không dùng @Lob với PostgreSQL BYTEA, chỉ cần columnDefinition
      */
-    @Lob
     @Column(name = "file_data", nullable = false, columnDefinition = "BYTEA")
     private byte[] fileData;
 
