@@ -73,6 +73,21 @@ public class LearnerProgressService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Course is not published");
         }
         
+        // Check if course is free or paid
+        // Metadata: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
+        Long priceCents = actualMetadata[5] != null ? ((Number) actualMetadata[5]).longValue() : null;
+        Long discountedPriceCents = actualMetadata[6] != null ? ((Number) actualMetadata[6]).longValue() : null;
+        
+        // Determine final price (use discounted price if available, otherwise regular price)
+        Long finalPrice = (discountedPriceCents != null && discountedPriceCents > 0) ? discountedPriceCents : priceCents;
+        
+        // If course has a price > 0, user must pay first (enroll via payment flow)
+        if (finalPrice != null && finalPrice > 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                "This course requires payment. Please add it to cart and checkout.");
+        }
+        
+        // Course is free (priceCents == null or priceCents == 0), allow direct enrollment
         // Create enrollment
         Enrollment enrollment = Enrollment.builder()
                 .userId(userId)
