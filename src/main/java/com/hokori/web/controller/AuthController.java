@@ -93,7 +93,7 @@ public class AuthController {
     // ===========================
     // BACKWARD-COMPATIBLE (OLD)
     // ===========================
-    @Deprecatded
+    @Deprecated
     @PostMapping("/register")
     @Operation(summary = "Register new user (deprecated)",
             description = "Vui lòng dùng /register/learner hoặc /register/teacher")
