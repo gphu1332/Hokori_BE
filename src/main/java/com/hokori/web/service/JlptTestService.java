@@ -1,6 +1,7 @@
 // com.hokori.web.service.JlptTestService.java
 package com.hokori.web.service;
 
+import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.dto.jlpt.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
@@ -26,7 +27,7 @@ public class JlptTestService {
         JlptTest test = JlptTest.builder()
                 .event(event)
                 .createdBy(moderator)
-                .level(req.getLevel())
+                .level(req.getLevel ())
                 .durationMin(req.getDurationMin())
                 .totalScore(req.getTotalScore())
                 .result(req.getResultNote())
@@ -264,4 +265,31 @@ public class JlptTestService {
 
         optionRepo.delete(o);   // Option không có deletedFlag nên xoá cứng
     }
+
+
+    @Transactional
+    public JlptTestStartResponse startTest(Long testId, Long userId) {
+        // 1. Lấy test
+        JlptTest test = testRepo.findById(testId)
+                .orElseThrow(() -> new EntityNotFoundException("Test not found"));
+
+        // 2. Xoá toàn bộ câu trả lời cũ của user cho test này (nếu có)
+        //    -> giúp user "enroll / thi lại" 1 cách sạch sẽ
+        answerRepo.deleteByUser_IdAndTest_Id(userId, testId);
+
+        // 3. Lấy full câu hỏi + option (tái sử dụng method sẵn có)
+        List<JlptQuestionWithOptionsResponse> questions = getQuestionsWithOptions(testId);
+
+        // 4. Trả dữ liệu để FE render đề + bắt đầu đếm giờ
+        return JlptTestStartResponse.builder()
+                .testId(testId)
+                .userId(userId)
+                .level(JLPTLevel.valueOf(test.getLevel()))
+                .durationMin(test.getDurationMin())
+                .totalScore(test.getTotalScore())
+                .startedAt(java.time.Instant.now())
+                .questions(questions)
+                .build();
+    }
+
 }
