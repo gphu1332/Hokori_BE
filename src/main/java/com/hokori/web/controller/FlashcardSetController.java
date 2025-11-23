@@ -3,10 +3,7 @@ package com.hokori.web.controller;
 
 import com.hokori.web.Enum.FlashcardSetType;
 import com.hokori.web.dto.flashcard.*;
-import com.hokori.web.entity.Flashcard;
-import com.hokori.web.entity.FlashcardSet;
-import com.hokori.web.entity.SectionsContent;
-import com.hokori.web.entity.User;
+import com.hokori.web.entity.*;
 import com.hokori.web.repository.FlashcardSetRepository;
 import com.hokori.web.repository.SectionsContentRepository;
 import com.hokori.web.service.CurrentUserService;
@@ -483,5 +480,73 @@ public class FlashcardSetController {
         flashcardSetService.softDeleteSet(setId);
     }
 
+    // ===== NEW: Dashboard =====
+    @GetMapping("/dashboard/me")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(
+            summary = "Dashboard flashcard của user hiện tại",
+            description = """
+                    Trả về số bộ thẻ, tổng số thẻ, số thẻ đã ôn hôm nay và chuỗi ngày học.
+                    Có thể filter theo cấp độ JLPT của bộ thẻ.
+                    
+                    Ví dụ:
+                    GET /api/flashcards/sets/dashboard/me
+                    GET /api/flashcards/sets/dashboard/me?level=N5
+                    """
+    )
+    public FlashcardDashboardResponse getMyFlashcardDashboard(
+            @RequestParam(required = false)
+            @Parameter(description = "Lọc theo JLPT level (ví dụ N5, N4...). Để trống = tất cả cấp độ.")
+            String level
+    ) {
+        Long userId = currentUserService.getCurrentUserId();
+        return flashcardSetService.getDashboard(userId, level);
+    }
 
+    // ===== NEW: Review 1 card trong set =====
+    @PostMapping("/{setId}/cards/{cardId}/review")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(
+            summary = "Đánh dấu đã ôn 1 flashcard trong set",
+            description = """
+                    FE gọi API này mỗi khi user hoàn thành ôn 1 thẻ.
+                    Hệ thống sẽ:
+                    - Tăng review_count cho thẻ đó
+                    - Cập nhật last_reviewed_at = now
+                    - Nếu mastered=true trong body thì đánh dấu đã master
+                    """
+    )
+    public ReviewCardResponse reviewCard(
+            @PathVariable Long setId,
+            @PathVariable Long cardId,
+            @RequestBody(required = false) ReviewCardRequest req
+    ) {
+        User current = currentUserService.getCurrentUserOrThrow();
+
+        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        Flashcard card = set.getCards().stream()
+                .filter(c -> c.getId().equals(cardId))
+                .findFirst()
+                .orElseThrow(() -> new EntityNotFoundException("Flashcard not in set"));
+
+        // 1) PERSONAL: chỉ cho owner
+        if (set.getType() == FlashcardSetType.PERSONAL &&
+                !set.getCreatedBy().getId().equals(current.getId())) {
+            throw new AccessDeniedException("You are not the owner of this flashcard set");
+        }
+
+        // 2) COURSE_VOCAB: hiện tại cho bất kỳ user login.
+        // Sau này nếu cần check đã mua course thì thêm logic ở đây:
+        // if (set.getType() == FlashcardSetType.COURSE_VOCAB) { ... }
+
+        boolean mastered = req != null && Boolean.TRUE.equals(req.mastered());
+
+        UserFlashcardProgress progress =
+                flashcardSetService.markCardReviewed(current, card, mastered);
+
+        return new ReviewCardResponse(
+                progress.getReviewCount(),
+                progress.isMastered()
+        );
+    }
 }

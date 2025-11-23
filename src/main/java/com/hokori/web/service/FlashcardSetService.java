@@ -1,14 +1,13 @@
 // com.hokori.web.service.FlashcardSetService.java
 package com.hokori.web.service;
 
+import com.hokori.web.Enum.FlashcardProgressStatus;
 import com.hokori.web.Enum.FlashcardSetType;
-import com.hokori.web.Enum.JLPTLevel;
-import com.hokori.web.entity.Flashcard;
-import com.hokori.web.entity.FlashcardSet;
-import com.hokori.web.entity.SectionsContent;
-import com.hokori.web.entity.User;
+import com.hokori.web.dto.flashcard.FlashcardDashboardResponse;
+import com.hokori.web.entity.*;
 import com.hokori.web.repository.FlashcardRepository;
 import com.hokori.web.repository.FlashcardSetRepository;
+import com.hokori.web.repository.UserFlashcardProgressRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,7 +15,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +29,11 @@ public class FlashcardSetService {
 
     private final FlashcardSetRepository setRepo;
     private final FlashcardRepository cardRepo;
+    private final UserFlashcardProgressRepository progressRepo;
+
+    // =======================
+    // CREATE SET
+    // =======================
 
     @Transactional
     public FlashcardSet createPersonalSet(User owner, String title, String description, String level) {
@@ -59,6 +69,10 @@ public class FlashcardSetService {
                 .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found"));
     }
 
+    // =======================
+    // CARD CRUD
+    // =======================
+
     @Transactional
     public Flashcard addCardToSet(Long setId,
                                   String front,
@@ -88,14 +102,11 @@ public class FlashcardSetService {
                                   String description,
                                   String level) {
         FlashcardSet set = getSetOrThrow(setId);
-
         set.setTitle(title);
         set.setDescription(description);
         set.setLevel(level);
-
-        return set;
+        return set; // entity managed, auto flush
     }
-
 
     public Flashcard updateCardInSet(Long setId,
                                      Long cardId,
@@ -135,8 +146,7 @@ public class FlashcardSetService {
             );
         }
 
-        // Soft delete thay vì hard delete để tránh foreign key constraint violation
-        // (flashcard có thể được reference từ user_flashcard_progress)
+        // Soft delete để tránh lỗi FK (user_flashcard_progress đang tham chiếu)
         if (!card.isDeletedFlag()) {
             card.setDeletedFlag(true);
             cardRepo.save(card);
@@ -147,7 +157,6 @@ public class FlashcardSetService {
     public void softDeleteSet(Long setId) {
         FlashcardSet set = getSetOrThrow(setId);
 
-        // Nếu đã xoá rồi thì bỏ qua
         if (set.isDeletedFlag()) {
             return;
         }
@@ -155,11 +164,100 @@ public class FlashcardSetService {
         // 1. Soft delete set
         set.setDeletedFlag(true);
 
-        // 2. Soft delete các card thuộc set (nếu entity Flashcard có deletedFlag)
+        // 2. Soft delete các card thuộc set
         if (set.getCards() != null) {
             for (Flashcard card : set.getCards()) {
                 card.setDeletedFlag(true);
             }
         }
+    }
+
+    // =======================
+    // DASHBOARD
+    // =======================
+
+    public FlashcardDashboardResponse getDashboard(Long userId, String level) {
+        ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
+        LocalDate today = LocalDate.now(zone);
+
+        // 1) Đếm số set user tạo
+        long totalSets = (level == null || level.isBlank())
+                ? setRepo.countByCreatedBy_IdAndDeletedFlagFalse(userId)
+                : setRepo.countByCreatedBy_IdAndLevelAndDeletedFlagFalse(userId, level);
+
+        // 2) Đếm số card trong các set đó
+        long totalCards = (level == null || level.isBlank())
+                ? cardRepo.countBySet_CreatedBy_IdAndSet_DeletedFlagFalseAndDeletedFlagFalse(userId)
+                : cardRepo.countBySet_CreatedBy_IdAndSet_LevelAndSet_DeletedFlagFalseAndDeletedFlagFalse(userId, level);
+
+        // 3) Lấy toàn bộ progress của user (filter theo level nếu có)
+        List<UserFlashcardProgress> progresses = (level == null || level.isBlank())
+                ? progressRepo.findByUser_Id(userId)
+                : progressRepo.findByUser_IdAndFlashcard_Set_Level(userId, level);
+
+        // 3.1) Đã ôn hôm nay
+        long reviewedToday = progresses.stream()
+                .filter(p -> p.getLastReviewedAt() != null)
+                .map(p -> LocalDateTime.ofInstant(p.getLastReviewedAt(), zone).toLocalDate())
+                .filter(d -> d.equals(today))
+                .count();
+
+        // 3.2) Chuỗi ngày học
+        int streakDays = calculateStreakDaysFromProgresses(progresses, today, zone);
+
+        return new FlashcardDashboardResponse(
+                totalSets,
+                totalCards,
+                reviewedToday,
+                streakDays
+        );
+    }
+
+    private int calculateStreakDaysFromProgresses(
+            List<UserFlashcardProgress> progresses,
+            LocalDate today,
+            ZoneId zone
+    ) {
+        if (progresses.isEmpty()) return 0;
+
+        // Tập các ngày user có ôn thẻ
+        Set<LocalDate> days = progresses.stream()
+                .filter(p -> p.getLastReviewedAt() != null)
+                .map(p -> LocalDateTime.ofInstant(p.getLastReviewedAt(), zone).toLocalDate())
+                .collect(Collectors.toSet());
+
+        int streak = 0;
+        LocalDate d = today;
+        while (days.contains(d)) {
+            streak++;
+            d = d.minusDays(1);
+        }
+        return streak;
+    }
+
+    // =======================
+    // REVIEW CARD
+    // =======================
+
+    public UserFlashcardProgress markCardReviewed(User user, Flashcard card, boolean mastered) {
+        UserFlashcardProgress p = progressRepo
+                .findByUser_IdAndFlashcard_Id(user.getId(), card.getId())
+                .orElseGet(() -> UserFlashcardProgress.builder()
+                        .user(user)
+                        .flashcard(card)
+                        .build());
+
+        p.setReviewCount(p.getReviewCount() + 1);
+        Instant now = Instant.now();
+        p.setLastReviewedAt(now);
+
+        if (mastered) {
+            p.setStatus(FlashcardProgressStatus.MASTERED);
+            if (p.getMasteredAt() == null) {
+                p.setMasteredAt(now);
+            }
+        }
+
+        return progressRepo.save(p);
     }
 }

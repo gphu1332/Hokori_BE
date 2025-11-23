@@ -13,7 +13,11 @@ import java.time.Instant;
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_user_flashcard_progress_user_card",
                 columnNames = {"user_id", "flashcard_id"}
-        )
+        ),
+        indexes = {
+                @Index(name = "ix_ufp_user", columnList = "user_id"),
+                @Index(name = "ix_ufp_last_reviewed", columnList = "last_reviewed_at")
+        }
 )
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
@@ -23,20 +27,25 @@ public class UserFlashcardProgress {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Ai đang học thẻ này
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id",
-            foreignKey = @ForeignKey(name = "fk_ufp_user"))
+    @JoinColumn(
+            name = "user_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_ufp_user")
+    )
     private User user;
 
-    // Flashcard nào
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "flashcard_id",
-            foreignKey = @ForeignKey(name = "fk_ufp_flashcard"))
+    @JoinColumn(
+            name = "flashcard_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_ufp_flashcard")
+    )
     private Flashcard flashcard;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
+    @Builder.Default
     private FlashcardProgressStatus status = FlashcardProgressStatus.NEW;
 
     @Column(name = "mastered_at")
@@ -46,6 +55,7 @@ public class UserFlashcardProgress {
     private Instant lastReviewedAt;
 
     @Column(name = "review_count", nullable = false)
+    @Builder.Default
     private int reviewCount = 0;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -64,5 +74,11 @@ public class UserFlashcardProgress {
     @PreUpdate
     void preUpdate() {
         updatedAt = Instant.now();
+    }
+
+
+    // convenience method, không map DB
+    public boolean isMastered() {
+        return this.status == FlashcardProgressStatus.MASTERED;
     }
 }

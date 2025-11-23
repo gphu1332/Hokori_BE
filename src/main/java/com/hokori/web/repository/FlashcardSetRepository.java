@@ -15,4 +15,8 @@ public interface FlashcardSetRepository extends JpaRepository<FlashcardSet, Long
     List<FlashcardSet> findByCreatedBy_IdAndTypeAndDeletedFlagFalse(Long userId, FlashcardSetType type);
 
     Optional<FlashcardSet> findBySectionContent_IdAndDeletedFlagFalse(Long sectionContentId);
+
+    long countByCreatedBy_IdAndDeletedFlagFalse(Long userId);
+
+    long countByCreatedBy_IdAndLevelAndDeletedFlagFalse(Long userId, String level);
 }
