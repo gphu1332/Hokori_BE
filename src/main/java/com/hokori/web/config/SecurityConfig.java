@@ -33,11 +33,12 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authz -> authz
-                // OPTIONS requests must be first
+                // OPTIONS requests must be first (for CORS preflight)
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 
                 // ============================================
                 // PUBLIC ENDPOINTS - No authentication required
+                // IMPORTANT: These must come BEFORE role-based and authenticated endpoints
                 // ============================================
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/ai/**").permitAll()
