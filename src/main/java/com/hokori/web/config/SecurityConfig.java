@@ -33,9 +33,9 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authz -> authz
-
-                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
+                // OPTIONS requests must be first
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                
                 // ============================================
                 // PUBLIC ENDPOINTS - No authentication required
                 // ============================================

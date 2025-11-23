@@ -20,7 +20,9 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         
-        // Allow all origins for simplicity
+        // Allow all origins - use addAllowedOriginPattern when credentials are enabled
+        // Note: When setAllowCredentials(true), cannot use addAllowedOrigin("*")
+        // Must use addAllowedOriginPattern("*") instead
         configuration.addAllowedOriginPattern("*");
         
         // Allow all HTTP methods
@@ -29,7 +31,8 @@ public class CorsConfig {
         // Allow all headers
         configuration.addAllowedHeader("*");
         
-        // Allow credentials
+        // Allow credentials (cookies, authorization headers)
+        // IMPORTANT: When credentials are enabled, must use addAllowedOriginPattern instead of addAllowedOrigin
         configuration.setAllowCredentials(true);
         
         // Cache preflight for 1 hour
