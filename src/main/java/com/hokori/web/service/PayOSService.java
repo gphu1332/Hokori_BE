@@ -20,17 +20,21 @@ import java.util.Base64;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class PayOSService {
     
     private final PayOSConfig payOSConfig;
-    
-    @Qualifier("payOSRestTemplate")
     private final RestTemplate restTemplate;
-    
-    @Qualifier("payOSObjectMapper")
     private final ObjectMapper objectMapper;
+    
+    public PayOSService(
+            PayOSConfig payOSConfig,
+            @Qualifier("payOSRestTemplate") RestTemplate restTemplate,
+            @Qualifier("payOSObjectMapper") ObjectMapper objectMapper) {
+        this.payOSConfig = payOSConfig;
+        this.restTemplate = restTemplate;
+        this.objectMapper = objectMapper;
+    }
     
     /**
      * Tạo payment link từ PayOS
@@ -87,9 +91,9 @@ public class PayOSService {
             
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 PayOSCreatePaymentResponse body = response.getBody();
-                if (body.error() != null && body.error() != 0) {
-                    log.error("PayOS API error: {} - {}", body.error(), body.message());
-                    throw new RuntimeException("PayOS API error: " + body.message());
+                if (body.getError() != null && body.getError() != 0) {
+                    log.error("PayOS API error: {} - {}", body.getError(), body.getMessage());
+                    throw new RuntimeException("PayOS API error: " + body.getMessage());
                 }
                 return body;
             } else {
@@ -113,7 +117,7 @@ public class PayOSService {
             }
             
             // Tạo data string để verify
-            PayOSWebhookData.PayOSWebhookPaymentData data = webhookData.data();
+            PayOSWebhookData.PayOSWebhookPaymentData data = webhookData.getData();
             if (data == null) {
                 log.error("Webhook data is null");
                 return false;
@@ -124,10 +128,10 @@ public class PayOSService {
             
             String dataString = String.format(
                     "amount=%d&cancelUrl=%s&description=%s&orderCode=%d&returnUrl=%s",
-                    data.amount(),
+                    data.getAmount(),
                     cancelUrl,
-                    data.description() != null ? data.description() : "",
-                    data.orderCode(),
+                    data.getDescription() != null ? data.getDescription() : "",
+                    data.getOrderCode(),
                     returnUrl
             );
             
@@ -142,7 +146,7 @@ public class PayOSService {
             String calculatedSignature = Base64.getEncoder().encodeToString(hash);
             
             // So sánh signature
-            return calculatedSignature.equals(webhookData.signature());
+            return calculatedSignature.equals(webhookData.getSignature());
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             log.error("Error verifying webhook signature", e);
             return false;

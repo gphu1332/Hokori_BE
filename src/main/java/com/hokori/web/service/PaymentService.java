@@ -8,8 +8,8 @@ import com.hokori.web.dto.cart.CartResponse;
 import com.hokori.web.dto.payment.*;
 import com.hokori.web.entity.Payment;
 import com.hokori.web.repository.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 @Transactional
 public class PaymentService {
@@ -35,6 +34,25 @@ public class PaymentService {
     private final EnrollmentRepository enrollmentRepo;
     private final ObjectMapper objectMapper;
     
+    public PaymentService(
+            PayOSService payOSService,
+            CartService cartService,
+            LearnerProgressService learnerProgressService,
+            PaymentRepository paymentRepo,
+            CartRepository cartRepo,
+            CourseRepository courseRepo,
+            EnrollmentRepository enrollmentRepo,
+            @Qualifier("payOSObjectMapper") ObjectMapper objectMapper) {
+        this.payOSService = payOSService;
+        this.cartService = cartService;
+        this.learnerProgressService = learnerProgressService;
+        this.paymentRepo = paymentRepo;
+        this.cartRepo = cartRepo;
+        this.courseRepo = courseRepo;
+        this.enrollmentRepo = enrollmentRepo;
+        this.objectMapper = objectMapper;
+    }
+    
     /**
      * Checkout từ cart - tạo payment link
      */
@@ -44,7 +62,7 @@ public class PaymentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cart not found"));
         
         Long cartId = cart.getId();
-        if (!cartId.equals(request.cartId())) {
+        if (!cartId.equals(request.getCartId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cart does not belong to user");
         }
         
@@ -58,9 +76,9 @@ public class PaymentService {
         
         // Filter selected items or specific courseIds
         List<CartItemResponse> itemsToCheckout;
-        if (request.courseIds() != null && !request.courseIds().isEmpty()) {
+        if (request.getCourseIds() != null && !request.getCourseIds().isEmpty()) {
             itemsToCheckout = items.stream()
-                    .filter(item -> request.courseIds().contains(item.courseId()))
+                    .filter(item -> request.getCourseIds().contains(item.courseId()))
                     .collect(Collectors.toList());
         } else {
             itemsToCheckout = items.stream()
@@ -153,8 +171,8 @@ public class PaymentService {
                 .userId(userId)
                 .cartId(cartId)
                 .courseIds(courseIdsJson)
-                .paymentLink(payOSResponse.data().checkoutUrl())
-                .payosQrCode(payOSResponse.data().qrCode())
+                .paymentLink(payOSResponse.getData().getCheckoutUrl())
+                .payosQrCode(payOSResponse.getData().getQrCode())
                 .expiredAt(Instant.ofEpochSecond(expiredAt))
                 .build();
         
@@ -163,8 +181,8 @@ public class PaymentService {
         return CheckoutResponse.builder()
                 .paymentId(savedPayment.getId())
                 .orderCode(orderCode)
-                .paymentLink(payOSResponse.data().checkoutUrl())
-                .qrCode(payOSResponse.data().qrCode())
+                .paymentLink(payOSResponse.getData().getCheckoutUrl())
+                .qrCode(payOSResponse.getData().getQrCode())
                 .amountCents(totalAmount)
                 .description(description)
                 .expiredAt(expiredAt)
@@ -182,8 +200,8 @@ public class PaymentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid webhook signature");
         }
         
-        PayOSWebhookData.PayOSWebhookPaymentData data = webhookData.data();
-        Long orderCode = data.orderCode();
+        PayOSWebhookData.PayOSWebhookPaymentData data = webhookData.getData();
+        Long orderCode = data.getOrderCode();
         
         // Find payment record
         Payment payment = paymentRepo.findByOrderCode(orderCode)
@@ -199,10 +217,10 @@ public class PaymentService {
                 webhookDataJson = "{}";
             }
             payment.setWebhookData(webhookDataJson);
-            payment.setPayosTransactionCode(data.reference());
+            payment.setPayosTransactionCode(data.getReference());
             
             // Check payment status from PayOS
-            if ("00".equals(data.code())) {
+            if ("00".equals(data.getCode())) {
                 // Payment successful
                 payment.setStatus(PaymentStatus.PAID);
                 payment.setPaidAt(Instant.now());
