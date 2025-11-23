@@ -95,10 +95,10 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     /**
      * Get course price without loading LOB fields (for cart operations).
      * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Returns: [id, priceCents, deletedFlag]
+     * Returns: [id, priceCents, deletedFlag, status]
      */
     @Query(value = """
-        SELECT c.id, c.price_cents, c.deleted_flag
+        SELECT c.id, c.price_cents, c.deleted_flag, c.status
         FROM course c
         WHERE c.id = :id AND c.deleted_flag = false
         """, nativeQuery = true)

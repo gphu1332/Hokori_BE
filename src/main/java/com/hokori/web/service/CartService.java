@@ -1,5 +1,6 @@
 package com.hokori.web.service;
 
+import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.dto.cart.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
@@ -19,7 +20,6 @@ public class CartService {
     private final CartItemRepository itemRepo;
     private final CourseRepository courseRepo;
     private final EnrollmentRepository enrollmentRepo;
-    private final UserRepository userRepo;
     private final CurrentUserService current;  // lấy user hiện tại
     private final EntityManager em;
 
@@ -35,20 +35,124 @@ public class CartService {
     public CartResponse view() {
         Long userId = current.getCurrentUserId();
         Cart cart = getOrCreateCart(userId);
-        List<CartItem> items = itemRepo.findByCart_Id(cart.getId());
+        
+        // Use native query to avoid LOB stream error when loading Course entity
+        List<Object[]> itemsMeta = itemRepo.findCartItemMetadataByCartId(cart.getId());
 
-        List<CartItemResponse> itemDtos = items.stream()
-                .map(ci -> new CartItemResponse(
-                        ci.getId(),
-                        ci.getCourse().getId(),
-                        ci.getQuantity(),
-                        ci.getTotalPrice(),
-                        ci.getSelected()
-                ))
+        // Filter out invalid items (deleted, unpublished, or already enrolled courses)
+        List<CartItemResponse> itemDtos = itemsMeta.stream()
+                .map(meta -> {
+                    // Handle nested array case (PostgreSQL)
+                    Object[] actualMeta = meta;
+                    if (meta.length == 1 && meta[0] instanceof Object[]) {
+                        actualMeta = (Object[]) meta[0];
+                    }
+                    // Metadata: [id, courseId, quantity, totalPrice, selected, courseStatus, courseDeletedFlag]
+                    Long itemId = ((Number) actualMeta[0]).longValue();
+                    Long courseId = ((Number) actualMeta[1]).longValue();
+                    Integer quantity = ((Number) actualMeta[2]).intValue();
+                    Long totalPrice = ((Number) actualMeta[3]).longValue();
+                    Boolean selected = actualMeta[4] instanceof Boolean ? 
+                        (Boolean) actualMeta[4] : 
+                        ((Number) actualMeta[4]).intValue() != 0;
+                    String courseStatus = actualMeta[5] != null ? actualMeta[5].toString() : null;
+                    Boolean courseDeletedFlag = actualMeta[6] instanceof Boolean ? 
+                        (Boolean) actualMeta[6] : 
+                        ((Number) actualMeta[6]).intValue() != 0;
+                    
+                    return new Object[]{itemId, courseId, quantity, totalPrice, selected, courseStatus, courseDeletedFlag};
+                })
+                .filter(meta -> {
+                    // Filter: remove deleted courses, unpublished courses, and courses user already enrolled
+                    Boolean deletedFlag = (Boolean) meta[6];
+                    String statusStr = (String) meta[5];
+                    Long courseId = (Long) meta[1];
+                    
+                    if (deletedFlag) return false;
+                    
+                    CourseStatus status;
+                    try {
+                        status = statusStr != null ? CourseStatus.valueOf(statusStr.toUpperCase()) : null;
+                    } catch (IllegalArgumentException e) {
+                        return false;
+                    }
+                    if (status != CourseStatus.PUBLISHED) return false;
+                    
+                    // Check if user already enrolled (remove from cart if enrolled)
+                    if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+                        return false;
+                    }
+                    
+                    return true;
+                })
+                .map(meta -> {
+                    Long itemId = (Long) meta[0];
+                    Long courseId = (Long) meta[1];
+                    Integer quantity = (Integer) meta[2];
+                    Long totalPrice = (Long) meta[3];
+                    Boolean selected = (Boolean) meta[4];
+                    return new CartItemResponse(itemId, courseId, quantity, totalPrice, selected);
+                })
                 .toList();
+        
+        // Clean up invalid items from database (async cleanup)
+        cleanupInvalidCartItems(cart.getId(), userId);
 
-        long subtotal = itemRepo.sumSelectedTotal(cart.getId());
+        long subtotal = itemDtos.stream()
+                .filter(CartItemResponse::selected)
+                .mapToLong(CartItemResponse::totalPrice)
+                .sum();
+        
         return new CartResponse(cart.getId(), itemDtos, subtotal);
+    }
+    
+    /**
+     * Remove invalid cart items (deleted/unpublished courses or courses user already enrolled).
+     * This is called after view() to clean up the cart.
+     */
+    private void cleanupInvalidCartItems(Long cartId, Long userId) {
+        List<Object[]> itemsMeta = itemRepo.findCartItemMetadataByCartId(cartId);
+        List<Long> itemsToDelete = itemsMeta.stream()
+                .map(meta -> {
+                    Object[] actualMeta = meta;
+                    if (meta.length == 1 && meta[0] instanceof Object[]) {
+                        actualMeta = (Object[]) meta[0];
+                    }
+                    Long itemId = ((Number) actualMeta[0]).longValue();
+                    Long courseId = ((Number) actualMeta[1]).longValue();
+                    String courseStatus = actualMeta[5] != null ? actualMeta[5].toString() : null;
+                    Boolean courseDeletedFlag = actualMeta[6] instanceof Boolean ? 
+                        (Boolean) actualMeta[6] : 
+                        ((Number) actualMeta[6]).intValue() != 0;
+                    
+                    // Check if should be deleted
+                    if (courseDeletedFlag) return itemId;
+                    
+                    CourseStatus status;
+                    try {
+                        status = courseStatus != null ? CourseStatus.valueOf(courseStatus.toUpperCase()) : null;
+                    } catch (IllegalArgumentException e) {
+                        return itemId;
+                    }
+                    if (status != CourseStatus.PUBLISHED) return itemId;
+                    
+                    if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+                        return itemId;
+                    }
+                    
+                    return null;
+                })
+                .filter(itemId -> itemId != null)
+                .toList();
+        
+        // Delete invalid items
+        itemsToDelete.forEach(itemId -> {
+            try {
+                itemRepo.deleteById(itemId);
+            } catch (Exception e) {
+                // Ignore if already deleted
+            }
+        });
     }
 
     public CartResponse add(AddItemRequest req) {
@@ -56,6 +160,7 @@ public class CartService {
         Cart cart = getOrCreateCart(userId);
         int qty = (req.quantity() == null || req.quantity() < 1) ? 1 : req.quantity();
 
+        // Check if already enrolled
         if (enrollmentRepo.existsByUserIdAndCourseId(userId, req.courseId())) {
             throw new IllegalStateException("COURSE_OWNED");
         }
@@ -63,8 +168,36 @@ public class CartService {
         // Use native query to avoid LOB stream error (don't load description field)
         Object[] courseData = courseRepo.findCoursePriceById(req.courseId())
                 .orElseThrow(() -> new IllegalArgumentException("COURSE_NOT_FOUND"));
-        Long courseId = ((Number) courseData[0]).longValue();
-        Long priceCents = courseData[1] != null ? ((Number) courseData[1]).longValue() : 0L;
+        
+        // Handle nested array case (PostgreSQL)
+        Object[] actualData = courseData;
+        if (courseData.length == 1 && courseData[0] instanceof Object[]) {
+            actualData = (Object[]) courseData[0];
+        }
+        
+        // Metadata: [id, priceCents, deletedFlag, status]
+        Long courseId = ((Number) actualData[0]).longValue();
+        Long priceCents = actualData[1] != null ? ((Number) actualData[1]).longValue() : 0L;
+        Boolean deletedFlag = actualData[2] instanceof Boolean ? 
+            (Boolean) actualData[2] : 
+            ((Number) actualData[2]).intValue() != 0;
+        String statusStr = actualData[3] != null ? actualData[3].toString() : null;
+        
+        // Check deletedFlag (should be false from query, but double-check)
+        if (deletedFlag) {
+            throw new IllegalArgumentException("COURSE_NOT_FOUND");
+        }
+        
+        // Check course status - only PUBLISHED courses can be added to cart
+        CourseStatus status;
+        try {
+            status = statusStr != null ? CourseStatus.valueOf(statusStr.toUpperCase()) : null;
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid course status");
+        }
+        if (status != CourseStatus.PUBLISHED) {
+            throw new IllegalStateException("COURSE_NOT_PUBLISHED");
+        }
         
         // Use getReference to avoid loading full entity
         Course courseRef = courseRepo.getReferenceById(courseId);
@@ -92,17 +225,66 @@ public class CartService {
         Long userId = current.getCurrentUserId();
         Cart cart = getOrCreateCart(userId);
 
+        // Use native query to get item metadata and verify ownership without loading Course entity
+        Object[] itemMeta = itemRepo.findCartItemMetadataById(itemId)
+                .orElseThrow(() -> new IllegalArgumentException("ITEM_NOT_FOUND"));
+        
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMeta = itemMeta;
+        if (itemMeta.length == 1 && itemMeta[0] instanceof Object[]) {
+            actualMeta = (Object[]) itemMeta[0];
+        }
+        
+        // Metadata: [id, courseId, cartId, quantity, totalPrice, selected]
+        Long cartIdFromItem = ((Number) actualMeta[2]).longValue();
+        if (!cartIdFromItem.equals(cart.getId())) {
+            throw new IllegalArgumentException("ITEM_NOT_FOUND");
+        }
+        
+        Long courseId = ((Number) actualMeta[1]).longValue();
+        
+        // Check if user has enrolled in this course (business rule: can't update cart item for owned course)
+        if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+            throw new IllegalStateException("COURSE_OWNED");
+        }
+        
         CartItem item = itemRepo.findById(itemId)
-                .filter(ci -> ci.getCart().getId().equals(cart.getId()))
                 .orElseThrow(() -> new IllegalArgumentException("ITEM_NOT_FOUND"));
 
         if (req.quantity() != null) {
             if (req.quantity() < 1) throw new IllegalArgumentException("BAD_QUANTITY");
             // Use native query to avoid LOB stream error when accessing course price
-            Long courseId = item.getCourse().getId();
             Object[] courseData = courseRepo.findCoursePriceById(courseId)
                     .orElseThrow(() -> new IllegalArgumentException("COURSE_NOT_FOUND"));
-            Long priceCents = courseData[1] != null ? ((Number) courseData[1]).longValue() : 0L;
+            
+            // Handle nested array case (PostgreSQL)
+            Object[] actualData = courseData;
+            if (courseData.length == 1 && courseData[0] instanceof Object[]) {
+                actualData = (Object[]) courseData[0];
+            }
+            
+            // Metadata: [id, priceCents, deletedFlag, status]
+            Long priceCents = actualData[1] != null ? ((Number) actualData[1]).longValue() : 0L;
+            Boolean deletedFlag = actualData[2] instanceof Boolean ? 
+                (Boolean) actualData[2] : 
+                ((Number) actualData[2]).intValue() != 0;
+            String statusStr = actualData[3] != null ? actualData[3].toString() : null;
+            
+            // Check if course still exists and is published
+            if (deletedFlag) {
+                throw new IllegalArgumentException("COURSE_NOT_FOUND");
+            }
+            
+            CourseStatus status;
+            try {
+                status = statusStr != null ? CourseStatus.valueOf(statusStr.toUpperCase()) : null;
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid course status");
+            }
+            if (status != CourseStatus.PUBLISHED) {
+                throw new IllegalStateException("COURSE_NOT_PUBLISHED");
+            }
+            
             item.setQuantity(req.quantity());
             item.setTotalPrice(priceCents * req.quantity());
         }
@@ -116,10 +298,24 @@ public class CartService {
         Long userId = current.getCurrentUserId();
         Cart cart = getOrCreateCart(userId);
 
-        CartItem item = itemRepo.findById(itemId)
-                .filter(ci -> ci.getCart().getId().equals(cart.getId()))
+        // Use native query to verify ownership without loading Course entity
+        Object[] itemMeta = itemRepo.findCartItemMetadataById(itemId)
                 .orElseThrow(() -> new IllegalArgumentException("ITEM_NOT_FOUND"));
+        
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMeta = itemMeta;
+        if (itemMeta.length == 1 && itemMeta[0] instanceof Object[]) {
+            actualMeta = (Object[]) itemMeta[0];
+        }
+        
+        // Metadata: [id, courseId, cartId, quantity, totalPrice, selected]
+        Long cartIdFromItem = ((Number) actualMeta[2]).longValue();
+        if (!cartIdFromItem.equals(cart.getId())) {
+            throw new IllegalArgumentException("ITEM_NOT_FOUND");
+        }
 
+        CartItem item = itemRepo.findById(itemId)
+                .orElseThrow(() -> new IllegalArgumentException("ITEM_NOT_FOUND"));
         itemRepo.delete(item);
         return view();
     }
@@ -127,14 +323,16 @@ public class CartService {
     public CartResponse selectAll(boolean selected) {
         Long userId = current.getCurrentUserId();
         Cart cart = getOrCreateCart(userId);
-        cart.getItems().forEach(i -> i.setSelected(selected));
+        // Use native query to avoid loading items and Course entities
+        itemRepo.updateSelectedStatusByCartId(cart.getId(), selected);
         return view();
     }
 
     public CartResponse clear() {
         Long userId = current.getCurrentUserId();
         Cart cart = getOrCreateCart(userId);
-        cart.getItems().clear(); // orphanRemoval=true sẽ xóa con
+        // Use native query to avoid loading items and Course entities
+        itemRepo.deleteAllByCartId(cart.getId());
         return view();
     }
 }
