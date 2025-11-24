@@ -56,9 +56,10 @@ public class DataSourceConfig {
                 // Connection pool settings
                 config.setMaximumPoolSize(10);
                 config.setMinimumIdle(2);
-                config.setConnectionTimeout(30000);
+                config.setConnectionTimeout(60000); // 60 seconds - allow time for Railway DB to be ready
                 config.setIdleTimeout(600000);
                 config.setMaxLifetime(1800000);
+                config.setValidationTimeout(5000); // 5 seconds for connection validation
                 
                 return new HikariDataSource(config);
             } catch (Exception e) {
