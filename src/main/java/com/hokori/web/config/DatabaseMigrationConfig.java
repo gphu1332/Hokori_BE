@@ -1,37 +1,45 @@
 package com.hokori.web.config;
 
 import com.hokori.web.util.DatabaseUtil;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
+
 /**
  * Database migration configuration to fix data issues.
  * Works on both PostgreSQL (Railway) and SQL Server (local SSMS).
+ * Runs BEFORE Hibernate schema update to fix NULL values.
  */
 @Slf4j
 @Configuration
-@Order(1) // Run early, but after DataSource is ready
-public class DatabaseMigrationConfig implements CommandLineRunner {
+@DependsOn("dataSource") // Ensure DataSource is ready
+@Order(1) // Run early, before EntityManagerFactory
+public class DatabaseMigrationConfig {
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
+    private DataSource dataSource;
 
-    @Override
+    @PostConstruct
     @Transactional
-    public void run(String... args) {
+    public void migrateDatabase() {
         String dbType = DatabaseUtil.isPostgreSQLDatabase() ? "PostgreSQL" : "SQL Server";
         
         try {
-            log.info("🔄 Running database migrations on {}...", dbType);
+            log.info("🔄 Running database migrations on {} (before Hibernate schema update)...", dbType);
+            
+            // Create JdbcTemplate from DataSource directly
+            JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
             
             // Fix NULL values in jlpt_tests.current_participants
             // SQL query is compatible with both PostgreSQL and SQL Server
-            fixJlptTestCurrentParticipants();
+            fixJlptTestCurrentParticipants(jdbcTemplate);
             
             log.info("✅ Database migrations completed successfully");
         } catch (Exception e) {
@@ -41,7 +49,7 @@ public class DatabaseMigrationConfig implements CommandLineRunner {
         }
     }
 
-    private void fixJlptTestCurrentParticipants() {
+    private void fixJlptTestCurrentParticipants(JdbcTemplate jdbcTemplate) {
         try {
             // Check if column exists and has NULL values
             String checkSql = "SELECT COUNT(*) FROM jlpt_tests WHERE current_participants IS NULL";
