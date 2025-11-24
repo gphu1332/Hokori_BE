@@ -21,6 +21,7 @@ public class JlptTestService {
     private final JlptOptionRepository optionRepo;
     private final JlptAnswerRepository answerRepo;
     private final UserRepository userRepo;
+    private final JlptUserTestSessionRepository sessionRepo;
 
     @Transactional
     public JlptTest createTest(JlptEvent event, User moderator, JlptTestCreateRequest req) {
@@ -95,6 +96,8 @@ public class JlptTestService {
 
     @Transactional
     public void submitAnswer(Long testId, Long userId, JlptAnswerSubmitRequest req) {
+        ensureTestNotExpired(testId, userId);
+
         JlptTest test = testRepo.findById(testId)
                 .orElseThrow(() -> new EntityNotFoundException("Test not found"));
 
@@ -269,27 +272,70 @@ public class JlptTestService {
 
     @Transactional
     public JlptTestStartResponse startTest(Long testId, Long userId) {
-        // 1. Lấy test
         JlptTest test = testRepo.findById(testId)
                 .orElseThrow(() -> new EntityNotFoundException("Test not found"));
 
-        // 2. Xoá toàn bộ câu trả lời cũ của user cho test này (nếu có)
-        //    -> giúp user "enroll / thi lại" 1 cách sạch sẽ
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+        // 1. Xoá answer cũ
         answerRepo.deleteByUser_IdAndTest_Id(userId, testId);
 
-        // 3. Lấy full câu hỏi + option (tái sử dụng method sẵn có)
+        java.time.Instant now = java.time.Instant.now();
+        int durationMin = test.getDurationMin() != null ? test.getDurationMin() : 0;
+        java.time.Instant expiresAt = now.plus(java.time.Duration.ofMinutes(durationMin));
+
+        // 2. Tạo / update session
+        JlptUserTestSession session = sessionRepo
+                .findByTest_IdAndUser_Id(testId, userId)
+                .orElse(null);
+
+        if (session == null) {
+            session = new JlptUserTestSession();
+            session.setTest(test);
+            session.setUser(user);
+            session.setStartedAt(now);
+            session.setExpiresAt(expiresAt);
+            sessionRepo.save(session);
+
+            // lần đầu user này thi test này -> tăng currentParticipants
+            Integer cur = test.getCurrentParticipants();
+            test.setCurrentParticipants(cur == null ? 1 : cur + 1);
+        } else {
+            // cho phép start lại nhưng không tăng người thi
+            session.setStartedAt(now);
+            session.setExpiresAt(expiresAt);
+        }
+
+        // 3. Lấy câu hỏi + options
         List<JlptQuestionWithOptionsResponse> questions = getQuestionsWithOptions(testId);
 
-        // 4. Trả dữ liệu để FE render đề + bắt đầu đếm giờ
+        // 4. Build response
         return JlptTestStartResponse.builder()
                 .testId(testId)
                 .userId(userId)
+                // Nếu JlptTest.level là Enum:
+                // .level(test.getLevel())
+                // Nếu vẫn đang là String:
                 .level(JLPTLevel.valueOf(test.getLevel()))
                 .durationMin(test.getDurationMin())
                 .totalScore(test.getTotalScore())
-                .startedAt(java.time.Instant.now())
+                .currentParticipants(test.getCurrentParticipants())
+                .startedAt(now)
                 .questions(questions)
                 .build();
     }
+
+
+    private void ensureTestNotExpired(Long testId, Long userId) {
+        JlptUserTestSession session = sessionRepo
+                .findByTest_IdAndUser_Id(testId, userId)
+                .orElseThrow(() -> new IllegalStateException("Bạn chưa start bài thi này"));
+
+        if (java.time.Instant.now().isAfter(session.getExpiresAt())) {
+            throw new IllegalStateException("Thời gian làm bài đã hết");
+        }
+    }
+
 
 }

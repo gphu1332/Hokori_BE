@@ -50,6 +50,9 @@ public class JlptTest {
     @Column(name = "result", length = 500)
     private String result;
 
+    @Column(name = "current_participants", nullable = false)
+    private int currentParticipants = 0;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

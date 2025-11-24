@@ -50,6 +50,12 @@ public class JlptQuestion {
     @Column(name = "image_path", length = 500)
     private String imagePath;   // hình minh họa câu hỏi
 
+    @Column(name = "audio_url", length = 500)
+    private String audioUrl;
+
+    @Column(name = "transcript", columnDefinition = "TEXT")
+    private String transcript;
+
     @Column(name = "image_alt_text", length = 255)
     private String imageAltText;
 

@@ -19,6 +19,9 @@ public class JlptTestStartResponse {
     private Integer totalScore;
     private Instant startedAt;
 
+    // SỐ NGƯỜI ĐANG THI – FE cần
+    private Integer currentParticipants;
+
     // gửi luôn đề cho FE render
     private List<JlptQuestionWithOptionsResponse> questions;
 }
