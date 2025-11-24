@@ -4,6 +4,7 @@ import com.hokori.web.util.DatabaseUtil;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.annotation.Order;
@@ -13,14 +14,15 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.sql.DataSource;
 
 /**
- * Database migration configuration to fix data issues.
- * Works on both PostgreSQL (Railway) and SQL Server (local SSMS).
+ * Database migration configuration to fix data issues on Railway PostgreSQL.
+ * Only runs on PostgreSQL (production), not on SQL Server (local dev).
  * Runs BEFORE Hibernate schema update to fix NULL values.
  */
 @Slf4j
 @Configuration
 @DependsOn("dataSource") // Ensure DataSource is ready
 @Order(1) // Run early, before EntityManagerFactory
+@ConditionalOnProperty(name = "spring.profiles.active", havingValue = "prod")
 public class DatabaseMigrationConfig {
 
     @Autowired
@@ -29,16 +31,19 @@ public class DatabaseMigrationConfig {
     @PostConstruct
     @Transactional
     public void migrateDatabase() {
-        String dbType = DatabaseUtil.isPostgreSQLDatabase() ? "PostgreSQL" : "SQL Server";
+        // Only run on PostgreSQL (Railway production)
+        if (!DatabaseUtil.isPostgreSQLDatabase()) {
+            log.debug("⏭️ Skipping database migrations (not PostgreSQL)");
+            return;
+        }
         
         try {
-            log.info("🔄 Running database migrations on {} (before Hibernate schema update)...", dbType);
+            log.info("🔄 Running database migrations on PostgreSQL (before Hibernate schema update)...");
             
             // Create JdbcTemplate from DataSource directly
             JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
             
             // Fix NULL values in jlpt_tests.current_participants
-            // SQL query is compatible with both PostgreSQL and SQL Server
             fixJlptTestCurrentParticipants(jdbcTemplate);
             
             log.info("✅ Database migrations completed successfully");
