@@ -1,5 +1,6 @@
 package com.hokori.web.repository;
 
+import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.entity.Course;
 import org.springframework.data.domain.Page;
@@ -120,4 +121,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         ORDER BY c.updated_at DESC
         """, nativeQuery = true)
     List<Object[]> findPendingApprovalCourses();
+
+    long countByUserIdAndStatusAndDeletedFlagFalse(Long userId, CourseStatus status);
+
+    Page<Course> findByUserIdAndDeletedFlagFalse(Long userId, Pageable pageable);
 }
