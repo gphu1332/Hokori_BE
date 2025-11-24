@@ -19,9 +19,7 @@ import java.util.List;
 @Setter
 public class CourseComment extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY) // OK cho cả SQL Server & Postgres
-    private Long id;
+    // id, createdAt, updatedAt, deletedFlag kế thừa từ BaseEntity
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
