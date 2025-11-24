@@ -197,4 +197,33 @@ public class TeacherApprovalService {
         r.getItems().size();
         return mapper.toDto(r);
     }
+
+    // ====================== ADMIN VIEW REQUESTS ======================
+
+    @Transactional(readOnly = true)
+    public List<ApproveRequestDto> listRequests(ApprovalStatus status) {
+        // Mặc định chỉ xem request đang PENDING
+        if (status == null) {
+            status = ApprovalStatus.PENDING;
+        }
+
+        List<ProfileApproveRequest> list = reqRepo.findByStatus(status);
+
+        // tránh LazyInitializationException
+        list.forEach(r -> r.getItems().size());
+
+        return list.stream()
+                .map(mapper::toDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ApproveRequestDto getRequest(Long requestId) {
+        ProfileApproveRequest r = reqRepo.findById(requestId)
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Request not found"));
+
+        r.getItems().size(); // force init items
+        return mapper.toDto(r);
+    }
 }
