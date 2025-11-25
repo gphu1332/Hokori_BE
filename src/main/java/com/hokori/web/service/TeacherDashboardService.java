@@ -114,18 +114,25 @@ public class TeacherDashboardService {
 
     /**
      * Rule payout: ví dụ 15 và 30 hàng tháng (bạn có thể chỉnh lại theo BA).
+     * Handle months with 28/29/30/31 days correctly.
      */
     private LocalDate calculateNextPayoutDate(ZoneId zone) {
         LocalDate today = LocalDate.now(zone);
 
         int day = today.getDayOfMonth();
+        int daysInMonth = today.lengthOfMonth(); // Get actual days in current month
+        
         if (day < 15) {
             return LocalDate.of(today.getYear(), today.getMonth(), 15);
         }
-        if (day < 30) {
-            return LocalDate.of(today.getYear(), today.getMonth(), 30);
+        
+        // Use last day of month if month has less than 30 days, otherwise use 30
+        int payoutDay = Math.min(30, daysInMonth);
+        if (day < payoutDay) {
+            return LocalDate.of(today.getYear(), today.getMonth(), payoutDay);
         }
-        // qua 30 rồi thì nhảy sang 15 của tháng sau
+        
+        // After last payout day, jump to 15th of next month
         LocalDate nextMonth = today.plusMonths(1);
         return LocalDate.of(nextMonth.getYear(), nextMonth.getMonth(), 15);
     }

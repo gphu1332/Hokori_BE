@@ -495,12 +495,13 @@ public class AdminController {
                 roleStats.put(role.getRoleName(), count);
             }
 
-            // Get recent users (last 7 days)
-            List<User> recentUsers = allUsers.stream()
+            // Get recent users (last 7 days) - convert to DTO to avoid serialization issues
+            List<UserSimpleDTO> recentUsers = allUsers.stream()
                     .filter(u -> u.getCreatedAt() != null
                             && u.getCreatedAt().isAfter(java.time.LocalDateTime.now().minusDays(7)))
                     .sorted((u1, u2) -> u2.getCreatedAt().compareTo(u1.getCreatedAt()))
                     .limit(10)
+                    .map(UserSimpleDTO::from)
                     .toList();
 
 
