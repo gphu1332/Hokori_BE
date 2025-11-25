@@ -33,7 +33,9 @@ public class TeacherApprovalController {
     private final CurrentUserService currentUserService;
     private final TeacherApprovalService approvalService;
 
-    private Long meId(){ return currentUserService.getCurrentUserOrThrow().getId(); }
+    private Long meId() {
+        return currentUserService.getCurrentUserOrThrow().getId();
+    }
 
     // ===================== Certificates =====================
 
@@ -49,12 +51,12 @@ public class TeacherApprovalController {
                                     array = @ArraySchema(schema = @Schema(implementation = UserCertificateDto.class)),
                                     examples = @ExampleObject(
                                             value = """
-                                            {
-                                              "status":"success",
-                                              "message":"OK",
-                                              "data":[{ "id":101, "title":"JLPT N2", "...":"..." }]
-                                            }
-                                            """
+                                                    {
+                                                      "status":"success",
+                                                      "message":"OK",
+                                                      "data":[{ "id":101, "title":"JLPT N2", "...":"..." }]
+                                                    }
+                                                    """
                                     )
                             )
                     ),
@@ -62,7 +64,7 @@ public class TeacherApprovalController {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden")
             }
     )
-    public ResponseEntity<ApiResponse<List<UserCertificateDto>>> listCertificates(){
+    public ResponseEntity<ApiResponse<List<UserCertificateDto>>> listCertificates() {
         return ResponseEntity.ok(ApiResponse.success("OK",
                 approvalService.listMyCertificates(meId())));
     }
@@ -75,12 +77,20 @@ public class TeacherApprovalController {
                     content = @Content(schema = @Schema(implementation = UserCertificateReq.class),
                             examples = @ExampleObject(
                                     value = """
-                                    {
-                                      "title":"TESOL",
-                                      "issueDate":"2021-05-10",
-                                      "credentialId":"TESOL-2021-XYZ"
-                                    }
-                                    """
+                                            {
+                                              "title": "Chứng chỉ tiếng NAT-TEST",
+                                              "issueDate": "2020-08-31",
+                                              "expiryDate": "2025-08-31",
+                                              "credentialId": "NAT-TEST-123",
+                                              "credentialUrl": "https://example.com/cert/NAT-TEST-123",
+                                              "fileUrl": "https://cdn.hokori.com/certificates/nat-test.pdf",
+                                              "fileName": "nat-test.pdf",
+                                              "mimeType": "application/pdf",
+                                              "fileSizeBytes": 123456,
+                                              "storageProvider": "GCS",
+                                              "note": "Bản scan mặt trước & mặt sau."
+                                            }
+                                            """
                             ))),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -93,7 +103,7 @@ public class TeacherApprovalController {
             }
     )
     public ResponseEntity<ApiResponse<UserCertificateDto>> addCertificate(
-            @Valid @RequestBody UserCertificateReq req){
+            @Valid @RequestBody UserCertificateReq req) {
         return ResponseEntity.ok(ApiResponse.success("Created",
                 approvalService.addCertificate(meId(), req)));
     }
@@ -117,7 +127,7 @@ public class TeacherApprovalController {
             }
     )
     public ResponseEntity<ApiResponse<UserCertificateDto>> updateCertificate(
-            @PathVariable Long id, @Valid @RequestBody UserCertificateReq req){
+            @PathVariable Long id, @Valid @RequestBody UserCertificateReq req) {
         return ResponseEntity.ok(ApiResponse.success("Updated",
                 approvalService.updateCertificate(meId(), id, req)));
     }
@@ -138,7 +148,7 @@ public class TeacherApprovalController {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not Found")
             }
     )
-    public ResponseEntity<ApiResponse<Void>> deleteCertificate(@PathVariable Long id){
+    public ResponseEntity<ApiResponse<Void>> deleteCertificate(@PathVariable Long id) {
         approvalService.deleteCertificate(id, meId());
         return ResponseEntity.ok(ApiResponse.success("Deleted", null));
     }
@@ -163,7 +173,7 @@ public class TeacherApprovalController {
             }
     )
     public ResponseEntity<ApiResponse<ApproveRequestDto>> submit(
-            @RequestBody(required = false) SubmitApprovalReq req){
+            @RequestBody(required = false) SubmitApprovalReq req) {
         return ResponseEntity.ok(ApiResponse.success("Submitted",
                 approvalService.submitApproval(meId(), req)));
     }
@@ -179,7 +189,7 @@ public class TeacherApprovalController {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "No request yet")
             }
     )
-    public ResponseEntity<ApiResponse<ApproveRequestDto>> latest(){
+    public ResponseEntity<ApiResponse<ApproveRequestDto>> latest() {
         return ResponseEntity.ok(ApiResponse.success("OK",
                 approvalService.getLatestRequest(meId())));
     }
