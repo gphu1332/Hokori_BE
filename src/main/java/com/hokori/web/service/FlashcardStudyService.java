@@ -20,6 +20,7 @@ public class FlashcardStudyService {
 
     private final FlashcardRepository cardRepo;
     private final UserFlashcardProgressRepository progressRepo;
+    private final LearnerProgressService learnerProgressService;
 
     @Transactional
     public UserFlashcardProgress updateProgress(User user, Long flashcardId,
@@ -41,7 +42,9 @@ public class FlashcardStudyService {
         if (status == FlashcardProgressStatus.MASTERED && progress.getMasteredAt() == null) {
             progress.setMasteredAt(Instant.now());
         }
+        progress = progressRepo.save(progress);
+        learnerProgressService.recordLearningActivity(user.getId(), Instant.now());
 
-        return progressRepo.save(progress);
+        return progress;
     }
 }

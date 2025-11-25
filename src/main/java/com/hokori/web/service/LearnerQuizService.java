@@ -25,6 +25,7 @@ public class LearnerQuizService {
     private final QuizAnswerRepository answerRepo;
     private final QuestionRepository questionRepo;
     private final OptionRepository optionRepo;
+    private final LearnerProgressService learnerProgressService;
 
     /**
      * Helper method to check enrollment and get courseId from lessonId
@@ -75,6 +76,9 @@ public class LearnerQuizService {
         a.setQuiz(quizRef);
         a.setTotalQuestions(attemptRepo.countQuestions(quizId));
         attemptRepo.save(a);
+
+        learnerProgressService.recordLearningActivity(userId, java.time.Instant.now());
+
         return toDto(a, quizTitle);
     }
 

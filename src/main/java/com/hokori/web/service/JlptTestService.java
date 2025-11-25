@@ -22,6 +22,7 @@ public class JlptTestService {
     private final JlptAnswerRepository answerRepo;
     private final UserRepository userRepo;
     private final JlptUserTestSessionRepository sessionRepo;
+    private final LearnerProgressService learnerProgressService;
 
     @Transactional
     public JlptTest createTest(JlptEvent event, User moderator, JlptTestCreateRequest req) {
@@ -309,6 +310,8 @@ public class JlptTestService {
 
         // 3. Lấy câu hỏi + options
         List<JlptQuestionWithOptionsResponse> questions = getQuestionsWithOptions(testId);
+
+        learnerProgressService.recordLearningActivity(userId, now);
 
         // 4. Build response
         return JlptTestStartResponse.builder()

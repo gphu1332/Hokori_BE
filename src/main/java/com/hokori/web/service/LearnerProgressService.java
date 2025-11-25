@@ -11,6 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 import java.time.Instant;
 import java.util.*;
@@ -30,6 +32,7 @@ public class LearnerProgressService {
     private final UserContentProgressRepository ucpRepo;
     private final QuizRepository quizRepo;
     private final FlashcardSetRepository flashcardSetRepo;
+    private final UserDailyLearningRepository userDailyLearningRepo;
 
     // ================= Enrollment =================
     
@@ -272,6 +275,8 @@ public class LearnerProgressService {
         e.setLastAccessAt(Instant.now());
         enrollmentRepo.save(e);
 
+        recordLearningActivity(userId, Instant.now());
+
         // return latest content progress
         return ContentProgressRes.builder()
                 .contentId(content.getId())
@@ -386,4 +391,78 @@ public class LearnerProgressService {
 
         return FlashcardSetResponse.fromEntity(set);
     }
+
+    public void recordLearningActivity(Long userId, Instant when) {
+        LocalDate date = when.atZone(ZoneId.systemDefault()).toLocalDate();
+
+        userDailyLearningRepo.findByUserIdAndLearningDate(userId, date)
+                .ifPresentOrElse(
+                        log -> log.setActivityCount(log.getActivityCount() + 1),
+                        () -> {
+                            UserDailyLearning log = new UserDailyLearning();
+                            log.setUserId(userId);
+                            log.setLearningDate(date);
+                            log.setActivityCount(1);
+                            userDailyLearningRepo.save(log);
+                        }
+                );
+    }
+
+    // 🔥 THÊM HÀM NÀY NGAY BÊN DƯỚI
+    @Transactional(readOnly = true)
+    public int getLearningStreak(Long userId) {
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        LocalDate from = today.minusDays(60); // ví dụ chỉ cần nhìn 60 ngày gần nhất
+
+        // cần method này trong UserDailyLearningRepository
+        List<UserDailyLearning> logs =
+                userDailyLearningRepo.findByUserIdAndLearningDateBetweenOrderByLearningDateDesc(
+                        userId, from, today);
+
+        if (logs.isEmpty()) {
+            return 0;
+        }
+
+        // chuyển thành set cho dễ check
+        Set<LocalDate> days = logs.stream()
+                .map(UserDailyLearning::getLearningDate)
+                .collect(Collectors.toSet());
+
+        int streak = 0;
+        LocalDate cursor = today;
+        while (days.contains(cursor)) {
+            streak++;
+            cursor = cursor.minusDays(1);
+        }
+        return streak;
+    }
+
+
+    @Transactional(readOnly = true)
+    public int getCurrentLearningStreak(Long userId) {
+        var lastOpt = userDailyLearningRepo.findTopByUserIdOrderByLearningDateDesc(userId);
+        if (lastOpt.isEmpty()) {
+            return 0; // chưa học ngày nào
+        }
+
+        var today = LocalDate.now(ZoneId.systemDefault());
+        var lastDate = lastOpt.get().getLearningDate();
+
+        // Nếu ngày học gần nhất < hôm qua -> đã nghỉ ít nhất 1 ngày -> streak = 0
+        if (lastDate.isBefore(today.minusDays(1))) {
+            return 0;
+        }
+
+        // Ngược lại: bắt đầu đếm streak lùi dần từng ngày
+        int streak = 0;
+        LocalDate cursor = lastDate;
+
+        while (userDailyLearningRepo.existsByUserIdAndLearningDate(userId, cursor)) {
+            streak++;
+            cursor = cursor.minusDays(1);
+        }
+
+        return streak;
+    }
+
 }
