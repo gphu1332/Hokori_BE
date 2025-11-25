@@ -32,6 +32,7 @@ public class CourseService {
     private final SectionRepository sectionRepo;
     private final SectionsContentRepository contentRepo;
     private final UserRepository userRepo;
+    private final EnrollmentRepository enrollmentRepo;
 
     // =========================
     // COURSE
@@ -40,14 +41,14 @@ public class CourseService {
         Course c = new Course();
         c.setUserId(teacherUserId);
         applyCourse(c, r);
-        
+
         // Generate unique slug with retry logic to handle race conditions
         String title = r.getTitle();
         if (title == null || title.trim().isEmpty()) {
             title = "Untitled Course";
         }
         c.setSlug(generateUniqueSlugWithRetry(title));
-        
+
         // Save with retry if duplicate slug constraint violation
         int maxRetries = 5;
         int retryCount = 0;
@@ -59,7 +60,7 @@ public class CourseService {
                 if (e.getMessage() != null && e.getMessage().contains("slug") && e.getMessage().contains("unique")) {
                     retryCount++;
                     if (retryCount >= maxRetries) {
-                        throw new ResponseStatusException(HttpStatus.CONFLICT, 
+                        throw new ResponseStatusException(HttpStatus.CONFLICT,
                             "Unable to generate unique slug after " + maxRetries + " attempts. Please try again.");
                     }
                     // Generate new slug with timestamp to ensure uniqueness
@@ -86,7 +87,7 @@ public class CourseService {
         Course c = getOwned(id, teacherUserId);
         String oldSlug = c.getSlug();
         applyCourse(c, r);
-        
+
         // Only update slug if title changed
         String newTitle = r.getTitle();
         if (newTitle == null || newTitle.trim().isEmpty()) {
@@ -96,7 +97,7 @@ public class CourseService {
         if (!newSlugBase.equals(oldSlug)) {
             // Generate unique slug (excluding current course from check)
             c.setSlug(generateUniqueSlugForUpdate(newTitle, id));
-            
+
             // Retry save if duplicate slug constraint violation
             int maxRetries = 5;
             int retryCount = 0;
@@ -108,7 +109,7 @@ public class CourseService {
                     if (e.getMessage() != null && e.getMessage().contains("slug") && e.getMessage().contains("unique")) {
                         retryCount++;
                         if (retryCount >= maxRetries) {
-                            throw new ResponseStatusException(HttpStatus.CONFLICT, 
+                            throw new ResponseStatusException(HttpStatus.CONFLICT,
                                 "Unable to generate unique slug after " + maxRetries + " attempts. Please try again.");
                         }
                         c.setSlug(generateUniqueSlugWithTimestamp(newTitle));
@@ -133,8 +134,8 @@ public class CourseService {
 
     /**
      * Submit course for moderator approval (changed from direct publish)
-     * 
-     * NOTE: Currently only requires title. Content validation (chapters, lessons, sections) 
+     *
+     * NOTE: Currently only requires title. Content validation (chapters, lessons, sections)
      * will be added later when content management is implemented.
      */
     public CourseRes submitForApproval(Long id, Long teacherUserId) {
@@ -178,7 +179,7 @@ public class CourseService {
     public CourseRes approveCourse(Long id, Long moderatorUserId) {
         Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        
+
         if (c.getStatus() != CourseStatus.PENDING_APPROVAL) {
             throw bad("Course must be in PENDING_APPROVAL status to approve");
         }
@@ -194,7 +195,7 @@ public class CourseService {
     public CourseRes rejectCourse(Long id, Long moderatorUserId, String reason) {
         Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        
+
         if (c.getStatus() != CourseStatus.PENDING_APPROVAL) {
             throw bad("Course must be in PENDING_APPROVAL status to reject");
         }
@@ -216,7 +217,7 @@ public class CourseService {
         // Use native query to check existence and avoid LOB loading
         Object[] metadata = courseRepo.findCourseMetadataById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        
+
         // Map metadata to CourseRes (without description to avoid LOB)
         CourseRes courseRes = mapCourseMetadataToRes(metadata);
         Long courseId = courseRes.getId();
@@ -284,17 +285,17 @@ public class CourseService {
         // Use native query to check existence and avoid LOB loading
         Object[] metadata = courseRepo.findCourseMetadataById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        
+
         // Map metadata to CourseRes (without description to avoid LOB)
         CourseRes courseRes = mapCourseMetadataToRes(metadata);
-        
+
         Chapter trial = chapterRepo.findByCourse_IdAndIsTrialTrue(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No trial chapter"));
-        
+
         // Convert trial chapter to DTO
         List<ChapterRes> chapterDtos = List.of(toChapterResShallow(trial));
         courseRes.setChapters(chapterDtos);
-        
+
         return courseRes;
     }
 
@@ -324,15 +325,15 @@ public class CourseService {
         if (metadata == null || metadata.length == 0) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Invalid metadata array");
         }
-        
+
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
         }
-        
+
         // Validate array length (should have at least 13 elements now with teacherName)
         if (actualMetadata.length < 13) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Course metadata array too short: expected at least 13 elements, got " + actualMetadata.length);
         }
 
@@ -342,8 +343,8 @@ public class CourseService {
         String title = actualMetadata[1] != null ? actualMetadata[1].toString() : null;
         String slug = actualMetadata[2] != null ? actualMetadata[2].toString() : null;
         String subtitle = actualMetadata[3] != null ? actualMetadata[3].toString() : null;
-        JLPTLevel level = actualMetadata[4] != null 
-            ? JLPTLevel.valueOf(actualMetadata[4].toString().toUpperCase()) 
+        JLPTLevel level = actualMetadata[4] != null
+            ? JLPTLevel.valueOf(actualMetadata[4].toString().toUpperCase())
             : JLPTLevel.N5;
         Long priceCents = actualMetadata[5] != null ? ((Number) actualMetadata[5]).longValue() : null;
         Long discountedPriceCents = actualMetadata[6] != null ? ((Number) actualMetadata[6]).longValue() : null;
@@ -617,7 +618,7 @@ public class CourseService {
     private String uniqueSlug(String title) {
         return generateUniqueSlugWithRetry(title);
     }
-    
+
     /**
      * Generate unique slug with retry logic to handle race conditions.
      * Checks all records (including deleted) because unique constraint applies to entire table.
@@ -631,13 +632,13 @@ public class CourseService {
         if (base.isEmpty()) {
             base = "untitled-course";
         }
-        
+
         // First try base slug
         String s = base;
         if (!courseRepo.existsBySlug(s)) {
             return s;
         }
-        
+
         // If exists, try with incremental number
         int i = 1;
         while (i <= 1000) {
@@ -647,11 +648,11 @@ public class CourseService {
             }
             i++;
         }
-        
+
         // Fallback: use timestamp to ensure uniqueness (handles race conditions)
         return generateUniqueSlugWithTimestamp(title);
     }
-    
+
     /**
      * Generate unique slug for update operation - excludes current course from check.
      * This prevents false positives when updating a course with the same slug.
@@ -665,7 +666,7 @@ public class CourseService {
         if (base.isEmpty()) {
             base = "untitled-course";
         }
-        
+
         // First try base slug - check if exists AND not the current course
         String s = base;
         if (!courseRepo.existsBySlug(s)) {
@@ -676,7 +677,7 @@ public class CourseService {
         if (existing.isPresent() && existing.get().getId().equals(excludeCourseId)) {
             return s; // It's the current course, keep the slug
         }
-        
+
         // Slug exists and belongs to different course, try with incremental number
         int i = 1;
         while (i <= 1000) {
@@ -691,11 +692,11 @@ public class CourseService {
             }
             i++;
         }
-        
+
         // Fallback: use timestamp to ensure uniqueness
         return generateUniqueSlugWithTimestamp(title);
     }
-    
+
     /**
      * Generate unique slug with timestamp to ensure uniqueness in race conditions.
      * Used as fallback when incremental numbering fails or during concurrent requests.
@@ -709,12 +710,12 @@ public class CourseService {
         if (base.isEmpty()) {
             base = "untitled-course";
         }
-        
+
         // Use timestamp + random suffix for better uniqueness
         long timestamp = System.currentTimeMillis();
         int randomSuffix = (int) (Math.random() * 1000); // 0-999
         String suffix = timestamp + "-" + randomSuffix;
-        
+
         // Ensure total length doesn't exceed 180 chars (slug column limit)
         int maxBaseLength = 180 - suffix.length() - 1; // -1 for dash
         if (maxBaseLength < 1) {
@@ -723,9 +724,9 @@ public class CourseService {
         if (base.length() > maxBaseLength) {
             base = base.substring(0, maxBaseLength);
         }
-        
+
         String s = base + "-" + suffix;
-        
+
         // Double-check uniqueness (very unlikely but possible)
         int retry = 0;
         while (courseRepo.existsBySlug(s) && retry < 10) {
@@ -739,7 +740,7 @@ public class CourseService {
             s = base + "-" + suffix;
             retry++;
         }
-        
+
         return s;
     }
 
@@ -747,24 +748,24 @@ public class CourseService {
         // Use native query to check ownership without loading LOB fields
         Object[] metadata = courseRepo.findCourseMetadataById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        
+
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
         }
-        
+
         // Validate array length
         if (actualMetadata.length < 12 || actualMetadata[11] == null) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Invalid course metadata: missing userId");
         }
-        
+
         Long userId = ((Number) actualMetadata[11]).longValue(); // userId is at index 11
         if (!Objects.equals(userId, teacherUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner");
         }
-        
+
         // Use getReferenceById to avoid loading full entity with LOB
         return courseRepo.getReferenceById(id);
     }
@@ -795,24 +796,31 @@ public class CourseService {
             return null;
         }
         User u = userOpt.get();
-        return (u.getDisplayName() != null && !u.getDisplayName().isEmpty()) 
-            ? u.getDisplayName() 
+        return (u.getDisplayName() != null && !u.getDisplayName().isEmpty())
+            ? u.getDisplayName()
             : u.getUsername();
     }
 
     private CourseRes toCourseResLite(Course c) {
-        CourseRes res = new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
-                c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
-                c.getCoverImagePath(),
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                null, // teacherName - will set below
-                List.of()
-        );
+        CourseRes res = new CourseRes();
+        res.setId(c.getId());
+        res.setTitle(c.getTitle());
+        res.setSlug(c.getSlug());
+        res.setSubtitle(c.getSubtitle());
+        res.setDescription(c.getDescription());
+        res.setLevel(c.getLevel());
+        res.setPriceCents(c.getPriceCents());
+        res.setDiscountedPriceCents(c.getDiscountedPriceCents());
+        res.setCurrency(c.getCurrency());
+        res.setCoverImagePath(c.getCoverImagePath());
+        res.setStatus(c.getStatus());
+        res.setPublishedAt(c.getPublishedAt());
+        res.setUserId(c.getUserId());
         res.setTeacherName(getTeacherName(c.getUserId()));
+        res.setChapters(List.of());
         return res;
     }
+
 
     private CourseRes toCourseResFull(Course c) {
         List<ChapterRes> chapters = c.getChapters().stream()
@@ -830,16 +838,22 @@ public class CourseService {
                                 )).collect(Collectors.toList())
                 )).collect(Collectors.toList());
 
-        CourseRes res = new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
-                c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
-                c.getCoverImagePath(),
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                null, // teacherName - will set below
-                chapters
-        );
+        CourseRes res = new CourseRes();
+        res.setId(c.getId());
+        res.setTitle(c.getTitle());
+        res.setSlug(c.getSlug());
+        res.setSubtitle(c.getSubtitle());
+        res.setDescription(c.getDescription());
+        res.setLevel(c.getLevel());
+        res.setPriceCents(c.getPriceCents());
+        res.setDiscountedPriceCents(c.getDiscountedPriceCents());
+        res.setCurrency(c.getCurrency());
+        res.setCoverImagePath(c.getCoverImagePath());
+        res.setStatus(c.getStatus());
+        res.setPublishedAt(c.getPublishedAt());
+        res.setUserId(c.getUserId());
         res.setTeacherName(getTeacherName(c.getUserId()));
+        res.setChapters(chapters);
         return res;
     }
 
@@ -854,16 +868,22 @@ public class CourseService {
                                 .collect(Collectors.toList())
                 )).collect(Collectors.toList());
 
-        CourseRes res = new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(),
-                c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(),
-                c.getCoverImagePath(),
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                null, // teacherName - will set below
-                chapters
-        );
+        CourseRes res = new CourseRes();
+        res.setId(c.getId());
+        res.setTitle(c.getTitle());
+        res.setSlug(c.getSlug());
+        res.setSubtitle(c.getSubtitle());
+        res.setDescription(c.getDescription());
+        res.setLevel(c.getLevel());
+        res.setPriceCents(c.getPriceCents());
+        res.setDiscountedPriceCents(c.getDiscountedPriceCents());
+        res.setCurrency(c.getCurrency());
+        res.setCoverImagePath(c.getCoverImagePath());
+        res.setStatus(c.getStatus());
+        res.setPublishedAt(c.getPublishedAt());
+        res.setUserId(c.getUserId());
         res.setTeacherName(getTeacherName(c.getUserId()));
+        res.setChapters(chapters);
         return res;
     }
 
@@ -933,8 +953,15 @@ public class CourseService {
     @Transactional(readOnly = true)
     public CourseRes getDetail(Long id, Long teacherUserId) {
         Course c = getOwned(id, teacherUserId);
-        return toCourseResLite(c);
+        CourseRes res = toCourseResLite(c);
+
+        // nếu CourseRes có field enrollCount
+        long enrollCount = enrollmentRepo.countByCourseId(id);
+        res.setEnrollCount(enrollCount);
+
+        return res;
     }
+
 
     // =========================
     // CHAPTER: update / delete / reorder
@@ -1155,32 +1182,35 @@ public class CourseService {
         // Use native query to check status without loading LOB fields
         Object[] metadata = courseRepo.findCourseMetadataById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        
+
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
         }
-        
+
         // Validate array length
         if (actualMetadata.length < 10 || actualMetadata[9] == null) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Invalid course metadata: missing status");
         }
-        
+
         // Check status (at index 9)
         CourseStatus status;
         try {
             status = CourseStatus.valueOf(actualMetadata[9].toString().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Invalid course status: " + actualMetadata[9]);
         }
         if (status != CourseStatus.PUBLISHED) {
             // Ẩn sự tồn tại nếu chưa publish
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
         }
-        return getTree(courseId);
+        CourseRes res = getTree(courseId);
+        long enrollCount = enrollmentRepo.countByCourseId(courseId);
+        res.setEnrollCount(enrollCount);
+        return res;
     }
 
     /**
@@ -1192,29 +1222,29 @@ public class CourseService {
         // Use native query to check status without loading LOB fields
         Object[] metadata = courseRepo.findCourseMetadataById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        
+
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
         }
-        
+
         // Validate array length
         if (actualMetadata.length < 10 || actualMetadata[9] == null) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Invalid course metadata: missing status");
         }
-        
+
         // Check status (at index 9)
         CourseStatus status;
         try {
             status = CourseStatus.valueOf(actualMetadata[9].toString().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Invalid course status: " + actualMetadata[9]);
         }
         if (status != CourseStatus.PENDING_APPROVAL) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Course is not pending approval. Current status: " + status);
         }
         return getTree(courseId);

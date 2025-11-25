@@ -125,4 +125,6 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     long countByUserIdAndStatusAndDeletedFlagFalse(Long userId, CourseStatus status);
 
     Page<Course> findByUserIdAndDeletedFlagFalse(Long userId, Pageable pageable);
+
+    List<Course> findAllByDeletedFlagFalse();
 }

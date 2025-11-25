@@ -15,25 +15,52 @@ public final class CourseMapper {
 
     /** Map full tree (chỉ dùng khi đang ở trong 1 @Transactional để LAZY không nổ). */
     public static CourseRes toRes(Course c) {
-        return new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(), c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverImagePath(),
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                null, // teacherName - will be set by service layer if needed
-                mapChaptersDeepSafe(c) // an toàn với LAZY
-        );
+        CourseRes res = new CourseRes();
+        res.setId(c.getId());
+        res.setTitle(c.getTitle());
+        res.setSlug(c.getSlug());
+        res.setSubtitle(c.getSubtitle());
+        res.setDescription(c.getDescription());
+        res.setLevel(c.getLevel());
+        res.setPriceCents(c.getPriceCents());
+        res.setDiscountedPriceCents(c.getDiscountedPriceCents());
+        res.setCurrency(c.getCurrency());
+        res.setCoverImagePath(c.getCoverImagePath());
+        res.setStatus(c.getStatus());
+        res.setPublishedAt(c.getPublishedAt());
+        res.setUserId(c.getUserId());
+        // teacherName sẽ được set ở service nếu cần
+        res.setTeacherName(null);
+        // nếu CourseRes có field enrollCount thì set luôn, không thì bỏ dòng này
+        res.setEnrollCount(c.getEnrollCount());
+        // map tree
+        res.setChapters(mapChaptersDeepSafe(c));
+        return res;
     }
+
 
     /** Trả course chỉ với đúng 1 chapter (ví dụ: chapter học thử). */
     public static CourseRes toResOnlyTrial(Course c, Chapter trial) {
-        return new CourseRes(
-                c.getId(), c.getTitle(), c.getSlug(), c.getSubtitle(), c.getDescription(), c.getLevel(),
-                c.getPriceCents(), c.getDiscountedPriceCents(), c.getCurrency(), c.getCoverImagePath(),
-                c.getStatus(), c.getPublishedAt(), c.getUserId(),
-                null, // teacherName - will be set by service layer if needed
-                List.of(toChapterResDeep(trial))
-        );
+        CourseRes res = new CourseRes();
+        res.setId(c.getId());
+        res.setTitle(c.getTitle());
+        res.setSlug(c.getSlug());
+        res.setSubtitle(c.getSubtitle());
+        res.setDescription(c.getDescription());
+        res.setLevel(c.getLevel());
+        res.setPriceCents(c.getPriceCents());
+        res.setDiscountedPriceCents(c.getDiscountedPriceCents());
+        res.setCurrency(c.getCurrency());
+        res.setCoverImagePath(c.getCoverImagePath());
+        res.setStatus(c.getStatus());
+        res.setPublishedAt(c.getPublishedAt());
+        res.setUserId(c.getUserId());
+        res.setTeacherName(null);
+        res.setEnrollCount(c.getEnrollCount());
+        res.setChapters(List.of(toChapterResDeep(trial)));
+        return res;
     }
+
 
     /* =======================
        Chapter / Lesson / ...

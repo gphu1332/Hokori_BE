@@ -35,5 +35,6 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     );
 
     // ====== NEW: đếm enrollment theo course ======
+// ✅ Đúng với entity có field courseId
     long countByCourseId(Long courseId);
 }

@@ -29,4 +29,5 @@ public class CourseRes {
     private Long userId;
     private String teacherName; // Tên giáo viên (displayName hoặc username)
     private List<ChapterRes> chapters;
+    private Long enrollCount;
 }
