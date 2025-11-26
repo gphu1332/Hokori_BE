@@ -124,4 +124,37 @@ public class JlptLearnerController {
         Long userId = currentUserIdOrThrow();
         return jlptTestService.getResultForUser(testId, userId);
     }
+
+    // --- LISTENING ---
+    @Operation(
+            summary = "Lấy câu hỏi LISTENING của 1 JLPT test",
+            description = "Trả về danh sách câu hỏi + options, questionType = LISTENING"
+    )
+    @GetMapping("/tests/{testId}/questions/listening")
+    @PreAuthorize("hasRole('LEARNER')")
+    public List<JlptQuestionWithOptionsResponse> getListeningQuestions(@PathVariable Long testId) {
+        return jlptTestService.getListeningQuestions(testId);
+    }
+
+    // --- READING ---
+    @Operation(
+            summary = "Lấy câu hỏi READING của 1 JLPT test",
+            description = "Trả về danh sách câu hỏi + options, questionType = READING"
+    )
+    @GetMapping("/tests/{testId}/questions/reading")
+    @PreAuthorize("hasRole('LEARNER')")
+    public List<JlptQuestionWithOptionsResponse> getReadingQuestions(@PathVariable Long testId) {
+        return jlptTestService.getReadingQuestions(testId);
+    }
+
+    // --- GRAMMAR + VOCAB ---
+    @Operation(
+            summary = "Lấy câu hỏi GRAMMAR + VOCAB của 1 JLPT test",
+            description = "Gom 2 loại GRAMMAR và VOCAB, FE hiển thị chung phần Ngữ pháp & Từ vựng"
+    )
+    @GetMapping("/tests/{testId}/questions/grammar-vocab")
+    @PreAuthorize("hasRole('LEARNER')")
+    public List<JlptQuestionWithOptionsResponse> getGrammarVocabQuestions(@PathVariable Long testId) {
+        return jlptTestService.getGrammarVocabQuestions(testId);
+    }
 }

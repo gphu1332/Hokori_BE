@@ -2,6 +2,7 @@
 package com.hokori.web.service;
 
 import com.hokori.web.Enum.JLPTLevel;
+import com.hokori.web.Enum.JlptQuestionType;
 import com.hokori.web.dto.jlpt.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
@@ -85,7 +86,51 @@ public class JlptTestService {
 
     @Transactional(readOnly = true)
     public List<JlptQuestionWithOptionsResponse> getQuestionsWithOptions(Long testId) {
-        List<JlptQuestion> questions = questionRepo.findByTest_IdAndDeletedFlagFalseOrderByOrderIndexAsc(testId);
+        List<JlptQuestion> questions =
+                questionRepo.findByTest_IdAndDeletedFlagFalseOrderByOrderIndexAsc(testId);
+        return mapQuestionsWithOptions(questions);
+    }
+
+    // === LISTENING ===
+    @Transactional(readOnly = true)
+    public List<JlptQuestionWithOptionsResponse> getListeningQuestions(Long testId) {
+        List<JlptQuestion> questions =
+                questionRepo.findByTest_IdAndQuestionTypeAndDeletedFlagFalseOrderByOrderIndexAsc(
+                        testId,
+                        JlptQuestionType.LISTENING
+                );
+        return mapQuestionsWithOptions(questions);
+    }
+
+    // === READING ===
+    @Transactional(readOnly = true)
+    public List<JlptQuestionWithOptionsResponse> getReadingQuestions(Long testId) {
+        List<JlptQuestion> questions =
+                questionRepo.findByTest_IdAndQuestionTypeAndDeletedFlagFalseOrderByOrderIndexAsc(
+                        testId,
+                        JlptQuestionType.READING
+                );
+        return mapQuestionsWithOptions(questions);
+    }
+
+    // === GRAMMAR + VOCAB ===
+    @Transactional(readOnly = true)
+    public List<JlptQuestionWithOptionsResponse> getGrammarVocabQuestions(Long testId) {
+        java.util.List<JlptQuestionType> types = java.util.List.of(
+                JlptQuestionType.GRAMMAR,
+                JlptQuestionType.VOCAB
+        );
+        List<JlptQuestion> questions =
+                questionRepo.findByTest_IdAndQuestionTypeInAndDeletedFlagFalseOrderByOrderIndexAsc(
+                        testId,
+                        types
+                );
+        return mapQuestionsWithOptions(questions);
+    }
+
+
+    // helper dùng lại cho các hàm bên dưới
+    private List<JlptQuestionWithOptionsResponse> mapQuestionsWithOptions(List<JlptQuestion> questions) {
         return questions.stream().map(q -> {
             List<JlptOption> options = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(q.getId());
             List<JlptOptionResponse> optionDtos = options.stream()
@@ -94,6 +139,7 @@ public class JlptTestService {
             return JlptQuestionWithOptionsResponse.fromEntity(q, optionDtos);
         }).toList();
     }
+
 
     @Transactional
     public void submitAnswer(Long testId, Long userId, JlptAnswerSubmitRequest req) {
