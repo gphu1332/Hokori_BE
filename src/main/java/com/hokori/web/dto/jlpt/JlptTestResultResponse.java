@@ -13,4 +13,8 @@ public class JlptTestResultResponse {
     int totalQuestions;
     int correctCount;
     double score;          // nếu mỗi câu = totalScore / totalQuestions
+    // ==== mới thêm ====
+    String level;      // N5 / N4 / ...
+    Double passScore;  // điểm cần để đậu theo level (đã scale theo total_score của đề)
+    Boolean passed;    // true = đậu, false = rớt
 }

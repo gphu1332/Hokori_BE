@@ -196,13 +196,59 @@ public class JlptTestService {
             score = (double) test.getTotalScore() * correctCount / totalQuestions;
         }
 
+        // ====== Áp dụng rule JLPT chính thức ======
+        String level = test.getLevel();                 // "N5", "N4", ...
+        int totalMax = test.getTotalScore() != null     // thường là 180
+                ? test.getTotalScore()
+                : 180;
+
+        double passScore = calculatePassScore(level, totalMax);
+        boolean passed = score >= passScore;
+
         return JlptTestResultResponse.builder()
                 .testId(testId)
                 .userId(userId)
                 .totalQuestions(totalQuestions)
                 .correctCount(correctCount)
                 .score(score)
+                .level(level)
+                .passScore(passScore)
+                .passed(passed)
                 .build();
+    }
+
+    /**
+     * Tính điểm cần thiết để đậu theo level JLPT.
+     *
+     * Official (trên thang 180 điểm):
+     *  - N5: >= 80 / 180
+     *  - N4: >= 90 / 180
+     *  - N3: >= 95 / 180
+     *  - N2: >= 90 / 180
+     *  - N1: >= 100 / 180
+     *
+     * Nếu đề của em không phải đúng 180 điểm thì hàm này sẽ scale
+     * theo tổng điểm `totalMax` của đề.
+     */
+    private double calculatePassScore(String level, int totalMax) {
+        double ratio;   // tỉ lệ pass trên thang điểm 1.0
+
+        if (level == null) {
+            // không biết level thì coi như 0, luôn đậu
+            return 0.0;
+        }
+
+        switch (level.toUpperCase()) {
+            case "N5" -> ratio = 80.0 / 180.0;
+            case "N4" -> ratio = 90.0 / 180.0;
+            case "N3" -> ratio = 95.0 / 180.0;
+            case "N2" -> ratio = 90.0 / 180.0;
+            case "N1" -> ratio = 100.0 / 180.0;
+            default   -> ratio = 0.0;  // level lạ -> không bắt buộc pass
+        }
+
+        double raw = totalMax * ratio;
+        return Math.round(raw * 10.0) / 10.0;
     }
 
     @Transactional
@@ -384,6 +430,33 @@ public class JlptTestService {
         if (java.time.Instant.now().isAfter(session.getExpiresAt())) {
             throw new IllegalStateException("Thời gian làm bài đã hết");
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<JlptTestListItemResponse> listTestsForLearner() {
+        List<JlptTest> tests = testRepo.findByDeletedFlagFalseOrderByLevelAscCreatedAtDesc();
+
+        return tests.stream()
+                .map(t -> {
+                    double passScore = calculatePassScore(
+                            t.getLevel(),
+                            t.getTotalScore() != null ? t.getTotalScore() : 180
+                    );
+
+                    // Tạo title đơn giản: "JLPT N3 – Mock Test #5"
+                    String title = "JLPT " + t.getLevel() + " – Mock Test #" + t.getId();
+
+                    return JlptTestListItemResponse.builder()
+                            .id(t.getId())
+                            .title(title)
+                            .level(t.getLevel())
+                            .durationMin(t.getDurationMin())
+                            .totalScore(t.getTotalScore())
+                            .passScore(passScore)
+                            .currentParticipants(t.getCurrentParticipants())
+                            .build();
+                })
+                .toList();
     }
 
 

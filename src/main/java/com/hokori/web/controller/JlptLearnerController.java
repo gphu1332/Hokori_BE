@@ -157,4 +157,15 @@ public class JlptLearnerController {
     public List<JlptQuestionWithOptionsResponse> getGrammarVocabQuestions(@PathVariable Long testId) {
         return jlptTestService.getGrammarVocabQuestions(testId);
     }
+
+    @Operation(
+            summary = "Learner lấy danh sách đề JLPT",
+            description = "Trả về list các đề JLPT (mock test) đang mở cho learner: level, thời gian, điểm đậu..."
+    )
+    @GetMapping("/tests")
+    @PreAuthorize("hasRole('LEARNER')")
+    public List<JlptTestListItemResponse> listTests() {
+        // Không cần userId, chỉ list public tests
+        return jlptTestService.listTestsForLearner();
+    }
 }
