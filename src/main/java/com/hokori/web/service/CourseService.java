@@ -376,6 +376,11 @@ public class CourseService {
         res.setPublishedAt(publishedAt);
         res.setUserId(userId);
         res.setTeacherName(teacherName);
+
+        // ✅ Quan trọng: set enrollCount ở đây
+        long enrollCount = (id != null) ? enrollmentRepo.countByCourseId(id) : 0L;
+        res.setEnrollCount(enrollCount);
+
         res.setChapters(Collections.emptyList());
         return res;
     }
