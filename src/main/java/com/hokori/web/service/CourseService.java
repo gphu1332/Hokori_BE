@@ -817,9 +817,15 @@ public class CourseService {
         res.setPublishedAt(c.getPublishedAt());
         res.setUserId(c.getUserId());
         res.setTeacherName(getTeacherName(c.getUserId()));
+
+        // ✅ luôn trả enrollCount
+        long enrollCount = enrollmentRepo.countByCourseId(c.getId());
+        res.setEnrollCount(enrollCount);
+
         res.setChapters(List.of());
         return res;
     }
+
 
 
     private CourseRes toCourseResFull(Course c) {
