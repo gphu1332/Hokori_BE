@@ -392,8 +392,9 @@ public class JlptTestService {
             sessionRepo.save(session);
 
             // lần đầu user này thi test này -> tăng currentParticipants
+            // Handle null case for existing records in PostgreSQL
             Integer cur = test.getCurrentParticipants();
-            test.setCurrentParticipants(cur == null ? 1 : cur + 1);
+            test.setCurrentParticipants((cur == null ? 0 : cur) + 1);
         } else {
             // cho phép start lại nhưng không tăng người thi
             session.setStartedAt(now);
