@@ -39,10 +39,13 @@ public class DataSourceConfig {
                 int port = dbUri.getPort() == -1 ? 5432 : dbUri.getPort();
                 String database = dbUri.getPath().replaceFirst("/", "");
                 
-                // Build JDBC URL
-                String jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s", host, port, database);
+                // Build JDBC URL with connection parameters for Railway PostgreSQL
+                String jdbcUrl = String.format(
+                    "jdbc:postgresql://%s:%d/%s?connectTimeout=60&socketTimeout=60&loginTimeout=60",
+                    host, port, database
+                );
                 
-                logger.info("✅ Parsed DATABASE_URL: {}", jdbcUrl);
+                logger.info("✅ Parsed DATABASE_URL: {}", jdbcUrl.replaceAll(":[^:@]+@", ":****@"));
                 logger.info("✅ Database: {}", database);
                 logger.info("✅ Host: {}:{}", host, port);
                 
@@ -53,12 +56,18 @@ public class DataSourceConfig {
                 config.setPassword(password);
                 config.setDriverClassName("org.postgresql.Driver");
                 
-                // Connection pool settings
+                // Connection pool settings - increased timeouts for Railway
                 config.setMaximumPoolSize(10);
                 config.setMinimumIdle(2);
-                config.setConnectionTimeout(30000);
-                config.setIdleTimeout(600000);
-                config.setMaxLifetime(1800000);
+                config.setConnectionTimeout(60000); // 60 seconds (increased from 30s)
+                config.setValidationTimeout(5000); // 5 seconds
+                config.setIdleTimeout(600000); // 10 minutes
+                config.setMaxLifetime(1800000); // 30 minutes
+                
+                // Additional PostgreSQL-specific settings
+                config.addDataSourceProperty("socketTimeout", "60");
+                config.addDataSourceProperty("loginTimeout", "60");
+                config.addDataSourceProperty("tcpKeepAlive", "true");
                 
                 return new HikariDataSource(config);
             } catch (Exception e) {
