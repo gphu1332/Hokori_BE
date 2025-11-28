@@ -93,10 +93,13 @@ public class AdminController {
 
     @GetMapping("/users")
     @Operation(summary = "Get all users", description = "Retrieve all users in the system")
-    public ResponseEntity<ApiResponse<List<User>>> getAllUsers() {
+    public ResponseEntity<ApiResponse<List<UserDetailDTO>>> getAllUsers() {
         try {
             List<User> users = userService.getAllUsers();
-            return ResponseEntity.ok(ApiResponse.success("Users retrieved successfully", users));
+            List<UserDetailDTO> userDTOs = users.stream()
+                    .map(UserDetailDTO::from)
+                    .toList();
+            return ResponseEntity.ok(ApiResponse.success("Users retrieved successfully", userDTOs));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("Failed to retrieve users: " + e.getMessage()));
         }
@@ -150,7 +153,7 @@ public class AdminController {
 
     @PutMapping("/users/{userId}/status")
     @Operation(summary = "Update user status", description = "Activate or deactivate a user account")
-    public ResponseEntity<ApiResponse<User>> updateUserStatus(
+    public ResponseEntity<ApiResponse<UserDetailDTO>> updateUserStatus(
             @PathVariable Long userId,
             @Valid @RequestBody UserStatusRequest request) {
         try {
@@ -160,7 +163,11 @@ public class AdminController {
             user.setIsActive(request.getIsActive());
             userService.updateUser(user);
 
-            return ResponseEntity.ok(ApiResponse.success("User status updated successfully", user));
+            // Load user with role for DTO conversion
+            User updated = userService.getUserWithRole(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            return ResponseEntity.ok(ApiResponse.success("User status updated successfully", UserDetailDTO.from(updated)));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(ApiResponse.error("Failed to update user status: " + e.getMessage()));
         } catch (Exception e) {
@@ -181,7 +188,7 @@ public class AdminController {
 
     @GetMapping("/users/search")
     @Operation(summary = "Search users", description = "Search users by various criteria")
-    public ResponseEntity<ApiResponse<List<User>>> searchUsers(
+    public ResponseEntity<ApiResponse<List<UserDetailDTO>>> searchUsers(
             @RequestParam(required = false) String username,
             @RequestParam(required = false) String email,
             @RequestParam(required = false) String role,
@@ -192,13 +199,14 @@ public class AdminController {
         try {
             List<User> allUsers = userService.getAllUsers();
 
-            List<User> filteredUsers = allUsers.stream()
+            List<UserDetailDTO> filteredUsers = allUsers.stream()
                     .filter(u -> username == null || (u.getUsername() != null && u.getUsername().toLowerCase().contains(username.toLowerCase())))
                     .filter(u -> email == null || (u.getEmail() != null && u.getEmail().toLowerCase().contains(email.toLowerCase())))
                     .filter(u -> role == null || (u.getRole() != null && role.equals(u.getRole().getRoleName())))
                     .filter(u -> jlptLevel == null || (u.getCurrentJlptLevel() != null && u.getCurrentJlptLevel().name().equals(jlptLevel)))
                     .filter(u -> isActive == null || Boolean.valueOf(Boolean.TRUE.equals(u.getIsActive())).equals(isActive))
                     .filter(u -> isVerified == null || Boolean.valueOf(Boolean.TRUE.equals(u.getIsVerified())).equals(isVerified))
+                    .map(UserDetailDTO::from)
                     .toList();
 
             return ResponseEntity.ok(ApiResponse.success("Users found: " + filteredUsers.size(), filteredUsers));
@@ -263,14 +271,18 @@ public class AdminController {
 
     @PutMapping("/users/{userId}/verify")
     @Operation(summary = "Verify user email", description = "Manually verify a user's email address")
-    public ResponseEntity<ApiResponse<User>> verifyUser(@PathVariable Long userId) {
+    public ResponseEntity<ApiResponse<UserDetailDTO>> verifyUser(@PathVariable Long userId) {
         try {
             User user = userService.getUserById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
             user.setIsVerified(true);
             userService.updateUser(user);
 
-            return ResponseEntity.ok(ApiResponse.success("User verified successfully", user));
+            // Load user with role for DTO conversion
+            User updated = userService.getUserWithRole(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            return ResponseEntity.ok(ApiResponse.success("User verified successfully", UserDetailDTO.from(updated)));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(ApiResponse.error("Failed to verify user: " + e.getMessage()));
         } catch (Exception e) {
@@ -284,7 +296,12 @@ public class AdminController {
         try {
             List<User> allUsers = userService.getAllUsers();
 
-            List<Map<String, Object>> csvData = allUsers.stream()
+            // Convert to DTO first to avoid LOB serialization issues
+            List<UserDetailDTO> userDTOs = allUsers.stream()
+                    .map(UserDetailDTO::from)
+                    .toList();
+
+            List<Map<String, Object>> csvData = userDTOs.stream()
                     .map(u -> {
                         Map<String, Object> row = new HashMap<>();
                         row.put("id", u.getId());
@@ -292,7 +309,7 @@ public class AdminController {
                         row.put("email", u.getEmail());
                         row.put("displayName", u.getDisplayName());
                         row.put("currentJlptLevel", u.getCurrentJlptLevel() != null ? u.getCurrentJlptLevel().name() : "N/A");
-                        row.put("role", u.getRole() != null ? u.getRole().getRoleName() : "No role");
+                        row.put("role", u.getRoleName() != null ? u.getRoleName() : "No role");
                         row.put("isActive", u.getIsActive());
                         row.put("isVerified", u.getIsVerified());
                         row.put("createdAt", u.getCreatedAt());
@@ -418,18 +435,20 @@ public class AdminController {
 
             List<User> allUsers = userService.getAllUsers();
 
-            // Recent user registrations
-            List<User> recentUsers = allUsers.stream()
+            // Recent user registrations - convert to DTO
+            List<UserDetailDTO> recentUsers = allUsers.stream()
                     .filter(u -> u.getCreatedAt() != null)
                     .sorted((u1, u2) -> u2.getCreatedAt().compareTo(u1.getCreatedAt()))
                     .limit(20)
+                    .map(UserDetailDTO::from)
                     .toList();
 
-            // Recent logins
-            List<User> recentLogins = allUsers.stream()
+            // Recent logins - convert to DTO
+            List<UserDetailDTO> recentLogins = allUsers.stream()
                     .filter(u -> u.getLastLoginAt() != null)
                     .sorted((u1, u2) -> u2.getLastLoginAt().compareTo(u1.getLastLoginAt()))
                     .limit(20)
+                    .map(UserDetailDTO::from)
                     .toList();
 
             logs.put("recentRegistrations", recentUsers);
