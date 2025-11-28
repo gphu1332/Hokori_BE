@@ -50,7 +50,9 @@ public class JlptTest {
     @Column(name = "result", length = 500)
     private String result;
 
-    @Column(name = "current_participants", nullable = false)
+    // Temporarily allow nullable to avoid schema validation error with existing NULL values
+    // Will be set to nullable = false after data migration
+    @Column(name = "current_participants", nullable = true, columnDefinition = "INTEGER DEFAULT 0")
     @Builder.Default
     private Integer currentParticipants = 0;
 
@@ -78,6 +80,14 @@ public class JlptTest {
     void preUpdate() {
         updatedAt = Instant.now();
         // Ensure currentParticipants is never null
+        if (currentParticipants == null) {
+            currentParticipants = 0;
+        }
+    }
+
+    @PostLoad
+    void postLoad() {
+        // Fix NULL values when reading from PostgreSQL database
         if (currentParticipants == null) {
             currentParticipants = 0;
         }
