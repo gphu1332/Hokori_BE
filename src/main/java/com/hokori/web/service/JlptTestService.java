@@ -25,6 +25,8 @@ public class JlptTestService {
     private final JlptUserTestSessionRepository sessionRepo;
     private final LearnerProgressService learnerProgressService;
 
+    private static final int DEFAULT_TOTAL_SCORE = 180;
+
     @Transactional
     public JlptTest createTest(JlptEvent event, User moderator, JlptTestCreateRequest req) {
         JlptTest test = JlptTest.builder()
@@ -32,7 +34,7 @@ public class JlptTestService {
                 .createdBy(moderator)
                 .level(req.getLevel ())
                 .durationMin(req.getDurationMin())
-                .totalScore(req.getTotalScore())
+                .totalScore(DEFAULT_TOTAL_SCORE)
                 .result(req.getResultNote())
                 .deletedFlag(false)
                 .build();
