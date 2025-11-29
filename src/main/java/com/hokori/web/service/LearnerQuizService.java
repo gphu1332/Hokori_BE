@@ -165,8 +165,8 @@ public class LearnerQuizService {
         if (!Objects.equals(q.getQuiz().getId(), a.getQuiz().getId()))
             throw new RuntimeException("Question not in this quiz");
 
-        // DTO của bạn đang là class → dùng getOptionId()
-        Option chosen = optionRepo.findById(req.optionId())   // <-- record: dùng optionId()
+        // AnswerReq là record → dùng optionId()
+        Option chosen = optionRepo.findById(req.optionId())
                 .orElseThrow(() -> new EntityNotFoundException("Option not found"));
         if (!Objects.equals(chosen.getQuestion().getId(), q.getId()))
             throw new RuntimeException("Option not in this question");
