@@ -20,10 +20,5 @@ public class RegisterTeacherRequest {
 
     // socials (optional)
     private String websiteUrl;
-    private String facebook;
-    private String instagram;
     private String linkedin;
-    private String tiktok;
-    private String x;
-    private String youtube;
 }
