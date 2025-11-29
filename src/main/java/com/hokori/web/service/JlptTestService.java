@@ -511,6 +511,7 @@ public class JlptTestService {
                             .totalScore(t.getTotalScore())
                             .passScore(passScore)
                             .currentParticipants(t.getCurrentParticipants())
+                            .deletedFlag(t.isDeletedFlag())
                             .build();
                 })
                 .toList();
