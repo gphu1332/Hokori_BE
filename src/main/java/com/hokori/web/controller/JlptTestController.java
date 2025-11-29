@@ -19,8 +19,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import com.hokori.web.service.FileStorageService;
 
 import java.util.List;
 
@@ -35,6 +38,7 @@ public class JlptTestController {
     private final JlptEventRepository eventRepo;
     private final JlptTestRepository testRepo;
     private final CurrentUserService currentUserService;
+    private final FileStorageService fileStorageService;
 
     // ===== Moderator: tạo test trong 1 event =====
 
@@ -85,6 +89,67 @@ public class JlptTestController {
         return tests.stream()
                 .map(JlptTestResponse::fromEntity)
                 .toList();
+    }
+
+    // ===== Moderator: upload audio file cho JLPT test/question =====
+
+    @PostMapping(value = "/tests/{testId}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('MODERATOR')")
+    @Operation(
+            summary = "Moderator upload audio file cho JLPT test",
+            description = """
+                    Upload audio file cho listening questions.
+                    Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WEBM, OPUS
+                    Max file size: 512MB
+                    Trả về filePath để dùng trong createQuestion/updateQuestion.
+                    """
+    )
+    @ApiResponse(
+            responseCode = "200",
+            description = "Upload thành công",
+            content = @Content(schema = @Schema(implementation = FileUploadResponse.class))
+    )
+    public FileUploadResponse uploadAudioFile(
+            @PathVariable Long testId,
+            @RequestParam("file") MultipartFile file
+    ) {
+        currentUserService.getCurrentUserOrThrow();
+        
+        // Validate audio file type
+        String contentType = file.getContentType();
+        String fileName = file.getOriginalFilename();
+        boolean isValidAudio = false;
+        
+        if (contentType != null) {
+            // Check by MIME type
+            isValidAudio = contentType.startsWith("audio/") ||
+                          contentType.equals("application/octet-stream"); // Some browsers send this
+        }
+        
+        if (!isValidAudio && fileName != null) {
+            // Check by file extension as fallback
+            String lowerFileName = fileName.toLowerCase();
+            isValidAudio = lowerFileName.endsWith(".mp3") ||
+                          lowerFileName.endsWith(".wav") ||
+                          lowerFileName.endsWith(".m4a") ||
+                          lowerFileName.endsWith(".aac") ||
+                          lowerFileName.endsWith(".ogg") ||
+                          lowerFileName.endsWith(".flac") ||
+                          lowerFileName.endsWith(".webm") ||
+                          lowerFileName.endsWith(".opus");
+        }
+        
+        if (!isValidAudio) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "Invalid audio file format. Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WEBM, OPUS"
+            );
+        }
+        
+        String subFolder = "jlpt/tests/" + testId;
+        String relativePath = fileStorageService.store(file, subFolder);
+        String url = "/files/" + relativePath;
+        return new FileUploadResponse(relativePath, url);
     }
 
     // ===== Moderator: thêm câu hỏi cho test =====
@@ -327,4 +392,7 @@ public class JlptTestController {
         User moderator = currentUserService.getCurrentUserOrThrow();
         jlptTestService.deleteOption(questionId, optionId, moderator);
     }
+
+    // ====== DTO nhỏ ======
+    public record FileUploadResponse(String filePath, String url) {}
 }
