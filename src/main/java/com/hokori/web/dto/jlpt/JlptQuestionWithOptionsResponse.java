@@ -34,12 +34,29 @@ public class JlptQuestionWithOptionsResponse {
             JlptQuestion q,
             List<JlptOptionResponse> options
     ) {
+        // Map audioPath to audioUrl with /files/ prefix for serving
+        String audioUrl = null;
+        if (q.getAudioPath() != null && !q.getAudioPath().isEmpty()) {
+            // If audioPath already has /files/ prefix, use it as is
+            // Otherwise, add /files/ prefix
+            if (q.getAudioPath().startsWith("/files/")) {
+                audioUrl = q.getAudioPath();
+            } else {
+                audioUrl = "/files/" + q.getAudioPath();
+            }
+        } else if (q.getAudioUrl() != null && !q.getAudioUrl().isEmpty()) {
+            // Fallback to audioUrl field if audioPath is null
+            audioUrl = q.getAudioUrl().startsWith("/files/") 
+                    ? q.getAudioUrl() 
+                    : "/files/" + q.getAudioUrl();
+        }
+        
         return JlptQuestionWithOptionsResponse.builder()
                 .id(q.getId())
                 .testId(q.getTest().getId())
                 .type(q.getQuestionType() != null ? q.getQuestionType().name() : null)
                 .content(q.getContent())
-                .audioUrl(q.getAudioPath())           // map path -> audioUrl
+                .audioUrl(audioUrl)           // map path -> audioUrl with /files/ prefix
                 .questionType(q.getQuestionType())
                 .explanation(q.getExplanation())
                 .orderIndex(q.getOrderIndex())

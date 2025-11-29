@@ -6,10 +6,13 @@ import com.hokori.web.Enum.JlptQuestionType;
 import com.hokori.web.dto.jlpt.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
+import com.hokori.web.service.FileStorageService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 
@@ -24,6 +27,7 @@ public class JlptTestService {
     private final UserRepository userRepo;
     private final JlptUserTestSessionRepository sessionRepo;
     private final LearnerProgressService learnerProgressService;
+    private final FileStorageService fileStorageService;
 
     private static final int DEFAULT_TOTAL_SCORE = 180;
 
@@ -49,6 +53,31 @@ public class JlptTestService {
                 .orElseThrow(() -> new EntityNotFoundException("Test not found"));
 
         // (optional) kiểm tra moderator có quyền với test/event này không
+
+        // Validate audioPath exists in file_storage if provided
+        if (req.getAudioPath() != null && !req.getAudioPath().isEmpty()) {
+            // Remove /files/ prefix if present (filePath should be relative path)
+            String filePath = req.getAudioPath().startsWith("/files/") 
+                    ? req.getAudioPath().substring("/files/".length())
+                    : req.getAudioPath();
+            
+            if (fileStorageService.getFile(filePath) == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Audio file not found in storage: " + filePath + ". Please upload the file first.");
+            }
+        }
+
+        // Validate imagePath exists in file_storage if provided
+        if (req.getImagePath() != null && !req.getImagePath().isEmpty()) {
+            String filePath = req.getImagePath().startsWith("/files/") 
+                    ? req.getImagePath().substring("/files/".length())
+                    : req.getImagePath();
+            
+            if (fileStorageService.getFile(filePath) == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Image file not found in storage: " + filePath + ". Please upload the file first.");
+            }
+        }
 
         JlptQuestion q = JlptQuestion.builder()
                 .test(test)
@@ -294,6 +323,31 @@ public class JlptTestService {
         }
 
         // TODO: kiểm tra quyền nếu cần
+
+        // Validate audioPath exists in file_storage if provided
+        if (req.getAudioPath() != null && !req.getAudioPath().isEmpty()) {
+            // Remove /files/ prefix if present (filePath should be relative path)
+            String filePath = req.getAudioPath().startsWith("/files/") 
+                    ? req.getAudioPath().substring("/files/".length())
+                    : req.getAudioPath();
+            
+            if (fileStorageService.getFile(filePath) == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Audio file not found in storage: " + filePath + ". Please upload the file first.");
+            }
+        }
+
+        // Validate imagePath exists in file_storage if provided
+        if (req.getImagePath() != null && !req.getImagePath().isEmpty()) {
+            String filePath = req.getImagePath().startsWith("/files/") 
+                    ? req.getImagePath().substring("/files/".length())
+                    : req.getImagePath();
+            
+            if (fileStorageService.getFile(filePath) == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Image file not found in storage: " + filePath + ". Please upload the file first.");
+            }
+        }
 
         q.setContent(req.getContent());
         q.setQuestionType(req.getQuestionType());
