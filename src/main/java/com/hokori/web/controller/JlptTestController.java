@@ -98,7 +98,9 @@ public class JlptTestController {
     @Operation(
             summary = "Moderator upload audio file cho JLPT test",
             description = """
-                    Upload audio file (mp3, wav, etc.) cho listening questions.
+                    Upload audio file cho listening questions.
+                    Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WEBM, OPUS
+                    Max file size: 512MB
                     Trả về filePath để dùng trong createQuestion/updateQuestion.
                     """
     )
@@ -112,6 +114,38 @@ public class JlptTestController {
             @RequestParam("file") MultipartFile file
     ) {
         currentUserService.getCurrentUserOrThrow();
+        
+        // Validate audio file type
+        String contentType = file.getContentType();
+        String fileName = file.getOriginalFilename();
+        boolean isValidAudio = false;
+        
+        if (contentType != null) {
+            // Check by MIME type
+            isValidAudio = contentType.startsWith("audio/") ||
+                          contentType.equals("application/octet-stream"); // Some browsers send this
+        }
+        
+        if (!isValidAudio && fileName != null) {
+            // Check by file extension as fallback
+            String lowerFileName = fileName.toLowerCase();
+            isValidAudio = lowerFileName.endsWith(".mp3") ||
+                          lowerFileName.endsWith(".wav") ||
+                          lowerFileName.endsWith(".m4a") ||
+                          lowerFileName.endsWith(".aac") ||
+                          lowerFileName.endsWith(".ogg") ||
+                          lowerFileName.endsWith(".flac") ||
+                          lowerFileName.endsWith(".webm") ||
+                          lowerFileName.endsWith(".opus");
+        }
+        
+        if (!isValidAudio) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "Invalid audio file format. Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WEBM, OPUS"
+            );
+        }
+        
         String subFolder = "jlpt/tests/" + testId;
         String relativePath = fileStorageService.store(file, subFolder);
         String url = "/files/" + relativePath;
