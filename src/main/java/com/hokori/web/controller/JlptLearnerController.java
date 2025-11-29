@@ -159,13 +159,15 @@ public class JlptLearnerController {
     }
 
     @Operation(
-            summary = "Learner lấy danh sách đề JLPT",
-            description = "Trả về list các đề JLPT (mock test) đang mở cho learner: level, thời gian, điểm đậu..."
+            summary = "Learner lấy danh sách đề JLPT theo event",
+            description = "Trả về list các đề JLPT (mock test) thuộc 1 event: level, thời gian, điểm đậu..."
     )
     @GetMapping("/tests")
     @PreAuthorize("hasRole('LEARNER')")
-    public List<JlptTestListItemResponse> listTests() {
-        // Không cần userId, chỉ list public tests
-        return jlptTestService.listTestsForLearner();
+    public List<JlptTestListItemResponse> listTests(
+            @RequestParam("eventId") Long eventId
+    ) {
+        return jlptTestService.listTestsForLearner(eventId);
     }
+
 }

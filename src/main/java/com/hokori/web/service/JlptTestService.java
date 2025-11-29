@@ -433,8 +433,9 @@ public class JlptTestService {
     }
 
     @Transactional(readOnly = true)
-    public List<JlptTestListItemResponse> listTestsForLearner() {
-        List<JlptTest> tests = testRepo.findByDeletedFlagFalseOrderByLevelAscCreatedAtDesc();
+    public List<JlptTestListItemResponse> listTestsForLearner(Long eventId) {
+        // Lấy các đề thuộc event này, chưa bị xoá
+        List<JlptTest> tests = testRepo.findByEvent_IdAndDeletedFlagFalse(eventId);
 
         return tests.stream()
                 .map(t -> {
@@ -443,7 +444,6 @@ public class JlptTestService {
                             t.getTotalScore() != null ? t.getTotalScore() : 180
                     );
 
-                    // Tạo title đơn giản: "JLPT N3 – Mock Test #5"
                     String title = "JLPT " + t.getLevel() + " – Mock Test #" + t.getId();
 
                     return JlptTestListItemResponse.builder()
@@ -458,6 +458,7 @@ public class JlptTestService {
                 })
                 .toList();
     }
+
 
 
 }
