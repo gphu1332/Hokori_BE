@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -57,24 +58,24 @@ public class JlptTestService {
         // Validate audioPath exists in file_storage if provided
         if (req.getAudioPath() != null && !req.getAudioPath().isEmpty()) {
             // Remove /files/ prefix if present (filePath should be relative path)
-            String filePath = req.getAudioPath().startsWith("/files/") 
+            String filePath = req.getAudioPath().startsWith("/files/")
                     ? req.getAudioPath().substring("/files/".length())
                     : req.getAudioPath();
-            
+
             if (fileStorageService.getFile(filePath) == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Audio file not found in storage: " + filePath + ". Please upload the file first.");
             }
         }
 
         // Validate imagePath exists in file_storage if provided
         if (req.getImagePath() != null && !req.getImagePath().isEmpty()) {
-            String filePath = req.getImagePath().startsWith("/files/") 
+            String filePath = req.getImagePath().startsWith("/files/")
                     ? req.getImagePath().substring("/files/".length())
                     : req.getImagePath();
-            
+
             if (fileStorageService.getFile(filePath) == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Image file not found in storage: " + filePath + ". Please upload the file first.");
             }
         }
@@ -327,24 +328,24 @@ public class JlptTestService {
         // Validate audioPath exists in file_storage if provided
         if (req.getAudioPath() != null && !req.getAudioPath().isEmpty()) {
             // Remove /files/ prefix if present (filePath should be relative path)
-            String filePath = req.getAudioPath().startsWith("/files/") 
+            String filePath = req.getAudioPath().startsWith("/files/")
                     ? req.getAudioPath().substring("/files/".length())
                     : req.getAudioPath();
-            
+
             if (fileStorageService.getFile(filePath) == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Audio file not found in storage: " + filePath + ". Please upload the file first.");
             }
         }
 
         // Validate imagePath exists in file_storage if provided
         if (req.getImagePath() != null && !req.getImagePath().isEmpty()) {
-            String filePath = req.getImagePath().startsWith("/files/") 
+            String filePath = req.getImagePath().startsWith("/files/")
                     ? req.getImagePath().substring("/files/".length())
                     : req.getImagePath();
-            
+
             if (fileStorageService.getFile(filePath) == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Image file not found in storage: " + filePath + ". Please upload the file first.");
             }
         }
@@ -517,6 +518,11 @@ public class JlptTestService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public long getActiveUserCount(Long testId) {
+        Instant now = Instant.now();
+        return sessionRepo.countByTest_IdAndExpiresAtAfter(testId, now);
+    }
 
 
 }

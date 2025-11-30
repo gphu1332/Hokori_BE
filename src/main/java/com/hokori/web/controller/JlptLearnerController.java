@@ -16,6 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/learner/jlpt")
@@ -170,4 +171,14 @@ public class JlptLearnerController {
         return jlptTestService.listTestsForLearner(eventId);
     }
 
+    @Operation(
+            summary = "Lấy số người đang làm JLPT Test theo thời gian thực (dùng cho polling)",
+            description = "FE có thể gọi mỗi 3s để cập nhật số người đang làm bài"
+    )
+    @GetMapping("/tests/{testId}/active-users")
+    @PreAuthorize("hasRole('LEARNER')")
+    public Map<String, Long> getActiveUsers(@PathVariable Long testId) {
+        long count = jlptTestService.getActiveUserCount(testId);
+        return Map.of("activeUsers", count);
+    }
 }
