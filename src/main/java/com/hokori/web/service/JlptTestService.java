@@ -490,10 +490,11 @@ public class JlptTestService {
         }
     }
 
+
     @Transactional(readOnly = true)
     public List<JlptTestListItemResponse> listTestsForLearner(Long eventId) {
-        // Lấy các đề thuộc event này, chưa bị xoá
-        List<JlptTest> tests = testRepo.findByEvent_IdAndDeletedFlagFalse(eventId);
+        List<JlptTest> tests =
+                testRepo.findByEvent_IdAndDeletedFlagFalseOrderByCreatedAtDesc(eventId);
 
         return tests.stream()
                 .map(t -> {
@@ -502,6 +503,7 @@ public class JlptTestService {
                             t.getTotalScore() != null ? t.getTotalScore() : 180
                     );
 
+                    // Ví dụ đặt title tự generate cho learner
                     String title = "JLPT " + t.getLevel() + " – Mock Test #" + t.getId();
 
                     return JlptTestListItemResponse.builder()
@@ -512,17 +514,18 @@ public class JlptTestService {
                             .totalScore(t.getTotalScore())
                             .passScore(passScore)
                             .currentParticipants(t.getCurrentParticipants())
-                            .deletedFlag(t.isDeletedFlag())
                             .build();
                 })
                 .toList();
     }
+
 
     @Transactional(readOnly = true)
     public long getActiveUserCount(Long testId) {
         Instant now = Instant.now();
         return sessionRepo.countByTest_IdAndExpiresAtAfter(testId, now);
     }
+
 
 
 }

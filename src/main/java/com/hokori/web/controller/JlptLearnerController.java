@@ -158,18 +158,18 @@ public class JlptLearnerController {
     public List<JlptQuestionWithOptionsResponse> getGrammarVocabQuestions(@PathVariable Long testId) {
         return jlptTestService.getGrammarVocabQuestions(testId);
     }
-
-    @Operation(
-            summary = "Learner lấy danh sách đề JLPT theo event",
-            description = "Trả về list các đề JLPT (mock test) thuộc 1 event: level, thời gian, điểm đậu..."
-    )
-    @GetMapping("/tests")
-    @PreAuthorize("hasRole('LEARNER')")
-    public List<JlptTestListItemResponse> listTests(
-            @RequestParam("eventId") Long eventId
-    ) {
-        return jlptTestService.listTestsForLearner(eventId);
-    }
+//
+//    @Operation(
+//            summary = "Learner lấy danh sách đề JLPT theo event",
+//            description = "Trả về list các đề JLPT (mock test) thuộc 1 event: level, thời gian, điểm đậu..."
+//    )
+//    @GetMapping("/tests")
+//    @PreAuthorize("hasRole('LEARNER')")
+//    public List<JlptTestListItemResponse> listTests(
+//            @RequestParam("eventId") Long eventId
+//    ) {
+//        return jlptTestService.listTestsForLearner(eventId);
+//    }
 
     @Operation(
             summary = "Lấy số người đang làm JLPT Test theo thời gian thực (dùng cho polling)",
@@ -180,5 +180,15 @@ public class JlptLearnerController {
     public Map<String, Long> getActiveUsers(@PathVariable Long testId) {
         long count = jlptTestService.getActiveUserCount(testId);
         return Map.of("activeUsers", count);
+    }
+
+    @Operation(
+            summary = "Learner lấy danh sách đề JLPT theo event",
+            description = "Trả về list đề JLPT (mock test) của 1 JLPT Event: level, thời gian, điểm đậu..."
+    )
+    @GetMapping("/events/{eventId}/tests")
+    @PreAuthorize("hasRole('LEARNER')")
+    public List<JlptTestListItemResponse> listTestsByEvent(@PathVariable Long eventId) {
+        return jlptTestService.listTestsForLearner(eventId);
     }
 }

@@ -10,4 +10,7 @@ public interface JlptTestRepository extends JpaRepository<JlptTest, Long> {
 
     // Lấy tất cả đề chưa bị xoá, sort theo level + createdAt desc
     List<JlptTest> findByDeletedFlagFalseOrderByLevelAscCreatedAtDesc();
+
+    // Lấy tất cả đề của 1 event, chưa bị xoá, sort mới tạo trước
+    List<JlptTest> findByEvent_IdAndDeletedFlagFalseOrderByCreatedAtDesc(Long eventId);
 }
