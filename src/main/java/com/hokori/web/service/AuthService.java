@@ -18,6 +18,7 @@ import com.hokori.web.repository.RoleRepository;
 import com.hokori.web.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -165,7 +166,7 @@ public class AuthService {
 
         try {
             u = userRepository.save(u);
-        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+        } catch (DataIntegrityViolationException e) {
             // Handle constraint violations (duplicate email, etc.)
             String errorMsg = e.getMessage();
             logger.error("❌ Database constraint violation when saving user: {}", errorMsg);
