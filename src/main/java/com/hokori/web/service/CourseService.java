@@ -141,9 +141,10 @@ public class CourseService {
     public CourseRes submitForApproval(Long id, Long teacherUserId) {
         Course c = getOwned(id, teacherUserId);
 
-        // Chỉ cho phép submit từ DRAFT
-        if (c.getStatus() != CourseStatus.DRAFT) {
-            throw bad("Course must be in DRAFT status to submit for approval");
+        if (!(c.getStatus() == CourseStatus.DRAFT
+                || c.getStatus() == CourseStatus.REJECTED
+                || c.getStatus() == CourseStatus.FLAGGED)) {
+            throw bad("Course must be in DRAFT / REJECTED / FLAGGED to submit for approval");
         }
 
         // Validate title is not empty
@@ -190,7 +191,7 @@ public class CourseService {
     }
 
     /**
-     * Reject course by moderator (back to DRAFT)
+     * Reject (request changes): PENDING_APPROVAL -> REJECT
      */
     public CourseRes rejectCourse(Long id, Long moderatorUserId, String reason) {
         Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
@@ -200,8 +201,8 @@ public class CourseService {
             throw bad("Course must be in PENDING_APPROVAL status to reject");
         }
 
-        c.setStatus(CourseStatus.DRAFT);
-        // TODO: Có thể lưu rejection reason vào một field riêng nếu cần
+        c.setStatus(CourseStatus.REJECTED);
+        // TODO: lưu reason + moderatorUserId vào log nếu cần
         return toCourseResLite(c);
     }
 
