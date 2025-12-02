@@ -2,7 +2,9 @@ package com.hokori.web.controller;
 
 import com.hokori.web.dto.ApiResponse;
 import com.hokori.web.dto.course.CourseRes;
+import com.hokori.web.dto.moderator.CourseAICheckResponse;
 import com.hokori.web.service.CourseService;
+import com.hokori.web.service.CourseModerationAIService;
 import com.hokori.web.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -38,6 +40,7 @@ import java.util.Map;
 public class ModeratorCourseController {
 
     private final CourseService courseService;
+    private final CourseModerationAIService moderationAIService;
     private final CurrentUserService currentUserService;
 
     private Long currentModeratorId() {
@@ -160,6 +163,33 @@ public class ModeratorCourseController {
             responseData.put("reason", reason);
         }
         return ResponseEntity.ok(ApiResponse.success("Course rejected", course));
+    }
+
+    @Operation(
+            summary = "AI Check course content",
+            description = "Sử dụng AI để kiểm tra nội dung khóa học: safety check (toxic content), level match. Chỉ áp dụng cho courses có status PENDING_APPROVAL."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "AI check completed",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = ApiResponse.class)
+                    )
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Course not in PENDING_APPROVAL status"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - Not MODERATOR"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Course not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "AI service unavailable")
+    })
+    @GetMapping("/{id}/ai-check")
+    public ResponseEntity<ApiResponse<CourseAICheckResponse>> aiCheck(
+            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long id) {
+        CourseAICheckResponse result = moderationAIService.checkCourseContent(id);
+        return ResponseEntity.ok(ApiResponse.success("AI check completed", result));
     }
 }
 
