@@ -234,6 +234,23 @@ public class CourseModerationAIService {
                             textBuilder.append(plainText).append(" ");
                         }
                         // Note: ASSET files (videos, PDFs) are skipped as per requirement
+                        
+                        // Flashcards (from COURSE_VOCAB sets)
+                        flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalse(content.getId())
+                                .ifPresent(set -> {
+                                    List<Flashcard> flashcards = flashcardRepo.findBySetAndDeletedFlagFalseOrderByOrderIndexAsc(set);
+                                    for (Flashcard card : flashcards) {
+                                        if (card.getFrontText() != null) {
+                                            textBuilder.append(card.getFrontText()).append(" ");
+                                        }
+                                        if (card.getBackText() != null) {
+                                            textBuilder.append(card.getBackText()).append(" ");
+                                        }
+                                        if (card.getExampleSentence() != null) {
+                                            textBuilder.append(card.getExampleSentence()).append(" ");
+                                        }
+                                    }
+                                });
                     }
                 }
 
@@ -269,37 +286,6 @@ public class CourseModerationAIService {
                         }
                     }
                 });
-            }
-        }
-
-        // Flashcards (from COURSE_VOCAB sets)
-        // Get all sectionsContent for this course, then find flashcard sets
-        List<Chapter> chapters = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
-        for (Chapter chapter : chapters) {
-            List<Lesson> lessons = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(chapter.getId());
-            for (Lesson lesson : lessons) {
-                List<Section> sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lesson.getId());
-                for (Section section : sections) {
-                    List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(section.getId());
-                    for (SectionsContent content : contents) {
-                        // Find flashcard set for this section content
-                        flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalse(content.getId())
-                                .ifPresent(set -> {
-                                    List<Flashcard> flashcards = flashcardRepo.findBySetAndDeletedFlagFalseOrderByOrderIndexAsc(set);
-                                    for (Flashcard card : flashcards) {
-                                        if (card.getFrontText() != null) {
-                                            textBuilder.append(card.getFrontText()).append(" ");
-                                        }
-                                        if (card.getBackText() != null) {
-                                            textBuilder.append(card.getBackText()).append(" ");
-                                        }
-                                        if (card.getExampleSentence() != null) {
-                                            textBuilder.append(card.getExampleSentence()).append(" ");
-                                        }
-                                    }
-                                });
-                    }
-                }
             }
         }
 
