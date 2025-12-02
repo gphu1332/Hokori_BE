@@ -287,8 +287,8 @@ public class AuthController {
                         .body(ApiResponse.error("Database error occurred. Please try again later."));
             }
             
-            // Log unexpected errors
-            logger.error("Unexpected error during Firebase registration: {}", msg, e);
+            // Log unexpected errors (if logger is available)
+            // Note: Logger may not be available in this controller, error is already logged in service layer
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(msg));
         }
     }
