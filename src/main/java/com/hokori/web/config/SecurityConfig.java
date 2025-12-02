@@ -55,9 +55,9 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui.html").permitAll()
                 .requestMatchers("/api-docs/**").permitAll()
                 .requestMatchers("/health").permitAll()
-                    .requestMatchers("/files/**").permitAll()
+                .requestMatchers("/files/**").permitAll() // Public file serving endpoint
 
-                    // 👇 Public marketplace courses (chỉ GET)
+                // 👇 Public marketplace courses (chỉ GET)
                 .requestMatchers(HttpMethod.GET,
                     "/api/courses",
                     "/api/courses/*/tree"
