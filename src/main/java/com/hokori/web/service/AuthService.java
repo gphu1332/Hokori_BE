@@ -144,7 +144,15 @@ public class AuthService {
         u.setFirebaseUid(firebaseUid);
         u.setEmail(email);
         u.setDisplayName(displayName);
-        u.setAvatarUrl(photoUrl);
+        
+        // Truncate avatarUrl if too long (max 500 characters)
+        if (photoUrl != null && photoUrl.length() > 500) {
+            logger.warn("⚠️ Avatar URL from Google exceeds 500 characters ({}), truncating...", photoUrl.length());
+            u.setAvatarUrl(photoUrl.substring(0, 500));
+        } else {
+            u.setAvatarUrl(photoUrl);
+        }
+        
         u.setIsActive(true);
         u.setIsVerified(Boolean.TRUE.equals(emailVerified));
         u.setCurrentJlptLevel(JLPTLevel.N5);
