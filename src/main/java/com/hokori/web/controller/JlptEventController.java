@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -117,7 +118,37 @@ public class JlptEventController {
                     FE dùng để hiển thị danh sách đợt thi đang mở cho user.
                     Có thể filter level, ví dụ:
                     GET /api/jlpt/events/open?level=N3
+                    
+                    ⚠️ QUAN TRỌNG: Endpoint này CHỈ trả về events có status = "OPEN".
+                    KHÔNG BAO GIỜ trả về "DRAFT" hoặc "CLOSED".
                     """
+    )
+    @ApiResponse(
+            responseCode = "200",
+            description = "Danh sách events đang OPEN (CHỈ trả về status = 'OPEN', không bao giờ trả về 'DRAFT' hoặc 'CLOSED')",
+            content = @Content(
+                    mediaType = "application/json",
+                    array = @ArraySchema(schema = @Schema(implementation = JlptEventResponse.class)),
+                    examples = {
+                            @ExampleObject(
+                                    name = "Open Events Example",
+                                    value = """
+                                            [
+                                              {
+                                                "id": 1,
+                                                "title": "JLPT N5 Mock Test - Tháng 12/2024",
+                                                "level": "N5",
+                                                "description": "Đợt thi thử JLPT N5",
+                                                "status": "OPEN",
+                                                "startAt": "2024-12-01T00:00:00",
+                                                "endAt": "2024-12-31T23:59:59",
+                                                "createdByUserId": 1
+                                              }
+                                            ]
+                                            """
+                            )
+                    }
+            )
     )
     public List<JlptEventResponse> listOpenEvents(
             @RequestParam(required = false) String level
