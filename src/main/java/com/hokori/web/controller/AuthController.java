@@ -266,6 +266,8 @@ public class AuthController {
                     .body(ApiResponse.success("Firebase registration successful", response));
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : "Firebase registration failed";
+            
+            // Handle specific exceptions
             if (msg.contains("EMAIL_ALREADY_EXISTS")) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("Email already exists"));
             }
@@ -276,6 +278,17 @@ public class AuthController {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body(ApiResponse.error("Invalid role. Only LEARNER or TEACHER are allowed for Google registration."));
             }
+            if (msg.contains("Could not commit JPA transaction") || msg.contains("Database error") || msg.contains("Could not save user")) {
+                // Handle database transaction errors
+                if (msg.contains("email") || msg.contains("unique") || msg.contains("duplicate")) {
+                    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("Email already exists"));
+                }
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(ApiResponse.error("Database error occurred. Please try again later."));
+            }
+            
+            // Log unexpected errors
+            logger.error("Unexpected error during Firebase registration: {}", msg, e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(msg));
         }
     }

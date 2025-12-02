@@ -163,7 +163,23 @@ public class AuthService {
         u.setFirebaseEmailVerified(Boolean.TRUE.equals(emailVerified));
         u.setLastLoginAt(LocalDateTime.now());
 
-        u = userRepository.save(u);
+        try {
+            u = userRepository.save(u);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // Handle constraint violations (duplicate email, etc.)
+            String errorMsg = e.getMessage();
+            logger.error("❌ Database constraint violation when saving user: {}", errorMsg);
+            
+            if (errorMsg != null && (errorMsg.contains("email") || errorMsg.contains("unique") || errorMsg.contains("duplicate"))) {
+                throw new RuntimeException("EMAIL_ALREADY_EXISTS");
+            }
+            
+            // Re-throw with more context
+            throw new RuntimeException("Database error: " + (errorMsg != null ? errorMsg : "Could not save user"), e);
+        } catch (Exception e) {
+            logger.error("❌ Unexpected error when saving user: {}", e.getMessage(), e);
+            throw new RuntimeException("Could not save user: " + e.getMessage(), e);
+        }
         
         // CRITICAL: Verify role was saved correctly
         if (u.getRole() == null || u.getRole().getRoleName() == null) {
