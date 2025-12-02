@@ -223,26 +223,58 @@ public class AuthController {
     // NEW: Firebase Register (Google Sign-Up)
     // ===========================
     @PostMapping("/firebase/register") // [ADDED]
-    @Operation(summary = "Firebase register", description = "Register user with Firebase token (Google Sign-Up)") // [ADDED]
-    public ResponseEntity<ApiResponse<Map<String, Object>>> firebaseRegister( // [ADDED]
-                                                                              @Valid @RequestBody FirebaseAuthRequest firebaseRequest) { // [ADDED]
+    @Operation(
+            summary = "Firebase register", 
+            description = """
+                    Register user with Firebase token (Google Sign-Up).
+                    User can choose role: LEARNER (default) or TEACHER.
+                    
+                    Request body:
+                    - firebaseToken: Firebase ID token from Google OAuth (required)
+                    - role: "LEARNER" or "TEACHER" (optional, defaults to "LEARNER")
+                    """
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> firebaseRegister(
+            @Valid @RequestBody FirebaseAuthRequest firebaseRequest) {
         try {
-            AuthResponse authResponse = authService.authenticateUserForRegistration(firebaseRequest.getFirebaseToken()); // [ADDED]
-            Map<String, Object> response = new HashMap<>(); // [ADDED]
-            response.put("user", authResponse.getUser()); // [ADDED]
-            response.put("accessToken", authResponse.getAccessToken()); // [ADDED]
-            response.put("refreshToken", authResponse.getRefreshToken()); // [ADDED]
-            response.put("message", "Registration successful"); // [ADDED]
-            response.put("roles", authResponse.getRoles()); // [ADDED]
-            return ResponseEntity.status(HttpStatus.CREATED) // [ADDED]
-                    .body(ApiResponse.success("Firebase registration successful", response)); // [ADDED]
+            // Validate role if provided
+            String requestedRole = firebaseRequest.getRole();
+            if (requestedRole != null && !requestedRole.isBlank()) {
+                String normalizedRole = requestedRole.trim().toUpperCase();
+                if (!RoleConstants.LEARNER.equals(normalizedRole) && !RoleConstants.TEACHER.equals(normalizedRole)) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                            .body(ApiResponse.error("Invalid role. Only LEARNER or TEACHER are allowed for Google registration."));
+                }
+            }
+            
+            AuthResponse authResponse = authService.authenticateUserForRegistration(
+                    firebaseRequest.getFirebaseToken(), 
+                    requestedRole
+            );
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("user", authResponse.getUser());
+            response.put("accessToken", authResponse.getAccessToken());
+            response.put("refreshToken", authResponse.getRefreshToken());
+            response.put("message", "Registration successful");
+            response.put("roles", authResponse.getRoles());
+            response.put("role", requestedRole != null && !requestedRole.isBlank() 
+                    ? requestedRole.trim().toUpperCase() 
+                    : RoleConstants.LEARNER);
+            
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.success("Firebase registration successful", response));
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : "Firebase registration failed";
-            if (msg.contains("EMAIL_ALREADY_EXISTS")) { // [CHANGED]
+            if (msg.contains("EMAIL_ALREADY_EXISTS")) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("Email already exists"));
             }
-            if (msg.contains("GOOGLE_EMAIL_REQUIRED")) { // [CHANGED]
+            if (msg.contains("GOOGLE_EMAIL_REQUIRED")) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("Google account has no email"));
+            }
+            if (msg.contains("INVALID_ROLE_FOR_GOOGLE_REGISTRATION")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("Invalid role. Only LEARNER or TEACHER are allowed for Google registration."));
             }
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(msg));
         }

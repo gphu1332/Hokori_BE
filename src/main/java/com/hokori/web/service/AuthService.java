@@ -96,7 +96,7 @@ public class AuthService {
 
     // ===================== FIREBASE REGISTER (Google Sign-Up) =====================
 // [CHANGED] Không merge; nếu đã tồn tại thì báo lỗi 409 ở Controller.
-    public AuthResponse authenticateUserForRegistration(String idToken) throws FirebaseAuthException {
+    public AuthResponse authenticateUserForRegistration(String idToken, String requestedRole) throws FirebaseAuthException {
         if (firebaseAuth == null) {
             throw new RuntimeException("Firebase authentication is not configured. Please set firebase.enabled=true");
         }
@@ -126,6 +126,19 @@ public class AuthService {
             throw new RuntimeException("EMAIL_ALREADY_EXISTS");
         }
 
+        // Validate và set role - chỉ cho phép LEARNER hoặc TEACHER khi đăng ký bằng Google
+        String roleName = (requestedRole != null && !requestedRole.isBlank()) 
+                ? requestedRole.trim().toUpperCase() 
+                : RoleConstants.LEARNER; // Default to LEARNER
+        
+        // Chỉ cho phép LEARNER hoặc TEACHER khi đăng ký bằng Google
+        if (!RoleConstants.LEARNER.equals(roleName) && !RoleConstants.TEACHER.equals(roleName)) {
+            throw new RuntimeException("INVALID_ROLE_FOR_GOOGLE_REGISTRATION: Only LEARNER or TEACHER are allowed for Google registration");
+        }
+        
+        Role role = roleRepository.findByRoleName(roleName)
+                .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
+
         // [CHANGED] Tạo user MỚI (không merge)
         User u = new User();
         u.setFirebaseUid(firebaseUid);
@@ -135,7 +148,7 @@ public class AuthService {
         u.setIsActive(true);
         u.setIsVerified(Boolean.TRUE.equals(emailVerified));
         u.setCurrentJlptLevel(JLPTLevel.N5);
-        u.setRole(getDefaultRole()); // LEARNER mặc định
+        u.setRole(role); // Set role từ request (LEARNER hoặc TEACHER)
 
         // provider & last login
         if (provider != null) u.setFirebaseProvider(provider);
