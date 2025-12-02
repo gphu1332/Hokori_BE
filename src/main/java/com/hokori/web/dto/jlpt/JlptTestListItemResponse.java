@@ -28,4 +28,7 @@ public class JlptTestListItemResponse {
 
     // Số learner đã/đang làm đề này
     private Integer currentParticipants;
+
+    // Trạng thái xoá mềm của đề
+    private Boolean deletedFlag;
 }

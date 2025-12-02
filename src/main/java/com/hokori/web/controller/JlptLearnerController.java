@@ -1,7 +1,7 @@
 package com.hokori.web.controller;
 
 import com.hokori.web.dto.jlpt.*;
-import com.hokori.web.repository.UserRepository;
+import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.JlptTestService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -10,12 +10,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/learner/jlpt")
@@ -25,55 +23,7 @@ import java.util.List;
 public class JlptLearnerController {
 
     private final JlptTestService jlptTestService;
-    private final UserRepository userRepository;
-
-    // TODO: dùng lại logic lấy current user id của bạn
-    private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
-                || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
-        }
-
-        // Lấy email từ principal
-        Object principal = auth.getPrincipal();
-        String email;
-        if (principal instanceof org.springframework.security.core.userdetails.UserDetails u) {
-            email = u.getUsername();        // username = email
-        } else {
-            email = principal.toString();
-        }
-
-        var statusOpt = userRepository.findUserActiveStatusByEmail(email);
-        if (statusOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
-        }
-
-        Object[] actual = statusOpt.get();          // [0] = id, [1] = isActive
-        if (actual.length < 2) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
-        }
-
-        Long userId = ((Number) actual[0]).longValue();
-
-        boolean isActive;
-        Object activeObj = actual[1];
-        if (activeObj instanceof Boolean b) {
-            isActive = b;
-        } else if (activeObj instanceof Number n) {
-            isActive = n.intValue() != 0;
-        } else {
-            isActive = "true".equalsIgnoreCase(activeObj.toString())
-                    || "1".equals(activeObj.toString());
-        }
-
-        if (!isActive) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is disabled");
-        }
-
-        return userId;
-    }
-
+    private final CurrentUserService currentUserService;
 
     // 1) Learner "enroll" / bắt đầu 1 test
     @Operation(
@@ -83,12 +33,11 @@ public class JlptLearnerController {
     @PostMapping("/tests/{testId}/start")
     @PreAuthorize("hasRole('LEARNER')")
     public JlptTestStartResponse startTest(@PathVariable Long testId) {
-        Long userId = currentUserIdOrThrow();
+        Long userId = currentUserService.getUserIdOrThrow();
         return jlptTestService.startTest(testId, userId);
     }
 
     // 2) API lấy lại đề (nếu cần refresh giữa chừng)
-    // Nếu bạn đã có GET /tests/{testId}/questions rồi thì có thể bỏ method này
     @Operation(
             summary = "Lấy danh sách câu hỏi + option cho 1 test",
             description = "Dùng cho Learner render đề (không bao gồm đáp án đúng)"
@@ -109,7 +58,7 @@ public class JlptLearnerController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void submitAnswer(@PathVariable Long testId,
                              @Valid @RequestBody JlptAnswerSubmitRequest req) {
-        Long userId = currentUserIdOrThrow();
+        Long userId = currentUserService.getUserIdOrThrow();
         jlptTestService.submitAnswer(testId, userId, req);
     }
 
@@ -121,7 +70,7 @@ public class JlptLearnerController {
     @GetMapping("/tests/{testId}/my-result")
     @PreAuthorize("hasRole('LEARNER')")
     public JlptTestResultResponse getMyResult(@PathVariable Long testId) {
-        Long userId = currentUserIdOrThrow();
+        Long userId = currentUserService.getUserIdOrThrow();
         return jlptTestService.getResultForUser(testId, userId);
     }
 
@@ -159,15 +108,23 @@ public class JlptLearnerController {
     }
 
     @Operation(
-            summary = "Learner lấy danh sách đề JLPT theo event",
-            description = "Trả về list các đề JLPT (mock test) thuộc 1 event: level, thời gian, điểm đậu..."
+            summary = "Lấy số người đang làm JLPT Test theo thời gian thực (dùng cho polling)",
+            description = "FE có thể gọi mỗi 3s để cập nhật số người đang làm bài"
     )
-    @GetMapping("/tests")
+    @GetMapping("/tests/{testId}/active-users")
     @PreAuthorize("hasRole('LEARNER')")
-    public List<JlptTestListItemResponse> listTests(
-            @RequestParam("eventId") Long eventId
-    ) {
-        return jlptTestService.listTestsForLearner(eventId);
+    public Map<String, Long> getActiveUsers(@PathVariable Long testId) {
+        long count = jlptTestService.getActiveUserCount(testId);
+        return Map.of("activeUsers", count);
     }
 
+    @Operation(
+            summary = "Learner lấy danh sách đề JLPT theo event",
+            description = "Trả về list đề JLPT (mock test) của 1 JLPT Event: level, thời gian, điểm đậu..."
+    )
+    @GetMapping("/events/{eventId}/tests")
+    @PreAuthorize("hasRole('LEARNER')")
+    public List<JlptTestListItemResponse> listTestsByEvent(@PathVariable Long eventId) {
+        return jlptTestService.listTestsForLearner(eventId);
+    }
 }

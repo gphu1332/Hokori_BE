@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.Modifying;
 
 import java.util.List;
 import java.util.Optional;
@@ -16,7 +17,7 @@ import java.util.Optional;
 public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecificationExecutor<Course> {
 
     Optional<Course> findBySlugAndDeletedFlagFalse(String slug);
-    
+
     // Check if slug exists (including deleted) - for unique constraint validation
     boolean existsBySlug(String slug);
 
@@ -25,6 +26,7 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
 
     // (không bắt buộc cho service hiện tại, nhưng giữ cũng không sao)
     Page<Course> findAllByDeletedFlagFalse(Pageable pageable);
+
     Page<Course> findAllByUserIdAndDeletedFlagFalse(Long userId, Pageable pageable);
 
     @Query("""
@@ -37,11 +39,13 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     Page<Course> findPublishedByLevel(JLPTLevel lvl, Pageable pageable);
 
     boolean existsByIdAndUserIdAndDeletedFlagFalse(Long id, Long userId);
-    
+
+    // =======================
+    // 1) Course metadata by id
+    // =======================
+
     /**
-     * Get course metadata without LOB fields (avoids LOB stream error on PostgreSQL).
-     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
+     * INTERNAL: thực thi native query với parameter boolean deleted.
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
@@ -49,15 +53,27 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
                COALESCE(u.display_name, u.username) as teacher_name
         FROM course c
         LEFT JOIN users u ON c.user_id = u.id
-        WHERE c.id = :id AND c.deleted_flag = false
+        WHERE c.id = :id AND c.deleted_flag = :deleted
         """, nativeQuery = true)
-    Optional<Object[]> findCourseMetadataById(@Param("id") Long id);
-    
+    Optional<Object[]> findCourseMetadataByIdInternal(@Param("id") Long id,
+                                                      @Param("deleted") boolean deleted);
+
     /**
-     * List courses metadata without LOB fields for pagination.
-     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Uses CONCAT and LOWER functions supported by both databases.
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
+     * API chính dùng trong service – luôn lấy deleted_flag = false.
+     */
+    default Optional<Object[]> findCourseMetadataById(Long id) {
+        return findCourseMetadataByIdInternal(id, false);
+    }
+
+    // =====================================
+    // 2) Course metadata list theo userId
+    // =====================================
+
+    /**
+     * INTERNAL: thực thi native query với parameter boolean deleted.
+     *
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
+     *           currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
@@ -65,20 +81,34 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
                COALESCE(u.display_name, u.username) as teacher_name
         FROM course c
         LEFT JOIN users u ON c.user_id = u.id
-        WHERE c.deleted_flag = false 
+        WHERE c.deleted_flag = :deleted
           AND c.user_id = :userId
           AND (:status IS NULL OR c.status = :status)
-          AND (:q IS NULL OR LOWER(c.title) LIKE LOWER(CONCAT('%', :q, '%')) OR LOWER(c.slug) LIKE LOWER(CONCAT('%', :q, '%')))
+          AND (:q IS NULL OR LOWER(c.title) LIKE LOWER(CONCAT('%', :q, '%'))
+                         OR LOWER(c.slug)  LIKE LOWER(CONCAT('%', :q, '%')))
         ORDER BY c.updated_at DESC
         """, nativeQuery = true)
-    List<Object[]> findCourseMetadataByUserId(@Param("userId") Long userId, 
-                                               @Param("status") String status, 
-                                               @Param("q") String q);
-    
+    List<Object[]> findCourseMetadataByUserIdInternal(@Param("userId") Long userId,
+                                                      @Param("status") String status,
+                                                      @Param("q") String q,
+                                                      @Param("deleted") boolean deleted);
+
     /**
-     * List published courses metadata without LOB fields.
-     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
+     * API chính – luôn lấy deleted_flag = false.
+     */
+    default List<Object[]> findCourseMetadataByUserId(Long userId, String status, String q) {
+        return findCourseMetadataByUserIdInternal(userId, status, q, false);
+    }
+
+    // =========================================
+    // 3) Published courses metadata (Marketplace)
+    // =========================================
+
+    /**
+     * INTERNAL: list published courses metadata without LOB fields.
+     *
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
+     *           currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
@@ -86,29 +116,53 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
                COALESCE(u.display_name, u.username) as teacher_name
         FROM course c
         LEFT JOIN users u ON c.user_id = u.id
-        WHERE c.deleted_flag = false 
+        WHERE c.deleted_flag = :deleted
           AND c.status = 'PUBLISHED'
           AND (:level IS NULL OR c.level = :level)
         ORDER BY c.published_at DESC
         """, nativeQuery = true)
-    List<Object[]> findPublishedCourseMetadata(@Param("level") String level);
-    
+    List<Object[]> findPublishedCourseMetadataInternal(@Param("level") String level,
+                                                       @Param("deleted") boolean deleted);
+
     /**
-     * Get course price without loading LOB fields (for cart operations).
-     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
+     * API chính – luôn lấy deleted_flag = false.
+     */
+    default List<Object[]> findPublishedCourseMetadata(String level) {
+        return findPublishedCourseMetadataInternal(level, false);
+    }
+
+    // =============================
+    // 4) Course price (Cart usage)
+    // =============================
+
+    /**
+     * INTERNAL: get course price without loading LOB fields (for cart operations).
      * Returns: [id, priceCents, deletedFlag, status]
      */
     @Query(value = """
         SELECT c.id, c.price_cents, c.deleted_flag, c.status
         FROM course c
-        WHERE c.id = :id AND c.deleted_flag = false
+        WHERE c.id = :id AND c.deleted_flag = :deleted
         """, nativeQuery = true)
-    Optional<Object[]> findCoursePriceById(@Param("id") Long id);
-    
+    Optional<Object[]> findCoursePriceByIdInternal(@Param("id") Long id,
+                                                   @Param("deleted") boolean deleted);
+
     /**
-     * List courses pending approval (for moderator).
-     * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents, currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
+     * API chính – luôn lấy deleted_flag = false.
+     */
+    default Optional<Object[]> findCoursePriceById(Long id) {
+        return findCoursePriceByIdInternal(id, false);
+    }
+
+    // ========================================
+    // 5) Courses pending approval (Moderator)
+    // ========================================
+
+    /**
+     * INTERNAL: list courses pending approval (for moderator).
+     *
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
+     *           currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
@@ -116,11 +170,22 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
                COALESCE(u.display_name, u.username) as teacher_name
         FROM course c
         LEFT JOIN users u ON c.user_id = u.id
-        WHERE c.deleted_flag = false 
+        WHERE c.deleted_flag = :deleted
           AND c.status = 'PENDING_APPROVAL'
         ORDER BY c.updated_at DESC
         """, nativeQuery = true)
-    List<Object[]> findPendingApprovalCourses();
+    List<Object[]> findPendingApprovalCoursesInternal(@Param("deleted") boolean deleted);
+
+    /**
+     * API chính – luôn lấy deleted_flag = false.
+     */
+    default List<Object[]> findPendingApprovalCourses() {
+        return findPendingApprovalCoursesInternal(false);
+    }
+
+    // ===================================
+    // Các method derived còn lại
+    // ===================================
 
     long countByUserIdAndStatusAndDeletedFlagFalse(Long userId, CourseStatus status);
 
