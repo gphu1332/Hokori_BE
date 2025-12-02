@@ -36,7 +36,7 @@ public class JlptTestService {
         JlptTest test = JlptTest.builder()
                 .event(event)
                 .createdBy(moderator)
-                .level(req.getLevel ())
+                .level(req.getLevel())
                 .durationMin(req.getDurationMin())
                 .totalScore(DEFAULT_TOTAL_SCORE)
                 .result(req.getResultNote())
