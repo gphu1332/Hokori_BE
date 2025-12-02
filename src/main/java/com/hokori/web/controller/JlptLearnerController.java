@@ -77,7 +77,14 @@ public class JlptLearnerController {
     // --- LISTENING ---
     @Operation(
             summary = "Lấy câu hỏi LISTENING của 1 JLPT test",
-            description = "Trả về danh sách câu hỏi + options, questionType = LISTENING"
+            description = """
+                    Trả về danh sách câu hỏi + options, questionType = LISTENING
+                    
+                    ⚠️ QUAN TRỌNG: 
+                    - Endpoint này yêu cầu role LEARNER trong JWT token
+                    - Audio files được serve qua /files/** (public, không cần authentication)
+                    - AudioUrl trong response đã có prefix /files/ để FE có thể dùng trực tiếp
+                    """
     )
     @GetMapping("/tests/{testId}/questions/listening")
     @PreAuthorize("hasRole('LEARNER')")

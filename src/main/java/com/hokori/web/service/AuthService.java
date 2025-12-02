@@ -156,6 +156,17 @@ public class AuthService {
         u.setLastLoginAt(LocalDateTime.now());
 
         u = userRepository.save(u);
+        
+        // CRITICAL: Verify role was saved correctly
+        if (u.getRole() == null || u.getRole().getRoleName() == null) {
+            logger.error("❌ CRITICAL: User " + email + " was saved but role is NULL!");
+            logger.error("   Requested role: " + roleName);
+            logger.error("   This will cause 403 Forbidden errors on role-protected endpoints.");
+            throw new RuntimeException("Failed to assign role to user during registration");
+        }
+        
+        logger.info("✅ User " + email + " registered successfully with role: " + u.getRole().getRoleName());
+        
         return createAuthResponse(u, "firebase_register");
     }
 
