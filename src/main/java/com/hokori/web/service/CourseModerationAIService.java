@@ -66,13 +66,35 @@ public class CourseModerationAIService {
         Object[] metadata = courseRepo.findCourseMetadataById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
+        // Validate metadata is not empty
+        if (metadata == null || metadata.length == 0) {
+            log.error("Course metadata is null or empty for course ID: {}", courseId);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Invalid course metadata: empty result");
+        }
+
         // Handle nested array case (PostgreSQL)
         Object[] actualMetadata = metadata;
         if (metadata.length == 1 && metadata[0] instanceof Object[]) {
             actualMetadata = (Object[]) metadata[0];
+            // Validate nested array is not empty
+            if (actualMetadata == null || actualMetadata.length == 0) {
+                log.error("Nested course metadata is null or empty for course ID: {}", courseId);
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Invalid course metadata: empty nested array");
+            }
         }
 
-        if (actualMetadata.length < 10 || actualMetadata[9] == null) {
+        // Validate metadata has enough elements (need at least 10 for status at index 9)
+        if (actualMetadata.length < 10) {
+            log.error("Course metadata array too short for course ID: {}. Expected at least 10 elements, got: {}", 
+                    courseId, actualMetadata.length);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Invalid course metadata: array too short (expected at least 10 elements, got " + actualMetadata.length + ")");
+        }
+
+        if (actualMetadata[9] == null) {
+            log.error("Course status is null for course ID: {}", courseId);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Invalid course metadata: missing status");
         }
@@ -184,18 +206,35 @@ public class CourseModerationAIService {
 
         // Course metadata
         Object[] metadata = courseRepo.findCourseMetadataById(courseId).orElse(null);
-        if (metadata != null) {
-            Object[] actualMetadata = metadata.length == 1 && metadata[0] instanceof Object[] 
-                    ? (Object[]) metadata[0] : metadata;
-            
-            if (actualMetadata.length > 1 && actualMetadata[1] != null) {
-                textBuilder.append(actualMetadata[1].toString()).append(" "); // title
-            }
-            if (actualMetadata.length > 2 && actualMetadata[2] != null) {
-                textBuilder.append(actualMetadata[2].toString()).append(" "); // subtitle
-            }
-            if (actualMetadata.length > 3 && actualMetadata[3] != null) {
-                textBuilder.append(actualMetadata[3].toString()).append(" "); // description
+        if (metadata != null && metadata.length > 0) {
+            Object[] actualMetadata = metadata;
+            if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+                actualMetadata = (Object[]) metadata[0];
+                // Validate nested array
+                if (actualMetadata == null || actualMetadata.length == 0) {
+                    log.warn("Nested metadata is empty when extracting course text for course ID: {}", courseId);
+                } else {
+                    if (actualMetadata.length > 1 && actualMetadata[1] != null) {
+                        textBuilder.append(actualMetadata[1].toString()).append(" "); // title
+                    }
+                    if (actualMetadata.length > 2 && actualMetadata[2] != null) {
+                        textBuilder.append(actualMetadata[2].toString()).append(" "); // subtitle
+                    }
+                    if (actualMetadata.length > 3 && actualMetadata[3] != null) {
+                        textBuilder.append(actualMetadata[3].toString()).append(" "); // description
+                    }
+                }
+            } else {
+                // Not nested, use directly
+                if (actualMetadata.length > 1 && actualMetadata[1] != null) {
+                    textBuilder.append(actualMetadata[1].toString()).append(" "); // title
+                }
+                if (actualMetadata.length > 2 && actualMetadata[2] != null) {
+                    textBuilder.append(actualMetadata[2].toString()).append(" "); // subtitle
+                }
+                if (actualMetadata.length > 3 && actualMetadata[3] != null) {
+                    textBuilder.append(actualMetadata[3].toString()).append(" "); // description
+                }
             }
         }
 
@@ -256,6 +295,12 @@ public class CourseModerationAIService {
 
                 // Quiz
                 quizRepo.findQuizMetadataByLessonId(lesson.getId()).ifPresent(quizMetadata -> {
+                    // Validate quizMetadata array
+                    if (quizMetadata == null || quizMetadata.length == 0) {
+                        log.warn("Quiz metadata is null or empty for lesson ID: {}", lesson.getId());
+                        return;
+                    }
+
                     if (quizMetadata.length > 2 && quizMetadata[2] != null) {
                         textBuilder.append(quizMetadata[2].toString()).append(" "); // title
                     }
@@ -263,26 +308,47 @@ public class CourseModerationAIService {
                         textBuilder.append(quizMetadata[3].toString()).append(" "); // description
                     }
 
-                    Long quizId = ((Number) quizMetadata[0]).longValue();
-                    
-                    // Questions
-                    List<Object[]> questions = questionRepo.findQuestionMetadataByQuizId(quizId);
-                    for (Object[] questionMeta : questions) {
-                        if (questionMeta.length > 2 && questionMeta[2] != null) {
-                            textBuilder.append(questionMeta[2].toString()).append(" "); // content
-                        }
-                        if (questionMeta.length > 4 && questionMeta[4] != null) {
-                            textBuilder.append(questionMeta[4].toString()).append(" "); // explanation
-                        }
+                    // Validate quizId exists
+                    if (quizMetadata.length > 0 && quizMetadata[0] != null) {
+                        try {
+                            Long quizId = ((Number) quizMetadata[0]).longValue();
+                            
+                            // Questions
+                            List<Object[]> questions = questionRepo.findQuestionMetadataByQuizId(quizId);
+                            for (Object[] questionMeta : questions) {
+                                // Validate questionMeta array
+                                if (questionMeta == null || questionMeta.length == 0) {
+                                    log.warn("Question metadata is null or empty for quiz ID: {}", quizId);
+                                    continue;
+                                }
 
-                        Long questionId = ((Number) questionMeta[0]).longValue();
-                        
-                        // Options
-                        List<Object[]> options = optionRepo.findOptionMetadataByQuestionId(questionId);
-                        for (Object[] optionMeta : options) {
-                            if (optionMeta.length > 2 && optionMeta[2] != null) {
-                                textBuilder.append(optionMeta[2].toString()).append(" "); // content
+                                if (questionMeta.length > 2 && questionMeta[2] != null) {
+                                    textBuilder.append(questionMeta[2].toString()).append(" "); // content
+                                }
+                                if (questionMeta.length > 4 && questionMeta[4] != null) {
+                                    textBuilder.append(questionMeta[4].toString()).append(" "); // explanation
+                                }
+
+                                // Validate questionId exists
+                                if (questionMeta.length > 0 && questionMeta[0] != null) {
+                                    try {
+                                        Long questionId = ((Number) questionMeta[0]).longValue();
+                                        
+                                        // Options
+                                        List<Object[]> options = optionRepo.findOptionMetadataByQuestionId(questionId);
+                                        for (Object[] optionMeta : options) {
+                                            // Validate optionMeta array
+                                            if (optionMeta != null && optionMeta.length > 2 && optionMeta[2] != null) {
+                                                textBuilder.append(optionMeta[2].toString()).append(" "); // content
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        log.warn("Error extracting question ID from metadata: {}", e.getMessage());
+                                    }
+                                }
                             }
+                        } catch (Exception e) {
+                            log.warn("Error extracting quiz ID from metadata: {}", e.getMessage());
                         }
                     }
                 });
@@ -346,6 +412,10 @@ public class CourseModerationAIService {
      * Extract declared level from course metadata
      */
     private String extractDeclaredLevel(Object[] metadata) {
+        if (metadata == null || metadata.length == 0) {
+            log.warn("Metadata is null or empty when extracting level");
+            return "UNKNOWN";
+        }
         if (metadata.length > 4 && metadata[4] != null) {
             return metadata[4].toString();
         }
