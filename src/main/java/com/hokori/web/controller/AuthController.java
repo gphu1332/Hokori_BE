@@ -213,9 +213,29 @@ public class AuthController {
             response.put("roles", authResponse.getRoles());
             return ResponseEntity.ok(ApiResponse.success("Firebase authentication successful", response));
         } catch (Exception e) {
-            String msg = e.getMessage() != null ? e.getMessage() : "Firebase authentication failed"; // [CHANGED]
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED) // [CHANGED]
-                    .body(ApiResponse.error(msg)); // [CHANGED]
+            String msg = e.getMessage() != null ? e.getMessage() : "Firebase authentication failed";
+            
+            // Handle specific authentication errors (401)
+            if (msg.contains("ACCOUNT_NOT_REGISTERED")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(ApiResponse.error("Account not registered. Please register first."));
+            }
+            if (msg.contains("Firebase authentication is not configured")) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(ApiResponse.error("Firebase authentication is not available"));
+            }
+            
+            // Handle database errors (500, not 401)
+            if (msg.contains("Could not commit JPA transaction") || 
+                msg.contains("Database error") || 
+                msg.contains("Could not save user")) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(ApiResponse.error("Database error occurred. Please try again later."));
+            }
+            
+            // Default: return 401 for other authentication failures
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error(msg));
         }
     }
 

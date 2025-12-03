@@ -91,7 +91,35 @@ public class AuthService {
         }
         user.setLastLoginAt(LocalDateTime.now());
 
-        userRepository.save(user); // lưu một lần là đủ (kể cả có updated hay không)
+        // Handle database errors when saving user
+        try {
+            userRepository.save(user); // lưu một lần là đủ (kể cả có updated hay không)
+        } catch (DataIntegrityViolationException e) {
+            String errorMsg = e.getMessage();
+            logger.error("❌ Database constraint violation when saving user during login: {}", errorMsg);
+            
+            // If it's an avatarUrl length issue, truncate and retry
+            if (errorMsg != null && (errorMsg.contains("avatar") || errorMsg.contains("length"))) {
+                if (user.getAvatarUrl() != null && user.getAvatarUrl().length() > 500) {
+                    logger.warn("⚠️ Avatar URL exceeds 500 characters ({}), truncating...", user.getAvatarUrl().length());
+                    user.setAvatarUrl(user.getAvatarUrl().substring(0, 500));
+                    try {
+                        userRepository.save(user);
+                    } catch (Exception retryException) {
+                        logger.error("❌ Failed to save user after truncating avatarUrl: {}", retryException.getMessage());
+                        throw new RuntimeException("Database error: Could not save user profile", retryException);
+                    }
+                } else {
+                    throw new RuntimeException("Database error: Could not save user profile", e);
+                }
+            } else {
+                throw new RuntimeException("Database error: Could not save user profile", e);
+            }
+        } catch (Exception e) {
+            logger.error("❌ Unexpected error when saving user during login: {}", e.getMessage(), e);
+            throw new RuntimeException("Database error: Could not save user profile", e);
+        }
+        
         return createAuthResponse(user, "firebase");
     }
 
@@ -220,8 +248,13 @@ public class AuthService {
             boolean updated = false;
 
             if (displayName != null && !displayName.equals(user.getDisplayName())) { user.setDisplayName(displayName); updated = true; }
-            if (photoUrl    != null && !photoUrl.equals(user.getAvatarUrl()))      { user.setAvatarUrl(photoUrl);    updated = true; }
-            if (email       != null && !email.equals(user.getEmail()))             { user.setEmail(email);           updated = true; }
+            if (photoUrl != null && !photoUrl.equals(user.getAvatarUrl())) {
+                // Truncate avatarUrl if too long (max 500 characters)
+                String truncatedPhotoUrl = (photoUrl.length() > 500) ? photoUrl.substring(0, 500) : photoUrl;
+                user.setAvatarUrl(truncatedPhotoUrl);
+                updated = true;
+            }
+            if (email != null && !email.equals(user.getEmail())) { user.setEmail(email); updated = true; }
 
             if (updated) userRepository.save(user);
             return user;
@@ -236,7 +269,12 @@ public class AuthService {
                 boolean updated = false;
 
                 if (displayName != null && !displayName.equals(user.getDisplayName())) { user.setDisplayName(displayName); updated = true; }
-                if (photoUrl    != null && !photoUrl.equals(user.getAvatarUrl()))      { user.setAvatarUrl(photoUrl);    updated = true; }
+                if (photoUrl != null && !photoUrl.equals(user.getAvatarUrl())) {
+                    // Truncate avatarUrl if too long (max 500 characters)
+                    String truncatedPhotoUrl = (photoUrl.length() > 500) ? photoUrl.substring(0, 500) : photoUrl;
+                    user.setAvatarUrl(truncatedPhotoUrl);
+                    updated = true;
+                }
                 if (!Boolean.TRUE.equals(user.getIsVerified())) { user.setIsVerified(true); updated = true; }
                 if (user.getRole() == null) { user.setRole(getDefaultRole()); updated = true; }
 
@@ -250,7 +288,15 @@ public class AuthService {
         u.setFirebaseUid(firebaseUid);
         u.setEmail(email);
         u.setDisplayName(displayName);
-        u.setAvatarUrl(photoUrl);
+        
+        // Truncate avatarUrl if too long (max 500 characters)
+        if (photoUrl != null && photoUrl.length() > 500) {
+            logger.warn("⚠️ Avatar URL from Google exceeds 500 characters ({}), truncating...", photoUrl.length());
+            u.setAvatarUrl(photoUrl.substring(0, 500));
+        } else {
+            u.setAvatarUrl(photoUrl);
+        }
+        
         u.setIsActive(true);
         u.setIsVerified(true);
         u.setCurrentJlptLevel(JLPTLevel.N5);
