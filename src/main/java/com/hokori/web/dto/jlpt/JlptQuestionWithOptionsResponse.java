@@ -29,10 +29,21 @@ public class JlptQuestionWithOptionsResponse {
     String imagePath;
     String imageAltText;
     List<JlptOptionResponse> options;
+    
+    // Selected option ID (null if user hasn't answered this question yet)
+    Long selectedOptionId;
 
     public static JlptQuestionWithOptionsResponse fromEntity(
             JlptQuestion q,
             List<JlptOptionResponse> options
+    ) {
+        return fromEntity(q, options, null);
+    }
+    
+    public static JlptQuestionWithOptionsResponse fromEntity(
+            JlptQuestion q,
+            List<JlptOptionResponse> options,
+            Long selectedOptionId
     ) {
         // Map audioPath to audioUrl with /files/ prefix for serving
         String audioUrl = null;
@@ -63,6 +74,7 @@ public class JlptQuestionWithOptionsResponse {
                 .imagePath(q.getImagePath())
                 .imageAltText(q.getImageAltText())
                 .options(options)
+                .selectedOptionId(selectedOptionId)  // null if not answered yet
                 .build();
     }
 }

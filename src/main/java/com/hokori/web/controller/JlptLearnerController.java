@@ -40,12 +40,17 @@ public class JlptLearnerController {
     // 2) API lấy lại đề (nếu cần refresh giữa chừng)
     @Operation(
             summary = "Lấy danh sách câu hỏi + option cho 1 test",
-            description = "Dùng cho Learner render đề (không bao gồm đáp án đúng)"
+            description = """
+                    Dùng cho Learner render đề (không bao gồm đáp án đúng).
+                    Trả về cả selectedOptionId nếu user đã chọn đáp án trước đó.
+                    Khi FE refresh (F5), gọi endpoint này để restore các câu đã chọn.
+                    """
     )
     @GetMapping("/tests/{testId}/questions")
     @PreAuthorize("hasRole('LEARNER')")
     public List<JlptQuestionWithOptionsResponse> getQuestions(@PathVariable Long testId) {
-        return jlptTestService.getQuestionsWithOptions(testId);
+        Long userId = currentUserService.getUserIdOrThrow();
+        return jlptTestService.getQuestionsWithOptions(testId, userId);
     }
 
     // 3) Learner nộp đáp án cho 1 câu hỏi
@@ -89,7 +94,8 @@ public class JlptLearnerController {
     @GetMapping("/tests/{testId}/questions/listening")
     @PreAuthorize("hasRole('LEARNER')")
     public List<JlptQuestionWithOptionsResponse> getListeningQuestions(@PathVariable Long testId) {
-        return jlptTestService.getListeningQuestions(testId);
+        Long userId = currentUserService.getUserIdOrThrow();
+        return jlptTestService.getListeningQuestions(testId, userId);
     }
 
     // --- READING ---
@@ -100,7 +106,8 @@ public class JlptLearnerController {
     @GetMapping("/tests/{testId}/questions/reading")
     @PreAuthorize("hasRole('LEARNER')")
     public List<JlptQuestionWithOptionsResponse> getReadingQuestions(@PathVariable Long testId) {
-        return jlptTestService.getReadingQuestions(testId);
+        Long userId = currentUserService.getUserIdOrThrow();
+        return jlptTestService.getReadingQuestions(testId, userId);
     }
 
     // --- GRAMMAR + VOCAB ---
@@ -111,7 +118,8 @@ public class JlptLearnerController {
     @GetMapping("/tests/{testId}/questions/grammar-vocab")
     @PreAuthorize("hasRole('LEARNER')")
     public List<JlptQuestionWithOptionsResponse> getGrammarVocabQuestions(@PathVariable Long testId) {
-        return jlptTestService.getGrammarVocabQuestions(testId);
+        Long userId = currentUserService.getUserIdOrThrow();
+        return jlptTestService.getGrammarVocabQuestions(testId, userId);
     }
 
     @Operation(

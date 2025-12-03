@@ -122,32 +122,54 @@ public class JlptTestService {
                 questionRepo.findByTest_IdAndDeletedFlagFalseOrderByOrderIndexAsc(testId);
         return mapQuestionsWithOptions(questions);
     }
+    
+    @Transactional(readOnly = true)
+    public List<JlptQuestionWithOptionsResponse> getQuestionsWithOptions(Long testId, Long userId) {
+        List<JlptQuestion> questions =
+                questionRepo.findByTest_IdAndDeletedFlagFalseOrderByOrderIndexAsc(testId);
+        return mapQuestionsWithOptions(questions, userId);
+    }
 
     // === LISTENING ===
     @Transactional(readOnly = true)
     public List<JlptQuestionWithOptionsResponse> getListeningQuestions(Long testId) {
+        return getListeningQuestions(testId, null);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<JlptQuestionWithOptionsResponse> getListeningQuestions(Long testId, Long userId) {
         List<JlptQuestion> questions =
                 questionRepo.findByTest_IdAndQuestionTypeAndDeletedFlagFalseOrderByOrderIndexAsc(
                         testId,
                         JlptQuestionType.LISTENING
                 );
-        return mapQuestionsWithOptions(questions);
+        return mapQuestionsWithOptions(questions, userId);
     }
 
     // === READING ===
     @Transactional(readOnly = true)
     public List<JlptQuestionWithOptionsResponse> getReadingQuestions(Long testId) {
+        return getReadingQuestions(testId, null);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<JlptQuestionWithOptionsResponse> getReadingQuestions(Long testId, Long userId) {
         List<JlptQuestion> questions =
                 questionRepo.findByTest_IdAndQuestionTypeAndDeletedFlagFalseOrderByOrderIndexAsc(
                         testId,
                         JlptQuestionType.READING
                 );
-        return mapQuestionsWithOptions(questions);
+        return mapQuestionsWithOptions(questions, userId);
     }
 
     // === GRAMMAR + VOCAB ===
     @Transactional(readOnly = true)
     public List<JlptQuestionWithOptionsResponse> getGrammarVocabQuestions(Long testId) {
+        return getGrammarVocabQuestions(testId, null);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<JlptQuestionWithOptionsResponse> getGrammarVocabQuestions(Long testId, Long userId) {
         java.util.List<JlptQuestionType> types = java.util.List.of(
                 JlptQuestionType.GRAMMAR,
                 JlptQuestionType.VOCAB
@@ -157,18 +179,37 @@ public class JlptTestService {
                         testId,
                         types
                 );
-        return mapQuestionsWithOptions(questions);
+        return mapQuestionsWithOptions(questions, userId);
     }
 
 
     // helper dùng lại cho các hàm bên dưới
     private List<JlptQuestionWithOptionsResponse> mapQuestionsWithOptions(List<JlptQuestion> questions) {
+        return mapQuestionsWithOptions(questions, null);
+    }
+    
+    // helper với userId để load saved answers
+    private List<JlptQuestionWithOptionsResponse> mapQuestionsWithOptions(List<JlptQuestion> questions, Long userId) {
+        // Load all saved answers for this user and test (if userId provided)
+        java.util.Map<Long, Long> savedAnswers = new java.util.HashMap<>();
+        if (userId != null && !questions.isEmpty()) {
+            Long testId = questions.get(0).getTest().getId();
+            List<JlptAnswer> answers = answerRepo.findByUser_IdAndTest_Id(userId, testId);
+            savedAnswers = answers.stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            a -> a.getQuestion().getId(),
+                            a -> a.getSelectedOption().getId()
+                    ));
+        }
+        
+        final java.util.Map<Long, Long> finalSavedAnswers = savedAnswers;
         return questions.stream().map(q -> {
             List<JlptOption> options = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(q.getId());
             List<JlptOptionResponse> optionDtos = options.stream()
                     .map(JlptOptionResponse::fromEntity)
                     .toList();
-            return JlptQuestionWithOptionsResponse.fromEntity(q, optionDtos);
+            Long selectedOptionId = finalSavedAnswers.get(q.getId());
+            return JlptQuestionWithOptionsResponse.fromEntity(q, optionDtos, selectedOptionId);
         }).toList();
     }
 

@@ -7,12 +7,16 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 
 public interface JlptAnswerRepository extends JpaRepository<JlptAnswer, Long> {
     java.util.Optional<JlptAnswer> findByUser_IdAndTest_IdAndQuestion_Id(Long userId, Long testId, Long questionId);
     Long countByUser_IdAndTest_IdAndIsCorrectTrue(Long userId, Long testId);
 
     void deleteByUser_IdAndTest_Id(Long userId, Long testId);
+    
+    // Get all answers for a user and test
+    List<JlptAnswer> findByUser_IdAndTest_Id(Long userId, Long testId);
 
     /**
      * Upsert answer using PostgreSQL ON CONFLICT UPDATE
