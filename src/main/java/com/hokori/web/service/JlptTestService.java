@@ -401,6 +401,9 @@ public class JlptTestService {
                 .findByTest_IdAndUser_Id(testId, userId)
                 .orElseThrow(() -> new IllegalStateException("Bạn chưa start bài thi này"));
 
+        // Cho phép submit ngay cả khi đã hết thời gian (user có thể submit muộn)
+        // Nhưng vẫn lưu thời gian submit thực tế
+
         // Tính kết quả hiện tại
         JlptTestResultResponse result = getResultForUser(testId, userId);
 
@@ -706,9 +709,8 @@ public class JlptTestService {
             } else {
                 // Session còn valid (user refresh/out ra rồi vào lại trong thời gian làm bài)
                 // → Giữ answers để user tiếp tục làm bài (tinh thần tự học)
-                // → Reset thời gian để user có thêm thời gian
-                session.setStartedAt(now);
-                session.setExpiresAt(expiresAt);
+                // → KHÔNG reset thời gian (giữ nguyên expiresAt để tránh abuse)
+                // User chỉ có thể làm bài trong thời gian đã định sẵn
             }
         }
 
@@ -717,8 +719,8 @@ public class JlptTestService {
             answerRepo.deleteByUser_IdAndTest_Id(userId, testId);
         }
 
-        // 3. Lấy câu hỏi + options
-        List<JlptQuestionWithOptionsResponse> questions = getQuestionsWithOptions(testId);
+        // 3. Lấy câu hỏi + options (bao gồm selectedOptionId nếu user đã chọn)
+        List<JlptQuestionWithOptionsResponse> questions = getQuestionsWithOptions(testId, userId);
 
         learnerProgressService.recordLearningActivity(userId, now);
 
