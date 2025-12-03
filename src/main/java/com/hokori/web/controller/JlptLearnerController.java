@@ -3,6 +3,7 @@ package com.hokori.web.controller;
 import com.hokori.web.dto.jlpt.*;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.JlptTestService;
+import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -74,16 +75,53 @@ public class JlptLearnerController {
         jlptTestService.submitAnswer(testId, userId, req);
     }
 
-    // 4) Learner xem kết quả của chính mình
+    // 4) Learner nộp bài và lưu kết quả
     @Operation(
-            summary = "Learner xem kết quả JLPT Test của chính mình",
-            description = "Trả tổng số câu, số câu đúng và điểm quy đổi"
+            summary = "Learner nộp bài JLPT Test",
+            description = """
+                    Nộp bài và lưu kết quả vào lịch sử.
+                    Sau khi nộp bài:
+                    - Kết quả được lưu vào attempt history
+                    - Session và answers hiện tại bị xóa
+                    - User có thể làm lại test (tạo attempt mới)
+                    """
+    )
+    @PostMapping("/tests/{testId}/submit")
+    @PreAuthorize("hasRole('LEARNER')")
+    public JlptTestResultResponse submitTest(@PathVariable Long testId) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        return jlptTestService.submitTest(testId, userId);
+    }
+
+    // 5) Learner xem kết quả hiện tại (chưa nộp bài)
+    @Operation(
+            summary = "Learner xem kết quả JLPT Test hiện tại (chưa nộp bài)",
+            description = """
+                    Xem kết quả của lần làm bài hiện tại (chưa nộp).
+                    Nếu đã nộp bài, dùng endpoint /attempts để xem lịch sử.
+                    """
     )
     @GetMapping("/tests/{testId}/my-result")
     @PreAuthorize("hasRole('LEARNER')")
     public JlptTestResultResponse getMyResult(@PathVariable Long testId) {
         Long userId = currentUserService.getUserIdOrThrow();
         return jlptTestService.getResultForUser(testId, userId);
+    }
+
+    // 6) Learner xem lịch sử các lần làm bài
+    @Operation(
+            summary = "Learner xem lịch sử các lần làm bài JLPT Test",
+            description = """
+                    Trả về danh sách tất cả các lần làm bài của user cho test này.
+                    Sắp xếp theo thời gian nộp bài mới nhất trước.
+                    Mỗi attempt bao gồm: điểm số, thời gian làm bài, kết quả từng phần.
+                    """
+    )
+    @GetMapping("/tests/{testId}/attempts")
+    @PreAuthorize("hasRole('LEARNER')")
+    public List<JlptTestAttemptResponse> getAttemptHistory(@PathVariable Long testId) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        return jlptTestService.getAttemptHistory(testId, userId);
     }
 
     // --- LISTENING ---

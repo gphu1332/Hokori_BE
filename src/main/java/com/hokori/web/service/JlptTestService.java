@@ -6,7 +6,6 @@ import com.hokori.web.Enum.JlptQuestionType;
 import com.hokori.web.dto.jlpt.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
-import com.hokori.web.service.FileStorageService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,6 +26,7 @@ public class JlptTestService {
     private final JlptAnswerRepository answerRepo;
     private final UserRepository userRepo;
     private final JlptUserTestSessionRepository sessionRepo;
+    private final JlptTestAttemptRepository attemptRepo;
     private final LearnerProgressService learnerProgressService;
     private final FileStorageService fileStorageService;
 
@@ -382,6 +382,108 @@ public class JlptTestService {
         // Điểm phần này = (tổng điểm test / tổng số câu) * số câu đúng trong phần này
         // Hoặc: (tổng điểm test * số câu đúng phần này) / tổng số câu
         return (double) totalMax * sectionCorrect / totalQuestions;
+    }
+
+    /**
+     * Nộp bài và lưu kết quả vào attempt.
+     * Sau khi nộp bài, user có thể làm lại test (tạo attempt mới).
+     */
+    @Transactional
+    public JlptTestResultResponse submitTest(Long testId, Long userId) {
+        JlptTest test = testRepo.findById(testId)
+                .orElseThrow(() -> new EntityNotFoundException("Test not found"));
+
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+        // Lấy session để biết thời gian bắt đầu
+        JlptUserTestSession session = sessionRepo
+                .findByTest_IdAndUser_Id(testId, userId)
+                .orElseThrow(() -> new IllegalStateException("Bạn chưa start bài thi này"));
+
+        // Tính kết quả hiện tại
+        JlptTestResultResponse result = getResultForUser(testId, userId);
+
+        Instant now = Instant.now();
+
+        // Lấy thông tin điểm từng phần từ result
+        JlptTestResultResponse.SectionScore grammarVocab = result.getGrammarVocab();
+        JlptTestResultResponse.SectionScore reading = result.getReading();
+        JlptTestResultResponse.SectionScore listening = result.getListening();
+
+        // Lưu attempt vào database
+        JlptTestAttempt attempt = JlptTestAttempt.builder()
+                .user(user)
+                .test(test)
+                .startedAt(session.getStartedAt())
+                .submittedAt(now)
+                .totalQuestions(result.getTotalQuestions())
+                .correctCount(result.getCorrectCount())
+                .score(result.getScore())
+                .passed(result.getPassed())
+                .grammarVocabTotal(grammarVocab != null ? grammarVocab.getTotalQuestions() : 0)
+                .grammarVocabCorrect(grammarVocab != null ? grammarVocab.getCorrectCount() : 0)
+                .grammarVocabScore(grammarVocab != null ? grammarVocab.getScore() : 0.0)
+                .readingTotal(reading != null ? reading.getTotalQuestions() : 0)
+                .readingCorrect(reading != null ? reading.getCorrectCount() : 0)
+                .readingScore(reading != null ? reading.getScore() : 0.0)
+                .listeningTotal(listening != null ? listening.getTotalQuestions() : 0)
+                .listeningCorrect(listening != null ? listening.getCorrectCount() : 0)
+                .listeningScore(listening != null ? listening.getScore() : 0.0)
+                .build();
+
+        attemptRepo.save(attempt);
+
+        // Xóa session và answers để user có thể làm lại từ đầu
+        sessionRepo.delete(session);
+        answerRepo.deleteByUser_IdAndTest_Id(userId, testId);
+
+        return result;
+    }
+
+    /**
+     * Lấy lịch sử các lần làm bài của user cho 1 test.
+     * Sắp xếp theo thời gian nộp bài mới nhất trước.
+     */
+    @Transactional(readOnly = true)
+    public List<JlptTestAttemptResponse> getAttemptHistory(Long testId, Long userId) {
+        List<JlptTestAttempt> attempts = attemptRepo.findByUser_IdAndTest_IdOrderBySubmittedAtDesc(userId, testId);
+        
+        return attempts.stream()
+                .map(this::mapAttemptToResponse)
+                .toList();
+    }
+
+    /**
+     * Map entity JlptTestAttempt sang DTO response.
+     */
+    private JlptTestAttemptResponse mapAttemptToResponse(JlptTestAttempt attempt) {
+        return JlptTestAttemptResponse.builder()
+                .id(attempt.getId())
+                .testId(attempt.getTest().getId())
+                .userId(attempt.getUser().getId())
+                .startedAt(attempt.getStartedAt())
+                .submittedAt(attempt.getSubmittedAt())
+                .totalQuestions(attempt.getTotalQuestions())
+                .correctCount(attempt.getCorrectCount())
+                .score(attempt.getScore())
+                .passed(attempt.getPassed())
+                .grammarVocab(JlptTestAttemptResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getGrammarVocabTotal())
+                        .correctCount(attempt.getGrammarVocabCorrect())
+                        .score(attempt.getGrammarVocabScore())
+                        .build())
+                .reading(JlptTestAttemptResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getReadingTotal())
+                        .correctCount(attempt.getReadingCorrect())
+                        .score(attempt.getReadingScore())
+                        .build())
+                .listening(JlptTestAttemptResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getListeningTotal())
+                        .correctCount(attempt.getListeningCorrect())
+                        .score(attempt.getListeningScore())
+                        .build())
+                .build();
     }
 
     /**
