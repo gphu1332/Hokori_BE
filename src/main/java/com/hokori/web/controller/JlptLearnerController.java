@@ -28,7 +28,14 @@ public class JlptLearnerController {
     // 1) Learner "enroll" / bắt đầu 1 test
     @Operation(
             summary = "Learner bắt đầu làm JLPT Test",
-            description = "Xoá answer cũ (nếu có) và trả đề + metadata để learner làm bài"
+            description = """
+                    Bắt đầu làm bài test. Logic:
+                    - Lần đầu tiên: Xóa answers cũ (nếu có) và tạo session mới
+                    - Đã có session và còn valid: Giữ answers, reset thời gian (cho phép tiếp tục làm bài)
+                    - Session đã hết hạn: Xóa answers cũ và reset session (bắt đầu lại)
+                    
+                    Tinh thần tự học: User có thể refresh/out ra rồi vào lại mà không mất progress.
+                    """
     )
     @PostMapping("/tests/{testId}/start")
     @PreAuthorize("hasRole('LEARNER')")
