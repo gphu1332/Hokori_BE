@@ -286,20 +286,53 @@ public class JlptTestService {
         JlptTest test = testRepo.findById(testId)
                 .orElseThrow(() -> new EntityNotFoundException("Test not found"));
 
+        // ====== TỔNG ĐIỂM ======
         int totalQuestions = questionRepo.countByTest_IdAndDeletedFlagFalse(testId).intValue();
         int correctCount = answerRepo.countByUser_IdAndTest_IdAndIsCorrectTrue(userId, testId).intValue();
 
         double score = 0.0;
-        if (totalQuestions > 0 && test.getTotalScore() != null) {
-            score = (double) test.getTotalScore() * correctCount / totalQuestions;
+        int totalMax = test.getTotalScore() != null ? test.getTotalScore() : 180;
+        if (totalQuestions > 0 && totalMax > 0) {
+            score = (double) totalMax * correctCount / totalQuestions;
         }
 
-        // ====== Áp dụng rule JLPT chính thức ======
-        String level = test.getLevel();                 // "N5", "N4", ...
-        int totalMax = test.getTotalScore() != null     // thường là 180
-                ? test.getTotalScore()
-                : 180;
+        // ====== ĐIỂM TỪNG PHẦN ======
+        // 1. Grammar + Vocab (gộp chung)
+        java.util.List<JlptQuestionType> grammarVocabTypes = java.util.List.of(
+                JlptQuestionType.GRAMMAR,
+                JlptQuestionType.VOCAB
+        );
+        int grammarVocabTotal = questionRepo.countByTest_IdAndQuestionTypeInAndDeletedFlagFalse(
+                testId, grammarVocabTypes).intValue();
+        int grammarVocabCorrect = answerRepo.countCorrectByUserAndTestAndQuestionTypes(
+                userId, testId, grammarVocabTypes).intValue();
+        double grammarVocabScore = calculateSectionScore(grammarVocabTotal, grammarVocabCorrect, totalMax, totalQuestions);
+        double grammarVocabMaxScore = grammarVocabTotal > 0 
+                ? (double) totalMax * grammarVocabTotal / totalQuestions 
+                : 0.0;
 
+        // 2. Reading
+        int readingTotal = questionRepo.countByTest_IdAndQuestionTypeAndDeletedFlagFalse(
+                testId, JlptQuestionType.READING).intValue();
+        int readingCorrect = answerRepo.countCorrectByUserAndTestAndQuestionTypes(
+                userId, testId, java.util.List.of(JlptQuestionType.READING)).intValue();
+        double readingScore = calculateSectionScore(readingTotal, readingCorrect, totalMax, totalQuestions);
+        double readingMaxScore = readingTotal > 0 
+                ? (double) totalMax * readingTotal / totalQuestions 
+                : 0.0;
+
+        // 3. Listening
+        int listeningTotal = questionRepo.countByTest_IdAndQuestionTypeAndDeletedFlagFalse(
+                testId, JlptQuestionType.LISTENING).intValue();
+        int listeningCorrect = answerRepo.countCorrectByUserAndTestAndQuestionTypes(
+                userId, testId, java.util.List.of(JlptQuestionType.LISTENING)).intValue();
+        double listeningScore = calculateSectionScore(listeningTotal, listeningCorrect, totalMax, totalQuestions);
+        double listeningMaxScore = listeningTotal > 0 
+                ? (double) totalMax * listeningTotal / totalQuestions 
+                : 0.0;
+
+        // ====== Áp dụng rule JLPT chính thức ======
+        String level = test.getLevel();
         double passScore = calculatePassScore(level, totalMax);
         boolean passed = score >= passScore;
 
@@ -312,7 +345,43 @@ public class JlptTestService {
                 .level(level)
                 .passScore(passScore)
                 .passed(passed)
+                .grammarVocab(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(grammarVocabTotal)
+                        .correctCount(grammarVocabCorrect)
+                        .score(grammarVocabScore)
+                        .maxScore(grammarVocabMaxScore)
+                        .build())
+                .reading(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(readingTotal)
+                        .correctCount(readingCorrect)
+                        .score(readingScore)
+                        .maxScore(readingMaxScore)
+                        .build())
+                .listening(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(listeningTotal)
+                        .correctCount(listeningCorrect)
+                        .score(listeningScore)
+                        .maxScore(listeningMaxScore)
+                        .build())
                 .build();
+    }
+
+    /**
+     * Tính điểm cho 1 phần thi (Grammar+Vocab, Reading, Listening)
+     * 
+     * @param sectionTotal Tổng số câu trong phần này
+     * @param sectionCorrect Số câu đúng trong phần này
+     * @param totalMax Điểm tối đa của toàn bộ test (thường là 180)
+     * @param totalQuestions Tổng số câu của toàn bộ test
+     * @return Điểm của phần này (tính theo tỷ lệ)
+     */
+    private double calculateSectionScore(int sectionTotal, int sectionCorrect, int totalMax, int totalQuestions) {
+        if (sectionTotal == 0 || totalQuestions == 0 || totalMax == 0) {
+            return 0.0;
+        }
+        // Điểm phần này = (tổng điểm test / tổng số câu) * số câu đúng trong phần này
+        // Hoặc: (tổng điểm test * số câu đúng phần này) / tổng số câu
+        return (double) totalMax * sectionCorrect / totalQuestions;
     }
 
     /**

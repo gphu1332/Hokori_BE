@@ -17,6 +17,17 @@ public interface JlptAnswerRepository extends JpaRepository<JlptAnswer, Long> {
     
     // Get all answers for a user and test
     List<JlptAnswer> findByUser_IdAndTest_Id(Long userId, Long testId);
+    
+    // Count correct answers by question type
+    @Query("SELECT COUNT(a) FROM JlptAnswer a " +
+           "WHERE a.user.id = :userId AND a.test.id = :testId " +
+           "AND a.isCorrect = true " +
+           "AND a.question.questionType IN :types")
+    Long countCorrectByUserAndTestAndQuestionTypes(
+            @Param("userId") Long userId,
+            @Param("testId") Long testId,
+            @Param("types") java.util.List<com.hokori.web.Enum.JlptQuestionType> types
+    );
 
     /**
      * Upsert answer using PostgreSQL ON CONFLICT UPDATE

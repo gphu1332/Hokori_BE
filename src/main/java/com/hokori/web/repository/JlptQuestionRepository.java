@@ -21,4 +21,10 @@ public interface JlptQuestionRepository extends JpaRepository<JlptQuestion, Long
             Long testId,
             java.util.List<JlptQuestionType> types
     );
+    
+    // Count questions by type (for score calculation)
+    Long countByTest_IdAndQuestionTypeAndDeletedFlagFalse(Long testId, JlptQuestionType questionType);
+    
+    // Count questions by multiple types (for Grammar+Vocab)
+    Long countByTest_IdAndQuestionTypeInAndDeletedFlagFalse(Long testId, java.util.List<JlptQuestionType> types);
 }
