@@ -494,19 +494,21 @@ public class JlptTestService {
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-        // 1. Xoá answer cũ
-        answerRepo.deleteByUser_IdAndTest_Id(userId, testId);
-
         java.time.Instant now = java.time.Instant.now();
         int durationMin = test.getDurationMin() != null ? test.getDurationMin() : 0;
         java.time.Instant expiresAt = now.plus(java.time.Duration.ofMinutes(durationMin));
 
-        // 2. Tạo / update session
+        // 1. Check session có tồn tại và còn valid không
         JlptUserTestSession session = sessionRepo
                 .findByTest_IdAndUser_Id(testId, userId)
                 .orElse(null);
 
+        boolean shouldDeleteAnswers = false;
+
         if (session == null) {
+            // Lần đầu tiên start test → xóa answers cũ (nếu có) và tạo session mới
+            shouldDeleteAnswers = true;
+            
             session = new JlptUserTestSession();
             session.setTest(test);
             session.setUser(user);
@@ -515,13 +517,27 @@ public class JlptTestService {
             sessionRepo.save(session);
 
             // lần đầu user này thi test này -> tăng currentParticipants
-            // Handle null case for existing records in PostgreSQL
             Integer cur = test.getCurrentParticipants();
             test.setCurrentParticipants((cur == null ? 0 : cur) + 1);
         } else {
-            // cho phép start lại nhưng không tăng người thi
-            session.setStartedAt(now);
-            session.setExpiresAt(expiresAt);
+            // Đã có session → check xem có hết hạn không
+            if (now.isAfter(session.getExpiresAt())) {
+                // Session đã hết hạn (user đăng xuất rồi vào lại sau thời gian dài)
+                // → Xóa answers cũ và reset session (bắt đầu lại từ đầu)
+                shouldDeleteAnswers = true;
+                session.setStartedAt(now);
+                session.setExpiresAt(expiresAt);
+            } else {
+                // Session còn valid (user chỉ refresh/out ra rồi vào lại trong thời gian làm bài)
+                // → Giữ answers, chỉ reset thời gian để user có thêm thời gian
+                session.setStartedAt(now);
+                session.setExpiresAt(expiresAt);
+            }
+        }
+
+        // 2. Xóa answers nếu cần (chỉ khi lần đầu hoặc session đã hết hạn)
+        if (shouldDeleteAnswers) {
+            answerRepo.deleteByUser_IdAndTest_Id(userId, testId);
         }
 
         // 3. Lấy câu hỏi + options
