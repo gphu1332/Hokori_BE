@@ -198,47 +198,45 @@ public class JlptTestService {
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
         boolean correct = Boolean.TRUE.equals(option.getIsCorrect());
+        Instant now = java.time.Instant.now();
 
-        // upsert: 1 user chỉ có 1 answer / question
-        // Try to find existing answer first
-        JlptAnswer answer = answerRepo
-                .findByUser_IdAndTest_IdAndQuestion_Id(userId, testId, question.getId())
-                .orElse(null);
-
-        if (answer == null) {
-            // Create new answer if not exists
-            answer = JlptAnswer.builder()
-                    .user(user)
-                    .test(test)
-                    .question(question)
-                    .selectedOption(option)
-                    .isCorrect(correct)
-                    .answeredAt(java.time.Instant.now())
-                    .build();
-        } else {
-            // Update existing answer
-            answer.setSelectedOption(option);
-            answer.setIsCorrect(correct);
-            answer.setAnsweredAt(java.time.Instant.now());
-        }
-
+        // Use native query with ON CONFLICT UPDATE to handle race conditions at database level
+        // This is more reliable than try-catch approach
         try {
-            answerRepo.save(answer);
-        } catch (org.springframework.dao.DataIntegrityViolationException e) {
-            // Handle race condition: if duplicate key error, try to update existing record
-            if (e.getMessage() != null && e.getMessage().contains("uk_jlpt_answer_user_test_question")) {
-                // Retry: find and update existing answer
-                JlptAnswer existingAnswer = answerRepo
-                        .findByUser_IdAndTest_IdAndQuestion_Id(userId, testId, question.getId())
-                        .orElseThrow(() -> new RuntimeException("Failed to find answer after duplicate key error"));
-                
-                existingAnswer.setSelectedOption(option);
-                existingAnswer.setIsCorrect(correct);
-                existingAnswer.setAnsweredAt(java.time.Instant.now());
-                answerRepo.save(existingAnswer);
+            answerRepo.upsertAnswer(
+                    userId,
+                    testId,
+                    question.getId(),
+                    option.getId(),
+                    correct,
+                    now,
+                    now
+            );
+        } catch (Exception e) {
+            // Fallback: if native query fails, try traditional approach
+            // This should rarely happen, but provides safety net
+            JlptAnswer answer = answerRepo
+                    .findByUser_IdAndTest_IdAndQuestion_Id(userId, testId, question.getId())
+                    .orElse(null);
+
+            if (answer == null) {
+                // Create new answer if not exists
+                answer = JlptAnswer.builder()
+                        .user(user)
+                        .test(test)
+                        .question(question)
+                        .selectedOption(option)
+                        .isCorrect(correct)
+                        .answeredAt(now)
+                        .build();
             } else {
-                throw e;
+                // Update existing answer
+                answer.setSelectedOption(option);
+                answer.setIsCorrect(correct);
+                answer.setAnsweredAt(now);
             }
+
+            answerRepo.save(answer);
         }
     }
 
