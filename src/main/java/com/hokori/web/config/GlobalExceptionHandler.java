@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -77,6 +78,45 @@ public class GlobalExceptionHandler {
         response.put("status", "error");
         response.put("timestamp", LocalDateTime.now());
         response.put("path", request.getDescription(false));
+        
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodArgumentTypeMismatchException(
+            MethodArgumentTypeMismatchException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        
+        String parameterName = ex.getName();
+        String parameterValue = ex.getValue() != null ? ex.getValue().toString() : "null";
+        String requiredType = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown";
+        
+        // Check if FE is sending string "null" instead of actual null or number
+        if ("null".equals(parameterValue)) {
+            response.put("message", String.format(
+                "Invalid parameter '%s': Received string 'null' instead of a valid %s. " +
+                "Please check that you are passing a valid %s value (not the string 'null'). " +
+                "Example: testId should be a number like 123, not the string 'null'.",
+                parameterName, requiredType, requiredType));
+            response.put("parameter", parameterName);
+            response.put("receivedValue", parameterValue);
+            response.put("expectedType", requiredType);
+            response.put("suggestion", "Make sure you are passing the actual testId value, not null or the string 'null'");
+        } else {
+            response.put("message", String.format(
+                "Invalid parameter '%s': Cannot convert '%s' to %s. Please provide a valid %s value.",
+                parameterName, parameterValue, requiredType, requiredType));
+            response.put("parameter", parameterName);
+            response.put("receivedValue", parameterValue);
+            response.put("expectedType", requiredType);
+        }
+        
+        response.put("status", "error");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false));
+        
+        logger.warn("MethodArgumentTypeMismatchException: {} = '{}' (expected {})", 
+            parameterName, parameterValue, requiredType);
         
         return ResponseEntity.badRequest().body(response);
     }
