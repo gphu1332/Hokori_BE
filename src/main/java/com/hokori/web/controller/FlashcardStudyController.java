@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,6 +32,52 @@ public class FlashcardStudyController {
 
     private final FlashcardStudyService studyService;
     private final CurrentUserService currentUserService;
+
+    // ===== Get progress cho 1 flashcard =====
+
+    @GetMapping("/{flashcardId}")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(
+            summary = "Lấy trạng thái học của 1 flashcard",
+            description = """
+                    FE gọi API này để lấy progress của 1 flashcard cụ thể.
+                    Trả về null nếu user chưa có progress, hoặc progress object nếu đã có.
+                    
+                    GET /api/flashcards/progress/{flashcardId}
+                    
+                    Response:
+                    - Nếu chưa có progress → trả về null (204 No Content hoặc 200 với null)
+                    - Nếu đã có progress → trả về UserFlashcardProgressResponse với:
+                      {
+                        "id": 1,
+                        "userId": 123,
+                        "flashcardId": 456,
+                        "status": "MASTERED",
+                        "masteredAt": "2024-01-01T00:00:00Z",
+                        "lastReviewedAt": "2024-01-01T00:00:00Z",
+                        "reviewCount": 5
+                      }
+                    """
+    )
+    @ApiResponse(
+            responseCode = "200",
+            description = "OK - Trả về progress nếu có, null nếu chưa có",
+            content = @Content(schema = @Schema(implementation = UserFlashcardProgressResponse.class))
+    )
+    @ApiResponse(
+            responseCode = "404",
+            description = "Flashcard not found"
+    )
+    public ResponseEntity<UserFlashcardProgressResponse> getProgress(@PathVariable Long flashcardId) {
+        User current = currentUserService.getCurrentUserOrThrow();
+        UserFlashcardProgressResponse progress = studyService.getProgress(current.getId(), flashcardId);
+        
+        if (progress == null) {
+            return ResponseEntity.ok(null); // Return 200 with null body
+        }
+        
+        return ResponseEntity.ok(progress);
+    }
 
     // ===== Update progress cho 1 flashcard =====
 

@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
+import com.hokori.web.dto.flashcard.UserFlashcardProgressResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +23,25 @@ public class FlashcardStudyService {
     private final FlashcardRepository cardRepo;
     private final UserFlashcardProgressRepository progressRepo;
     private final LearnerProgressService learnerProgressService;
+
+    @Transactional(readOnly = true)
+    public UserFlashcardProgressResponse getProgress(Long userId, Long flashcardId) {
+        // Verify flashcard exists
+        if (!cardRepo.existsById(flashcardId)) {
+            throw new EntityNotFoundException("Flashcard not found");
+        }
+
+        // Get progress if exists
+        Optional<UserFlashcardProgress> progressOpt = progressRepo.findByUser_IdAndFlashcard_Id(userId, flashcardId);
+
+        if (progressOpt.isPresent()) {
+            return UserFlashcardProgressResponse.fromEntity(progressOpt.get());
+        }
+
+        // Return null or default response if no progress exists
+        // FE can check if response is null or has default values
+        return null;
+    }
 
     @Transactional
     public UserFlashcardProgress updateProgress(User user, Long flashcardId,
