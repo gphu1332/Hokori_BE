@@ -100,38 +100,6 @@ public class FlashcardSetService {
         return cardRepo.findBySetAndDeletedFlagFalseOrderByOrderIndexAsc(set);
     }
 
-    /**
-     * For moderator: Get flashcard set details and cards for a pending approval course
-     * No ownership check required - only checks that course is pending approval
-     */
-    @Transactional(readOnly = true)
-    public FlashcardSetResponse getSetForModerator(Long setId) {
-        FlashcardSet set = getSetOrThrow(setId);
-        
-        // If it's a COURSE_VOCAB set, check that it belongs to a pending approval course
-        if (set.getType() == com.hokori.web.Enum.FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
-            courseService.requireSectionContentBelongsToPendingApprovalCourse(set.getSectionContent().getId());
-        }
-        
-        return FlashcardSetResponse.fromEntity(set);
-    }
-
-    /**
-     * For moderator: Get flashcards in a set for a pending approval course
-     */
-    @Transactional(readOnly = true)
-    public List<com.hokori.web.dto.flashcard.FlashcardResponse> listCardsForModerator(Long setId) {
-        FlashcardSet set = getSetOrThrow(setId);
-        
-        // If it's a COURSE_VOCAB set, check that it belongs to a pending approval course
-        if (set.getType() == com.hokori.web.Enum.FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
-            courseService.requireSectionContentBelongsToPendingApprovalCourse(set.getSectionContent().getId());
-        }
-        
-        return cardRepo.findBySetAndDeletedFlagFalseOrderByOrderIndexAsc(set).stream()
-                .map(com.hokori.web.dto.flashcard.FlashcardResponse::fromEntity)
-                .collect(java.util.stream.Collectors.toList());
-    }
 
     public FlashcardSet updateSet(Long setId,
                                   String title,

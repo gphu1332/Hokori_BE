@@ -8,6 +8,7 @@ import com.hokori.web.repository.FlashcardSetRepository;
 import com.hokori.web.repository.SectionsContentRepository;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.FlashcardSetService;
+import com.hokori.web.service.CourseService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,6 +47,7 @@ public class FlashcardSetController {
     private final FlashcardSetRepository setRepo;
     private final CurrentUserService currentUserService;
     private final SectionsContentRepository sectionsContentRepo;
+    private final CourseService courseService;
 
     // ===== 1. Learner tạo set cá nhân =====
 
@@ -341,6 +343,20 @@ public class FlashcardSetController {
     public List<FlashcardResponse> listCards(
             @PathVariable Long setId
     ) {
+        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        
+        // Allow moderator if course is pending approval
+        if (set.getType() == FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
+            if (currentUserService.hasRole("MODERATOR")) {
+                try {
+                    courseService.requireSectionContentBelongsToPendingApprovalCourse(set.getSectionContent().getId());
+                    // Validated, continue to return cards
+                } catch (ResponseStatusException e) {
+                    // Not pending approval, continue with normal check
+                }
+            }
+        }
+        
         List<Flashcard> cards = flashcardSetService.listCards(setId);
         return cards.stream()
                 .map(FlashcardResponse::fromEntity)
@@ -380,9 +396,19 @@ public class FlashcardSetController {
                 .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found for this sectionContent"));
         
         // Validation: 
-        // - Nếu là COURSE_VOCAB: chỉ cho phép teacher (owner của course) hoặc learner (đã enroll)
+        // - Nếu là COURSE_VOCAB: chỉ cho phép teacher (owner của course), learner (đã enroll), hoặc moderator (nếu course pending approval)
         // - Nếu là PERSONAL: chỉ cho phép người tạo
         if (set.getType() == FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
+            // Allow moderator if course is pending approval
+            if (currentUserService.hasRole("MODERATOR")) {
+                try {
+                    courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
+                    return FlashcardSetResponse.fromEntity(set);
+                } catch (ResponseStatusException e) {
+                    // Not pending approval, continue with normal check
+                }
+            }
+            
             // Check nếu teacher là owner của course
             Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
                     .orElse(null);
