@@ -29,6 +29,17 @@ public class TeacherQuizService {
     /* ---------- Helpers ---------- */
 
     private void requireOwner(Long lessonId){
+        // First check if user is moderator - moderators can access pending approval courses
+        if (current.hasRole("MODERATOR")) {
+            try {
+                courseService.requireLessonBelongsToPendingApprovalCourse(lessonId);
+                return; // Moderator can access if course is pending approval
+            } catch (org.springframework.web.server.ResponseStatusException e) {
+                // Course is not pending approval, continue to check ownership
+            }
+        }
+        
+        // Check ownership for non-moderators or moderators accessing non-pending courses
         Long me = current.getCurrentUserOrThrow().getId();
         Long owner = lessonRepo.findCourseOwnerIdByLessonId(lessonId)
                 .orElseThrow(() -> new RuntimeException("Lesson not found: " + lessonId));
@@ -36,16 +47,6 @@ public class TeacherQuizService {
         // If user is the owner, allow access
         if (owner.equals(me)) {
             return;
-        }
-        
-        // If user is moderator and course is pending approval, allow access
-        if (current.hasRole("MODERATOR")) {
-            try {
-                courseService.requireLessonBelongsToPendingApprovalCourse(lessonId);
-                return;
-            } catch (org.springframework.web.server.ResponseStatusException e) {
-                // Course is not pending approval, fall through to throw access denied
-            }
         }
         
         // Not owner and not moderator with pending approval course
