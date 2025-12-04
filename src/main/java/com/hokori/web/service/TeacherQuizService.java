@@ -42,7 +42,8 @@ public class TeacherQuizService {
         // Check ownership for non-moderators or moderators accessing non-pending courses
         Long me = current.getCurrentUserOrThrow().getId();
         Long owner = lessonRepo.findCourseOwnerIdByLessonId(lessonId)
-                .orElseThrow(() -> new RuntimeException("Lesson not found: " + lessonId));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Lesson not found"));
         
         // If user is the owner, allow access
         if (owner.equals(me)) {
@@ -50,7 +51,9 @@ public class TeacherQuizService {
         }
         
         // Not owner and not moderator with pending approval course
-        throw new RuntimeException("You are not the owner of this lesson/course");
+        throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.FORBIDDEN, 
+            "You are not the owner of this lesson/course");
     }
 
     private Quiz getQuizOrThrow(Long quizId){
