@@ -197,10 +197,12 @@ public class GeminiService {
             GoogleCredentials credentials = GoogleCredentials.fromStream(credentialsStream);
             
             // Create scoped credentials with Gemini API scope
-            // Use cloud-platform scope (broader) or generative-language scope (specific)
-            GoogleCredentials scopedCredentials = credentials.createScoped(
-                    Arrays.asList("https://www.googleapis.com/auth/generative-language")
+            // Try specific scope first, fallback to broader scope if needed
+            List<String> scopes = Arrays.asList(
+                    "https://www.googleapis.com/auth/generative-language",
+                    "https://www.googleapis.com/auth/cloud-platform"
             );
+            GoogleCredentials scopedCredentials = credentials.createScoped(scopes);
             
             scopedCredentials.refreshIfExpired();
             return scopedCredentials.getAccessToken().getTokenValue();
