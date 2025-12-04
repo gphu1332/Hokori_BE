@@ -183,6 +183,7 @@ public class GeminiService {
     /**
      * Get access token from Google Cloud service account credentials
      * Uses OAuth2 scopes required for Gemini API
+     * Note: Ensure Generative Language API is enabled in Google Cloud Console
      */
     private String getAccessToken() throws IOException {
         if (privateKey == null || privateKey.isEmpty() || clientEmail == null || clientEmail.isEmpty()) {
