@@ -33,6 +33,7 @@ public class CourseService {
     private final SectionsContentRepository contentRepo;
     private final UserRepository userRepo;
     private final EnrollmentRepository enrollmentRepo;
+    private final QuizRepository quizRepo;
 
     // =========================
     // COURSE
@@ -938,13 +939,21 @@ public class CourseService {
                 .sorted(Comparator.comparing(Section::getOrderIndex))
                 .map(this::toSectionResFull)
                 .collect(Collectors.toList());
-        return new LessonRes(
+        
+        // Get quizId if exists
+        Long quizId = quizRepo.findByLesson_Id(ls.getId())
+                .map(Quiz::getId)
+                .orElse(null);
+        
+        LessonRes lessonRes = new LessonRes(
                 ls.getId(),
                 ls.getTitle(),
                 ls.getOrderIndex(),
                 ls.getTotalDurationSec(),
                 sections
         );
+        lessonRes.setQuizId(quizId);
+        return lessonRes;
     }
 
     private ContentRes toContentRes(SectionsContent c) {
@@ -1260,5 +1269,65 @@ public class CourseService {
                 "Course is not pending approval. Current status: " + status);
         }
         return getTree(courseId);
+    }
+
+    /**
+     * Check if a lesson belongs to a course that is pending approval (for moderator access)
+     */
+    @Transactional(readOnly = true)
+    public void requireLessonBelongsToPendingApprovalCourse(Long lessonId) {
+        Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+        
+        // Check course status
+        Object[] metadata = courseRepo.findCourseMetadataById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+
+        if (actualMetadata.length < 10 || actualMetadata[9] == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Invalid course metadata: missing status");
+        }
+
+        CourseStatus status;
+        try {
+            status = CourseStatus.valueOf(actualMetadata[9].toString().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Invalid course status: " + actualMetadata[9]);
+        }
+        
+        if (status != CourseStatus.PENDING_APPROVAL) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Lesson does not belong to a course pending approval. Current status: " + status);
+        }
+    }
+
+    /**
+     * Check if a section content belongs to a course that is pending approval (for moderator access)
+     */
+    @Transactional(readOnly = true)
+    public void requireSectionContentBelongsToPendingApprovalCourse(Long sectionContentId) {
+        // Get section ID from section content
+        SectionsContent content = contentRepo.findById(sectionContentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section content not found"));
+        
+        Section section = content.getSection();
+        if (section == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found");
+        }
+        
+        // Get lesson from section
+        Lesson lesson = section.getLesson();
+        if (lesson == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found");
+        }
+        
+        // Check course status via lesson
+        requireLessonBelongsToPendingApprovalCourse(lesson.getId());
     }
 }

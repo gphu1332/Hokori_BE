@@ -24,6 +24,7 @@ public class TeacherQuizService {
     private final QuestionRepository questionRepo;
     private final OptionRepository optionRepo;
     private final TeacherQuizMapper mapper;
+    private final CourseService courseService;
 
     /* ---------- Helpers ---------- */
 
@@ -158,6 +159,73 @@ public class TeacherQuizService {
 
     public List<QuestionWithOptionsDto> listQuestions(Long lessonId, Long quizId){
         requireOwner(lessonId);
+        // Check quiz belongs to lesson using native query
+        var quizMetadataOpt = quizRepo.findQuizMetadataById(quizId);
+        if (quizMetadataOpt.isEmpty()) {
+            throw new RuntimeException("Quiz not found");
+        }
+        
+        Object[] qMeta = quizMetadataOpt.get();
+        Object[] actualQMeta = qMeta;
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+            actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        Long lessonIdFromQuiz = ((Number) actualQMeta[1]).longValue();
+        if (!lessonIdFromQuiz.equals(lessonId)) {
+            throw new RuntimeException("Quiz doesn't belong to this lesson");
+        }
+
+        // Use native query to avoid LOB stream error
+        var questionsMeta = questionRepo.findQuestionMetadataByQuizId(quizId);
+        return questionsMeta.stream()
+                .map(qMetaArray -> {
+                    // Handle nested array case
+                    Object[] actualQMetaArray = qMetaArray;
+                    if (qMetaArray.length == 1 && qMetaArray[0] instanceof Object[]) {
+                        actualQMetaArray = (Object[]) qMetaArray[0];
+                    }
+                    
+                    // Question metadata: [id, quizId, content, questionType, explanation, orderIndex, createdAt, updatedAt, deletedFlag]
+                    Long qId = ((Number) actualQMetaArray[0]).longValue();
+                    String content = actualQMetaArray[2] != null ? actualQMetaArray[2].toString() : null;
+                    String questionType = actualQMetaArray[3] != null ? actualQMetaArray[3].toString() : null;
+                    String explanation = actualQMetaArray[4] != null ? actualQMetaArray[4].toString() : null;
+                    Integer orderIndex = actualQMetaArray[5] != null ? ((Number) actualQMetaArray[5]).intValue() : null;
+                    
+                    // Get options metadata
+                    var optsMeta = optionRepo.findOptionMetadataByQuestionId(qId);
+                    List<OptionDto> options = optsMeta.stream()
+                            .map(optMetaArray -> {
+                                Object[] actualOptMetaArray = optMetaArray;
+                                if (optMetaArray.length == 1 && optMetaArray[0] instanceof Object[]) {
+                                    actualOptMetaArray = (Object[]) optMetaArray[0];
+                                }
+                                // Option metadata: [id, questionId, content, isCorrect, orderIndex, createdAt, updatedAt]
+                                Long optId = ((Number) actualOptMetaArray[0]).longValue();
+                                String optContent = actualOptMetaArray[2] != null ? actualOptMetaArray[2].toString() : null;
+                                Boolean isCorrect = actualOptMetaArray[3] != null ? 
+                                    (actualOptMetaArray[3] instanceof Boolean ? (Boolean) actualOptMetaArray[3] :
+                                     ((Number) actualOptMetaArray[3]).intValue() != 0) : false;
+                                Integer optOrderIndex = actualOptMetaArray[4] != null ? ((Number) actualOptMetaArray[4]).intValue() : null;
+                                return new OptionDto(optId, optContent, isCorrect, optOrderIndex);
+                            })
+                            .toList();
+                    
+                    return new QuestionWithOptionsDto(qId, content, explanation, questionType, orderIndex, options);
+                })
+                .toList();
+    }
+
+    /**
+     * For moderator: Get quiz questions for a lesson in a pending approval course
+     * No ownership check required - only checks that course is pending approval
+     */
+    @Transactional(readOnly = true)
+    public List<QuestionWithOptionsDto> listQuestionsForModerator(Long lessonId, Long quizId) {
+        // Check lesson belongs to pending approval course
+        courseService.requireLessonBelongsToPendingApprovalCourse(lessonId);
+        
         // Check quiz belongs to lesson using native query
         var quizMetadataOpt = quizRepo.findQuizMetadataById(quizId);
         if (quizMetadataOpt.isEmpty()) {

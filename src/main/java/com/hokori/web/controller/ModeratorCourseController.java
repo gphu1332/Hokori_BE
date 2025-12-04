@@ -3,9 +3,14 @@ package com.hokori.web.controller;
 import com.hokori.web.dto.ApiResponse;
 import com.hokori.web.dto.course.CourseRes;
 import com.hokori.web.dto.moderator.CourseAICheckResponse;
+import com.hokori.web.dto.quiz.QuestionWithOptionsDto;
+import com.hokori.web.dto.flashcard.FlashcardSetResponse;
+import com.hokori.web.dto.flashcard.FlashcardResponse;
 import com.hokori.web.service.CourseService;
 import com.hokori.web.service.CourseModerationAIService;
 import com.hokori.web.service.CurrentUserService;
+import com.hokori.web.service.TeacherQuizService;
+import com.hokori.web.service.FlashcardSetService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -42,6 +47,8 @@ public class ModeratorCourseController {
     private final CourseService courseService;
     private final CourseModerationAIService moderationAIService;
     private final CurrentUserService currentUserService;
+    private final TeacherQuizService quizService;
+    private final FlashcardSetService flashcardSetService;
 
     private Long currentModeratorId() {
         return currentUserService.getCurrentUserId();
@@ -190,6 +197,44 @@ public class ModeratorCourseController {
             @PathVariable Long id) {
         CourseAICheckResponse result = moderationAIService.checkCourseContent(id);
         return ResponseEntity.ok(ApiResponse.success("AI check completed", result));
+    }
+
+    @Operation(
+            summary = "Xem quiz questions của một lesson trong course đang chờ duyệt",
+            description = "Moderator có thể xem tất cả câu hỏi và đáp án của quiz trong lesson thuộc course PENDING_APPROVAL"
+    )
+    @GetMapping("/lessons/{lessonId}/quizzes/{quizId}/questions")
+    public ResponseEntity<ApiResponse<List<QuestionWithOptionsDto>>> getQuizQuestions(
+            @Parameter(name = "lessonId", in = ParameterIn.PATH, required = true, description = "Lesson ID", example = "1")
+            @PathVariable Long lessonId,
+            @Parameter(name = "quizId", in = ParameterIn.PATH, required = true, description = "Quiz ID", example = "1")
+            @PathVariable Long quizId) {
+        List<QuestionWithOptionsDto> questions = quizService.listQuestionsForModerator(lessonId, quizId);
+        return ResponseEntity.ok(ApiResponse.success("OK", questions));
+    }
+
+    @Operation(
+            summary = "Xem flashcard set details trong course đang chờ duyệt",
+            description = "Moderator có thể xem thông tin flashcard set (COURSE_VOCAB) trong course PENDING_APPROVAL"
+    )
+    @GetMapping("/flashcard-sets/{setId}")
+    public ResponseEntity<ApiResponse<FlashcardSetResponse>> getFlashcardSet(
+            @Parameter(name = "setId", in = ParameterIn.PATH, required = true, description = "Flashcard Set ID", example = "1")
+            @PathVariable Long setId) {
+        FlashcardSetResponse set = flashcardSetService.getSetForModerator(setId);
+        return ResponseEntity.ok(ApiResponse.success("OK", set));
+    }
+
+    @Operation(
+            summary = "Xem flashcards trong một set của course đang chờ duyệt",
+            description = "Moderator có thể xem tất cả flashcards trong một set (COURSE_VOCAB) thuộc course PENDING_APPROVAL"
+    )
+    @GetMapping("/flashcard-sets/{setId}/cards")
+    public ResponseEntity<ApiResponse<List<FlashcardResponse>>> getFlashcards(
+            @Parameter(name = "setId", in = ParameterIn.PATH, required = true, description = "Flashcard Set ID", example = "1")
+            @PathVariable Long setId) {
+        List<FlashcardResponse> cards = flashcardSetService.listCardsForModerator(setId);
+        return ResponseEntity.ok(ApiResponse.success("OK", cards));
     }
 }
 
