@@ -78,9 +78,9 @@ public class SecurityConfig {
                 // Staff and Admin endpoints
                 .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "ADMIN") // RoleConstants.STAFF, RoleConstants.ADMIN
                 
-                // Teacher, Staff, and Admin endpoints
+                // Teacher, Staff, Admin, and Moderator endpoints
                 // Note: Individual methods may have stricter @PreAuthorize annotations
-                .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN") // RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN
+                .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "STAFF", "ADMIN", "MODERATOR") // RoleConstants.TEACHER, RoleConstants.STAFF, RoleConstants.ADMIN, RoleConstants.MODERATOR
                 
                 // Learner-only endpoints
                 .requestMatchers("/api/learner/**").hasRole("LEARNER") // RoleConstants.LEARNER
