@@ -682,36 +682,37 @@ public class JlptTestService {
                 .findByTest_IdAndUser_Id(testId, userId)
                 .orElse(null);
 
-        boolean shouldDeleteAnswers = false;
+        // Check if session exists and if it's expired
+        session = sessionRepo
+                .findByTest_IdAndUser_Id(testId, userId)
+                .orElse(null);
 
-        if (session == null) {
-            // Lần đầu tiên start test → xóa answers cũ (nếu có) và tạo session mới
+        boolean shouldDeleteAnswers = false;
+        boolean isNewSession = (session == null);
+        boolean isExpired = (session != null && now.isAfter(session.getExpiresAt()));
+
+        if (isNewSession || isExpired) {
+            // New session or expired session → reset and delete answers
             shouldDeleteAnswers = true;
             
-            session = new JlptUserTestSession();
-            session.setTest(test);
-            session.setUser(user);
-            session.setStartedAt(now);
-            session.setExpiresAt(expiresAt);
-            sessionRepo.save(session);
+            // Use atomic upsert to handle race conditions
+            sessionRepo.upsertSession(testId, userId, now, expiresAt, now);
+            
+            // Reload session after upsert
+            session = sessionRepo
+                    .findByTest_IdAndUser_Id(testId, userId)
+                    .orElseThrow(() -> new RuntimeException("Failed to create/update session"));
 
-            // Lần đầu user này thi test này → tăng currentParticipants
-            Integer cur = test.getCurrentParticipants();
-            test.setCurrentParticipants((cur == null ? 0 : cur) + 1);
-        } else {
-            // Đã có session → check xem có hết hạn không
-            if (now.isAfter(session.getExpiresAt())) {
-                // Session đã hết hạn (quá thời gian làm bài)
-                // → Xóa answers cũ và reset session (bắt đầu lại từ đầu)
-                shouldDeleteAnswers = true;
-                session.setStartedAt(now);
-                session.setExpiresAt(expiresAt);
-            } else {
-                // Session còn valid (user refresh/out ra rồi vào lại trong thời gian làm bài)
-                // → Giữ answers để user tiếp tục làm bài (tinh thần tự học)
-                // → KHÔNG reset thời gian (giữ nguyên expiresAt để tránh abuse)
-                // User chỉ có thể làm bài trong thời gian đã định sẵn
+            // Only increment participants for new sessions (first time user takes this test)
+            if (isNewSession) {
+                Integer cur = test.getCurrentParticipants();
+                test.setCurrentParticipants((cur == null ? 0 : cur) + 1);
             }
+        } else {
+            // Session còn valid (user refresh/out ra rồi vào lại trong thời gian làm bài)
+            // → Giữ answers để user tiếp tục làm bài (tinh thần tự học)
+            // → KHÔNG reset thời gian (giữ nguyên expiresAt để tránh abuse)
+            // User chỉ có thể làm bài trong thời gian đã định sẵn
         }
 
         // Xóa answers nếu cần (chỉ khi lần đầu hoặc session đã hết hạn)
