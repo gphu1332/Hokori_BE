@@ -88,6 +88,7 @@ ngrok
 *.env
 !.env.example
 !.env.template
+railway.env.clean
 
 ### Template Files (keep these) ###
 !application-dev.properties.template

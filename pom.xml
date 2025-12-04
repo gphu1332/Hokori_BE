@@ -90,6 +90,9 @@
             <version>2.34.0</version>
         </dependency>
         
+        <!-- Vertex AI for Gemini (optional, using REST API instead) -->
+        <!-- Using REST API via RestTemplate instead of SDK for simplicity -->
+        
         <!-- JWT for token generation -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
