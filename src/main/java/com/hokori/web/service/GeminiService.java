@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -181,6 +182,7 @@ public class GeminiService {
 
     /**
      * Get access token from Google Cloud service account credentials
+     * Uses OAuth2 scopes required for Gemini API
      */
     private String getAccessToken() throws IOException {
         if (privateKey == null || privateKey.isEmpty() || clientEmail == null || clientEmail.isEmpty()) {
@@ -193,8 +195,15 @@ public class GeminiService {
             InputStream credentialsStream = new ByteArrayInputStream(
                     jsonCredentials.getBytes(StandardCharsets.UTF_8));
             GoogleCredentials credentials = GoogleCredentials.fromStream(credentialsStream);
-            credentials.refreshIfExpired();
-            return credentials.getAccessToken().getTokenValue();
+            
+            // Create scoped credentials with Gemini API scope
+            // Use cloud-platform scope (broader) or generative-language scope (specific)
+            GoogleCredentials scopedCredentials = credentials.createScoped(
+                    Arrays.asList("https://www.googleapis.com/auth/generative-language")
+            );
+            
+            scopedCredentials.refreshIfExpired();
+            return scopedCredentials.getAccessToken().getTokenValue();
         } catch (Exception e) {
             log.error("Failed to get access token from service account", e);
             throw new IOException("Failed to get access token: " + e.getMessage(), e);
