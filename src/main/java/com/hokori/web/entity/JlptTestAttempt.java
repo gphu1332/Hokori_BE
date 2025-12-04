@@ -15,9 +15,11 @@ import java.time.Instant;
 @Table(
         name = "jlpt_test_attempts",
         indexes = {
-                @Index(name = "idx_attempt_user", columnList = "user_id"),
-                @Index(name = "idx_attempt_test", columnList = "test_id"),
-                @Index(name = "idx_attempt_submitted", columnList = "submitted_at")
+                // Note: Index names are prefixed with table name to avoid conflicts
+                // If index already exists in DB, Hibernate will skip creation (non-critical warning)
+                @Index(name = "idx_jlpt_attempt_user", columnList = "user_id"),
+                @Index(name = "idx_jlpt_attempt_test", columnList = "test_id"),
+                @Index(name = "idx_jlpt_attempt_submitted", columnList = "submitted_at")
         }
 )
 @Getter
