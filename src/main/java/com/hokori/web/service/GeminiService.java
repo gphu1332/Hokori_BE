@@ -50,8 +50,17 @@ public class GeminiService {
     @Value("${google.cloud.private-key:}")
     private String privateKey;
 
+    @Value("${google.cloud.private-key-id:}")
+    private String privateKeyId;
+
     @Value("${google.cloud.client-email:}")
     private String clientEmail;
+
+    @Value("${google.cloud.client-id:}")
+    private String clientId;
+
+    @Value("${google.cloud.client-x509-cert-url:}")
+    private String clientX509CertUrl;
 
     private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent";
 
@@ -175,7 +184,7 @@ public class GeminiService {
      */
     private String getAccessToken() throws IOException {
         if (privateKey == null || privateKey.isEmpty() || clientEmail == null || clientEmail.isEmpty()) {
-            throw new IOException("Service account credentials not configured. Please set google.cloud.private-key and google.cloud.client-email");
+            throw new IOException("Service account credentials not configured. Please set google.cloud.private-key, google.cloud.private-key-id, google.cloud.client-email, google.cloud.client-id, and google.cloud.client-x509-cert-url");
         }
 
         try {
@@ -194,18 +203,21 @@ public class GeminiService {
 
     private String buildGoogleCloudJsonFromEnv() {
         // Escape JSON string properly
+        // Handle both cases: Railway may keep \n as literal or convert to actual newline
         String escapedPrivateKey = "";
         if (privateKey != null) {
             String normalizedKey = privateKey;
             
-            // Check if it contains actual newlines
+            // Check if it contains actual newlines (Railway converted \n to real newline)
             if (privateKey.contains("\n") || privateKey.contains("\r")) {
+                // Already has actual newlines, use as-is
                 normalizedKey = privateKey;
             } else if (privateKey.contains("\\n")) {
+                // Contains literal \n, convert to actual newline
                 normalizedKey = privateKey.replace("\\n", "\n").replace("\\r", "\r");
             }
             
-            // Escape for JSON
+            // Then escape for JSON: convert actual newlines to \n for JSON
             escapedPrivateKey = normalizedKey.replace("\\", "\\\\")
                      .replace("\"", "\\\"")
                      .replace("\n", "\\n")
@@ -216,14 +228,22 @@ public class GeminiService {
             "{\n" +
             "  \"type\": \"service_account\",\n" +
             "  \"project_id\": \"%s\",\n" +
+            "  \"private_key_id\": \"%s\",\n" +
             "  \"private_key\": \"%s\",\n" +
             "  \"client_email\": \"%s\",\n" +
+            "  \"client_id\": \"%s\",\n" +
             "  \"auth_uri\": \"https://accounts.google.com/o/oauth2/auth\",\n" +
-            "  \"token_uri\": \"https://oauth2.googleapis.com/token\"\n" +
+            "  \"token_uri\": \"https://oauth2.googleapis.com/token\",\n" +
+            "  \"auth_provider_x509_cert_url\": \"https://www.googleapis.com/oauth2/v1/certs\",\n" +
+            "  \"client_x509_cert_url\": \"%s\",\n" +
+            "  \"universe_domain\": \"googleapis.com\"\n" +
             "}",
             projectId != null ? projectId : "",
+            privateKeyId != null ? privateKeyId : "",
             escapedPrivateKey,
-            clientEmail != null ? clientEmail : ""
+            clientEmail != null ? clientEmail : "",
+            clientId != null ? clientId : "",
+            clientX509CertUrl != null ? clientX509CertUrl : ""
         );
     }
 
