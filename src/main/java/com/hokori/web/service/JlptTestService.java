@@ -286,6 +286,29 @@ public class JlptTestService {
         JlptTest test = testRepo.findById(testId)
                 .orElseThrow(() -> new EntityNotFoundException("Test not found"));
 
+        // Kiểm tra xem có session đang làm bài không (chưa submit)
+        java.util.Optional<JlptUserTestSession> sessionOpt = sessionRepo.findByTest_IdAndUser_Id(testId, userId);
+        
+        if (sessionOpt.isPresent()) {
+            // Có session đang làm bài → trả về kết quả từ session hiện tại (chưa nộp)
+            return getResultFromCurrentSession(testId, userId, test);
+        } else {
+            // Không có session → lấy attempt mới nhất đã submit
+            List<JlptTestAttempt> attempts = attemptRepo.findByUser_IdAndTest_IdOrderBySubmittedAtDesc(userId, testId);
+            if (attempts.isEmpty()) {
+                // Chưa làm bài lần nào → trả về kết quả rỗng
+                return getEmptyResult(testId, userId, test);
+            } else {
+                // Trả về attempt mới nhất
+                return convertAttemptToResultResponse(attempts.get(0), test);
+            }
+        }
+    }
+
+    /**
+     * Tính kết quả từ session hiện tại (chưa nộp bài).
+     */
+    private JlptTestResultResponse getResultFromCurrentSession(Long testId, Long userId, JlptTest test) {
         // ====== TỔNG ĐIỂM ======
         int totalQuestions = questionRepo.countByTest_IdAndDeletedFlagFalse(testId).intValue();
         int correctCount = answerRepo.countByUser_IdAndTest_IdAndIsCorrectTrue(userId, testId).intValue();
@@ -345,6 +368,9 @@ public class JlptTestService {
                 .level(level)
                 .passScore(passScore)
                 .passed(passed)
+                .attemptId(null)  // Chưa nộp bài
+                .startedAt(null)
+                .submittedAt(null)
                 .grammarVocab(JlptTestResultResponse.SectionScore.builder()
                         .totalQuestions(grammarVocabTotal)
                         .correctCount(grammarVocabCorrect)
@@ -361,6 +387,130 @@ public class JlptTestService {
                         .totalQuestions(listeningTotal)
                         .correctCount(listeningCorrect)
                         .score(listeningScore)
+                        .maxScore(listeningMaxScore)
+                        .build())
+                .build();
+    }
+
+    /**
+     * Trả về kết quả rỗng khi user chưa làm bài lần nào.
+     */
+    private JlptTestResultResponse getEmptyResult(Long testId, Long userId, JlptTest test) {
+        int totalQuestions = questionRepo.countByTest_IdAndDeletedFlagFalse(testId).intValue();
+        int totalMax = test.getTotalScore() != null ? test.getTotalScore() : 180;
+        
+        // Điểm từng phần
+        java.util.List<JlptQuestionType> grammarVocabTypes = java.util.List.of(
+                JlptQuestionType.GRAMMAR,
+                JlptQuestionType.VOCAB
+        );
+        int grammarVocabTotal = questionRepo.countByTest_IdAndQuestionTypeInAndDeletedFlagFalse(
+                testId, grammarVocabTypes).intValue();
+        int readingTotal = questionRepo.countByTest_IdAndQuestionTypeAndDeletedFlagFalse(
+                testId, JlptQuestionType.READING).intValue();
+        int listeningTotal = questionRepo.countByTest_IdAndQuestionTypeAndDeletedFlagFalse(
+                testId, JlptQuestionType.LISTENING).intValue();
+
+        double grammarVocabMaxScore = grammarVocabTotal > 0 
+                ? (double) totalMax * grammarVocabTotal / totalQuestions 
+                : 0.0;
+        double readingMaxScore = readingTotal > 0 
+                ? (double) totalMax * readingTotal / totalQuestions 
+                : 0.0;
+        double listeningMaxScore = listeningTotal > 0 
+                ? (double) totalMax * listeningTotal / totalQuestions 
+                : 0.0;
+
+        String level = test.getLevel();
+        double passScore = calculatePassScore(level, totalMax);
+
+        return JlptTestResultResponse.builder()
+                .testId(testId)
+                .userId(userId)
+                .totalQuestions(totalQuestions)
+                .correctCount(0)
+                .score(0.0)
+                .level(level)
+                .passScore(passScore)
+                .passed(false)
+                .attemptId(null)
+                .startedAt(null)
+                .submittedAt(null)
+                .grammarVocab(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(grammarVocabTotal)
+                        .correctCount(0)
+                        .score(0.0)
+                        .maxScore(grammarVocabMaxScore)
+                        .build())
+                .reading(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(readingTotal)
+                        .correctCount(0)
+                        .score(0.0)
+                        .maxScore(readingMaxScore)
+                        .build())
+                .listening(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(listeningTotal)
+                        .correctCount(0)
+                        .score(0.0)
+                        .maxScore(listeningMaxScore)
+                        .build())
+                .build();
+    }
+
+    /**
+     * Convert từ JlptTestAttempt (đã submit) sang JlptTestResultResponse.
+     */
+    private JlptTestResultResponse convertAttemptToResultResponse(JlptTestAttempt attempt, JlptTest test) {
+        int totalMax = test.getTotalScore() != null ? test.getTotalScore() : 180;
+        int totalQuestions = attempt.getTotalQuestions() != null ? attempt.getTotalQuestions() : 0;
+        
+        // Tính maxScore cho từng phần
+        double grammarVocabMaxScore = 0.0;
+        if (attempt.getGrammarVocabTotal() != null && totalQuestions > 0) {
+            grammarVocabMaxScore = (double) totalMax * attempt.getGrammarVocabTotal() / totalQuestions;
+        }
+        
+        double readingMaxScore = 0.0;
+        if (attempt.getReadingTotal() != null && totalQuestions > 0) {
+            readingMaxScore = (double) totalMax * attempt.getReadingTotal() / totalQuestions;
+        }
+        
+        double listeningMaxScore = 0.0;
+        if (attempt.getListeningTotal() != null && totalQuestions > 0) {
+            listeningMaxScore = (double) totalMax * attempt.getListeningTotal() / totalQuestions;
+        }
+
+        String level = test.getLevel();
+        double passScore = calculatePassScore(level, totalMax);
+
+        return JlptTestResultResponse.builder()
+                .testId(attempt.getTest().getId())
+                .userId(attempt.getUser().getId())
+                .totalQuestions(totalQuestions)
+                .correctCount(attempt.getCorrectCount() != null ? attempt.getCorrectCount() : 0)
+                .score(attempt.getScore() != null ? attempt.getScore() : 0.0)
+                .level(level)
+                .passScore(passScore)
+                .passed(attempt.getPassed() != null ? attempt.getPassed() : false)
+                .attemptId(attempt.getId())  // Có attemptId vì đã submit
+                .startedAt(attempt.getStartedAt())
+                .submittedAt(attempt.getSubmittedAt())
+                .grammarVocab(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getGrammarVocabTotal() != null ? attempt.getGrammarVocabTotal() : 0)
+                        .correctCount(attempt.getGrammarVocabCorrect() != null ? attempt.getGrammarVocabCorrect() : 0)
+                        .score(attempt.getGrammarVocabScore() != null ? attempt.getGrammarVocabScore() : 0.0)
+                        .maxScore(grammarVocabMaxScore)
+                        .build())
+                .reading(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getReadingTotal() != null ? attempt.getReadingTotal() : 0)
+                        .correctCount(attempt.getReadingCorrect() != null ? attempt.getReadingCorrect() : 0)
+                        .score(attempt.getReadingScore() != null ? attempt.getReadingScore() : 0.0)
+                        .maxScore(readingMaxScore)
+                        .build())
+                .listening(JlptTestResultResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getListeningTotal() != null ? attempt.getListeningTotal() : 0)
+                        .correctCount(attempt.getListeningCorrect() != null ? attempt.getListeningCorrect() : 0)
+                        .score(attempt.getListeningScore() != null ? attempt.getListeningScore() : 0.0)
                         .maxScore(listeningMaxScore)
                         .build())
                 .build();

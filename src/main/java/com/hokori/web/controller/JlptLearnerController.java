@@ -93,12 +93,15 @@ public class JlptLearnerController {
         return jlptTestService.submitTest(testId, userId);
     }
 
-    // 5) Learner xem kết quả hiện tại (chưa nộp bài)
+    // 5) Learner xem kết quả mới nhất
     @Operation(
-            summary = "Learner xem kết quả JLPT Test hiện tại (chưa nộp bài)",
+            summary = "Learner xem kết quả JLPT Test mới nhất",
             description = """
-                    Xem kết quả của lần làm bài hiện tại (chưa nộp).
-                    Nếu đã nộp bài, dùng endpoint /attempts để xem lịch sử.
+                    Xem kết quả mới nhất của user cho test này:
+                    - Nếu đang có session làm bài (chưa nộp) → trả về kết quả của session hiện tại
+                    - Nếu không có session (đã nộp hoặc chưa làm) → trả về attempt mới nhất đã submit
+                    
+                    Dùng endpoint /attempts để xem toàn bộ lịch sử các lần làm bài.
                     """
     )
     @GetMapping("/tests/{testId}/my-result")
