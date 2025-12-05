@@ -1,0 +1,9 @@
+{
+  "plan": "java",
+  "build": {
+    "commands": [
+      "mvn -DoutputFile=target/mvn-dependency-list.log -B -DskipTests clean dependency:list install"
+    ]
+  }
+}
+
