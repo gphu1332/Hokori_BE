@@ -351,7 +351,8 @@ public class FlashcardSetController {
     public List<FlashcardResponse> listCards(
             @PathVariable Long setId
     ) {
-        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        // Use method with eager fetching to avoid LazyInitializationException
+        FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
         Long currentUserId = currentUserService.getUserIdOrThrow();
         
         // Authorization check for COURSE_VOCAB sets

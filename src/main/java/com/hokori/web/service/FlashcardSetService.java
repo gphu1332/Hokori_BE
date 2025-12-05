@@ -63,8 +63,12 @@ public class FlashcardSetService {
                 .level(level)
                 .type(FlashcardSetType.COURSE_VOCAB)
                 .sectionContent(sectionContent)
+                .deletedFlag(false) // Explicitly set to ensure it's not null
                 .build();
-        return setRepo.save(set);
+        FlashcardSet saved = setRepo.save(set);
+        // Flush to ensure the entity is persisted before reloading
+        setRepo.flush();
+        return saved;
     }
 
     public FlashcardSet getSetOrThrow(Long id) {
