@@ -109,10 +109,9 @@ public class FlashcardSetService {
     }
 
     public List<Flashcard> listCards(Long setId) {
-        // Use eager fetching to ensure set is fully loaded (though we don't serialize set in response)
-        // This is defensive programming to avoid any potential lazy loading issues
-        FlashcardSet set = getSetOrThrowWithCreatedBy(setId);
-        return cardRepo.findBySetAndDeletedFlagFalseOrderByOrderIndexAsc(set);
+        // Use eager fetching query to load cards with set, createdBy, and role
+        // This avoids LazyInitializationException when FlashcardResponse accesses card.getSet().getId()
+        return cardRepo.findBySetIdWithSetAndCreatedByOrderByOrderIndexAsc(setId);
     }
 
 
