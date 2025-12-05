@@ -3,7 +3,6 @@ package com.hokori.web.controller;
 import com.hokori.web.dto.jlpt.*;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.JlptTestService;
-import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -125,6 +124,27 @@ public class JlptLearnerController {
     public List<JlptTestAttemptResponse> getAttemptHistory(@PathVariable Long testId) {
         Long userId = currentUserService.getUserIdOrThrow();
         return jlptTestService.getAttemptHistory(testId, userId);
+    }
+
+    // 7) Learner xem chi tiết một attempt cụ thể (đáp án đã chọn và đáp án đúng)
+    @Operation(
+            summary = "Learner xem chi tiết một attempt JLPT Test",
+            description = """
+                    Xem chi tiết một lần làm bài đã submit, bao gồm:
+                    - Thông tin tổng quan: điểm số, thời gian làm bài, kết quả từng phần
+                    - Chi tiết từng câu hỏi: đáp án đã chọn, đáp án đúng, đúng/sai
+                    - Tất cả options của mỗi câu hỏi để FE hiển thị
+                    
+                    Dùng để hiển thị kết quả chi tiết sau khi nộp bài.
+                    """
+    )
+    @GetMapping("/tests/{testId}/attempts/{attemptId}/detail")
+    @PreAuthorize("hasRole('LEARNER')")
+    public JlptTestAttemptDetailResponse getAttemptDetail(
+            @PathVariable Long testId,
+            @PathVariable Long attemptId) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        return jlptTestService.getAttemptDetail(testId, attemptId, userId);
     }
 
     // --- LISTENING ---

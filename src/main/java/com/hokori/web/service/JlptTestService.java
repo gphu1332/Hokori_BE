@@ -27,6 +27,7 @@ public class JlptTestService {
     private final UserRepository userRepo;
     private final JlptUserTestSessionRepository sessionRepo;
     private final JlptTestAttemptRepository attemptRepo;
+    private final JlptTestAttemptAnswerRepository attemptAnswerRepo;
     private final LearnerProgressService learnerProgressService;
     private final FileStorageService fileStorageService;
 
@@ -587,6 +588,27 @@ public class JlptTestService {
 
         attemptRepo.save(attempt);
 
+        // Lưu chi tiết answers vào attempt trước khi xóa
+        List<JlptAnswer> answers = answerRepo.findByUser_IdAndTest_Id(userId, testId);
+        for (JlptAnswer answer : answers) {
+            // Tìm đáp án đúng của câu hỏi này
+            JlptOption correctOption = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(answer.getQuestion().getId())
+                    .stream()
+                    .filter(opt -> Boolean.TRUE.equals(opt.getIsCorrect()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("Question " + answer.getQuestion().getId() + " has no correct option"));
+
+            // Lưu vào attempt answer
+            JlptTestAttemptAnswer attemptAnswer = JlptTestAttemptAnswer.builder()
+                    .attempt(attempt)
+                    .question(answer.getQuestion())
+                    .selectedOption(answer.getSelectedOption())
+                    .correctOption(correctOption)
+                    .isCorrect(answer.getIsCorrect())
+                    .build();
+            attemptAnswerRepo.save(attemptAnswer);
+        }
+
         // Xóa session và answers để user có thể làm lại từ đầu
         sessionRepo.delete(session);
         answerRepo.deleteByUser_IdAndTest_Id(userId, testId);
@@ -621,6 +643,131 @@ public class JlptTestService {
         return attempts.stream()
                 .map(this::mapAttemptToResponse)
                 .toList();
+    }
+
+    /**
+     * Lấy chi tiết một attempt cụ thể, bao gồm đáp án đã chọn và đáp án đúng của từng câu hỏi.
+     */
+    @Transactional(readOnly = true)
+    public JlptTestAttemptDetailResponse getAttemptDetail(Long testId, Long attemptId, Long userId) {
+        // Kiểm tra attempt thuộc về user và test
+        JlptTestAttempt attempt = attemptRepo.findById(attemptId)
+                .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
+        
+        if (!attempt.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not authorized to view this attempt");
+        }
+        
+        if (!attempt.getTest().getId().equals(testId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Attempt does not belong to this test");
+        }
+
+        JlptTest test = attempt.getTest();
+        int totalMax = test.getTotalScore() != null ? test.getTotalScore() : 180;
+        int totalQuestions = attempt.getTotalQuestions() != null ? attempt.getTotalQuestions() : 0;
+
+        // Tính maxScore cho từng phần
+        double grammarVocabMaxScore = 0.0;
+        if (attempt.getGrammarVocabTotal() != null && totalQuestions > 0) {
+            grammarVocabMaxScore = (double) totalMax * attempt.getGrammarVocabTotal() / totalQuestions;
+        }
+        double readingMaxScore = 0.0;
+        if (attempt.getReadingTotal() != null && totalQuestions > 0) {
+            readingMaxScore = (double) totalMax * attempt.getReadingTotal() / totalQuestions;
+        }
+        double listeningMaxScore = 0.0;
+        if (attempt.getListeningTotal() != null && totalQuestions > 0) {
+            listeningMaxScore = (double) totalMax * attempt.getListeningTotal() / totalQuestions;
+        }
+
+        String level = test.getLevel();
+        double passScore = calculatePassScore(level, totalMax);
+
+        // Build summary
+        JlptTestAttemptDetailResponse.AttemptSummary summary = JlptTestAttemptDetailResponse.AttemptSummary.builder()
+                .attemptId(attempt.getId())
+                .testId(attempt.getTest().getId())
+                .userId(attempt.getUser().getId())
+                .startedAt(attempt.getStartedAt())
+                .submittedAt(attempt.getSubmittedAt())
+                .totalQuestions(totalQuestions)
+                .correctCount(attempt.getCorrectCount() != null ? attempt.getCorrectCount() : 0)
+                .score(attempt.getScore() != null ? attempt.getScore() : 0.0)
+                .level(level)
+                .passScore(passScore)
+                .passed(attempt.getPassed() != null ? attempt.getPassed() : false)
+                .grammarVocab(JlptTestAttemptDetailResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getGrammarVocabTotal() != null ? attempt.getGrammarVocabTotal() : 0)
+                        .correctCount(attempt.getGrammarVocabCorrect() != null ? attempt.getGrammarVocabCorrect() : 0)
+                        .score(attempt.getGrammarVocabScore() != null ? attempt.getGrammarVocabScore() : 0.0)
+                        .maxScore(grammarVocabMaxScore)
+                        .build())
+                .reading(JlptTestAttemptDetailResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getReadingTotal() != null ? attempt.getReadingTotal() : 0)
+                        .correctCount(attempt.getReadingCorrect() != null ? attempt.getReadingCorrect() : 0)
+                        .score(attempt.getReadingScore() != null ? attempt.getReadingScore() : 0.0)
+                        .maxScore(readingMaxScore)
+                        .build())
+                .listening(JlptTestAttemptDetailResponse.SectionScore.builder()
+                        .totalQuestions(attempt.getListeningTotal() != null ? attempt.getListeningTotal() : 0)
+                        .correctCount(attempt.getListeningCorrect() != null ? attempt.getListeningCorrect() : 0)
+                        .score(attempt.getListeningScore() != null ? attempt.getListeningScore() : 0.0)
+                        .maxScore(listeningMaxScore)
+                        .build())
+                .build();
+
+        // Lấy tất cả answers của attempt
+        List<JlptTestAttemptAnswer> attemptAnswers = attemptAnswerRepo.findByAttempt_IdOrderByQuestion_OrderIndexAsc(attemptId);
+        
+        // Build question details
+        List<JlptTestAttemptDetailResponse.QuestionDetail> questionDetails = attemptAnswers.stream().map(attemptAnswer -> {
+            JlptQuestion question = attemptAnswer.getQuestion();
+            JlptOption selectedOption = attemptAnswer.getSelectedOption();
+            JlptOption correctOption = attemptAnswer.getCorrectOption();
+            
+            // Lấy tất cả options của câu hỏi này
+            List<JlptOption> allOptions = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(question.getId());
+            List<JlptTestAttemptDetailResponse.OptionDetail> optionDetails = allOptions.stream()
+                    .map(opt -> JlptTestAttemptDetailResponse.OptionDetail.builder()
+                            .optionId(opt.getId())
+                            .content(opt.getContent())
+                            .imagePath(opt.getImagePath())
+                            .imageAltText(opt.getImageAltText())
+                            .orderIndex(opt.getOrderIndex())
+                            .isCorrect(Boolean.TRUE.equals(opt.getIsCorrect()))
+                            .build())
+                    .toList();
+
+            // Map audioPath thành audioUrl
+            String audioUrl = null;
+            if (question.getAudioPath() != null && !question.getAudioPath().isEmpty()) {
+                audioUrl = "/files" + question.getAudioPath();
+            }
+
+            return JlptTestAttemptDetailResponse.QuestionDetail.builder()
+                    .questionId(question.getId())
+                    .questionContent(question.getContent())
+                    .questionType(question.getQuestionType() != null ? question.getQuestionType().name() : null)
+                    .explanation(question.getExplanation())
+                    .orderIndex(question.getOrderIndex())
+                    .audioUrl(audioUrl)
+                    .imagePath(question.getImagePath())
+                    .imageAltText(question.getImageAltText())
+                    .selectedOptionId(selectedOption.getId())
+                    .selectedOptionContent(selectedOption.getContent())
+                    .selectedOptionImagePath(selectedOption.getImagePath())
+                    .correctOptionId(correctOption.getId())
+                    .correctOptionContent(correctOption.getContent())
+                    .correctOptionImagePath(correctOption.getImagePath())
+                    .isCorrect(attemptAnswer.getIsCorrect())
+                    .allOptions(optionDetails)
+                    .build();
+        }).toList();
+
+        return JlptTestAttemptDetailResponse.builder()
+                .summary(summary)
+                .questions(questionDetails)
+                .build();
     }
 
     /**
