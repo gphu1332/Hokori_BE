@@ -22,11 +22,17 @@ Tính năng **Phân Tích Câu** giúp người dùng học tiếng Nhật bằn
 
 ## 📋 API Endpoints
 
-### 1. Phân Tích Câu (Main API)
+### 1. Phân Tích Câu (Main API) ⭐
 
 **Endpoint:** `POST /api/ai/sentence-analysis`
 
 **Description:** Phân tích câu tiếng Nhật để lấy thông tin về từ vựng và ngữ pháp đáng chú ý. Tập trung vào các từ vựng và ngữ pháp phù hợp với trình độ user.
+
+**⚠️ QUAN TRỌNG:** 
+- **POST này sẽ gọi AI (Gemini) ngay lập tức** và trả về kết quả phân tích trong response body
+- **KHÔNG cần GET riêng** để lấy kết quả
+- **Synchronous**: FE gửi POST → Backend gọi AI → Trả về kết quả ngay trong response body
+- **Response time**: Có thể mất 2-5 giây tùy vào độ phức tạp của câu
 
 **Request:**
 ```json
@@ -154,11 +160,15 @@ Tính năng **Phân Tích Câu** giúp người dùng học tiếng Nhật bằn
 
 ---
 
-### 2. Lấy Danh Sách Câu Ví Dụ (Optional)
+### 2. Lấy Danh Sách Câu Ví Dụ (Optional - Không phải kết quả phân tích)
 
 **Endpoint:** `GET /api/ai/sentence-examples/{level}`
 
 **Description:** Lấy danh sách các câu ví dụ phù hợp cho sentence analysis (KHÔNG phải conversation practice). Có thể dùng để suggest câu cho user chọn thay vì tự nhập.
+
+**⚠️ LƯU Ý:** 
+- **Endpoint này CHỈ trả về danh sách câu ví dụ**, KHÔNG phải kết quả phân tích
+- Sau khi user chọn câu từ danh sách này → FE phải gọi `POST /sentence-analysis` để lấy kết quả phân tích
 
 **Path Parameters:**
 - `level` (String, required): Trình độ JLPT (`N5`, `N4`, `N3`, `N2`, `N1`)
@@ -187,11 +197,15 @@ Tính năng **Phân Tích Câu** giúp người dùng học tiếng Nhật bằn
 
 ---
 
-### 3. Lấy Câu Ngẫu Nhiên (Optional)
+### 3. Lấy Câu Ngẫu Nhiên (Optional - Không phải kết quả phân tích)
 
 **Endpoint:** `GET /api/ai/sentence-examples/{level}/random`
 
 **Description:** Lấy một câu ngẫu nhiên phù hợp cho sentence analysis.
+
+**⚠️ LƯU Ý:** 
+- **Endpoint này CHỈ trả về 1 câu ngẫu nhiên**, KHÔNG phải kết quả phân tích
+- Sau khi nhận câu ngẫu nhiên → FE phải gọi `POST /sentence-analysis` để lấy kết quả phân tích
 
 **Path Parameters:**
 - `level` (String, required): Trình độ JLPT (`N5`, `N4`, `N3`, `N2`, `N1`)
@@ -276,6 +290,28 @@ interface SentenceAnalysisResponse {
 
 ## 🔄 Luồng Sử Dụng (Flow)
 
+### ⚠️ QUAN TRỌNG: Flow Gọi AI
+
+**Tất cả kết quả phân tích từ AI đều trả về trong `POST /sentence-analysis`:**
+
+```
+POST /api/ai/sentence-analysis
+  ↓
+Backend nhận request
+  ↓
+Backend gọi AI (Gemini) ngay lập tức (synchronous)
+  ↓
+AI phân tích câu (mất 2-5 giây)
+  ↓
+Backend trả về kết quả trong response body của POST đó
+  ↓
+FE nhận kết quả và hiển thị
+```
+
+**KHÔNG có GET riêng để lấy kết quả phân tích!**
+
+---
+
 ### Flow 1: User Nhập Câu Trực Tiếp
 ```
 1. User vào màn hình "Phân Tích Câu"
@@ -283,8 +319,19 @@ interface SentenceAnalysisResponse {
 3. User nhập câu tiếng Nhật vào input (max 50 ký tự)
 4. User click "Phân Tích" hoặc tự động submit khi nhập xong
 5. FE gọi: POST /api/ai/sentence-analysis
-6. Hiển thị loading spinner
-7. Nhận response và hiển thị:
+   - Request body: { "sentence": "...", "level": "N5" }
+6. Hiển thị loading spinner (chờ AI xử lý, có thể mất 2-5 giây)
+7. Nhận response (kết quả phân tích đã có sẵn trong response body):
+   {
+     "success": true,
+     "data": {
+       "vocabulary": [...],
+       "grammar": [...],
+       "sentenceBreakdown": {...},
+       "relatedSentences": [...]
+     }
+   }
+8. Hiển thị kết quả:
    - Section TỪ VỰNG (vocabulary)
    - Section NGỮ PHÁP (grammar)
    - Section CẤU TRÚC CÂU (sentenceBreakdown) - optional
@@ -296,10 +343,15 @@ interface SentenceAnalysisResponse {
 1. User vào màn hình "Phân Tích Câu"
 2. User chọn trình độ JLPT (N5-N1)
 3. FE gọi: GET /api/ai/sentence-examples/{level}
-4. Hiển thị danh sách câu ví dụ
+   → Nhận danh sách câu ví dụ (CHỈ là câu, KHÔNG phải kết quả phân tích)
+4. Hiển thị danh sách câu ví dụ cho user chọn
 5. User chọn một câu
-6. FE tự động điền vào input và gọi: POST /api/ai/sentence-analysis
-7. Hiển thị kết quả phân tích
+6. FE tự động điền câu đó vào input
+7. FE gọi: POST /api/ai/sentence-analysis
+   - Request body: { "sentence": "câu đã chọn", "level": "N5" }
+8. Hiển thị loading spinner
+9. Nhận response (kết quả phân tích)
+10. Hiển thị kết quả phân tích
 ```
 
 ### Flow 3: Random Sentence
@@ -308,9 +360,14 @@ interface SentenceAnalysisResponse {
 2. User chọn trình độ JLPT (N5-N1)
 3. User click "Câu Ngẫu Nhiên"
 4. FE gọi: GET /api/ai/sentence-examples/{level}/random
+   → Nhận 1 câu ngẫu nhiên (CHỈ là câu, KHÔNG phải kết quả phân tích)
 5. Hiển thị câu ngẫu nhiên
-6. FE tự động gọi: POST /api/ai/sentence-analysis với câu đó
-7. Hiển thị kết quả phân tích
+6. FE tự động điền câu đó vào input
+7. FE gọi: POST /api/ai/sentence-analysis
+   - Request body: { "sentence": "câu ngẫu nhiên", "level": "N5" }
+8. Hiển thị loading spinner
+9. Nhận response (kết quả phân tích)
+10. Hiển thị kết quả phân tích
 ```
 
 ---
@@ -436,6 +493,392 @@ interface SentenceAnalysisResponse {
 7. **Kanji Variants**: 
    - Nếu từ là hiragana → gợi ý kanji
    - Nếu từ là kanji → hiển thị hiragana và các cách viết khác
+
+## ⚠️ Lưu Ý Quan Trọng Về Flow
+
+### ✅ ĐÚNG:
+- **POST `/sentence-analysis`** → Gọi AI ngay → Nhận kết quả phân tích trong response body
+- **GET `/sentence-examples/{level}`** → Chỉ lấy danh sách câu ví dụ (không phải kết quả phân tích)
+- **GET `/sentence-examples/{level}/random`** → Chỉ lấy 1 câu ngẫu nhiên (không phải kết quả phân tích)
+
+### ❌ SAI:
+- ~~POST để submit → Sau đó GET để lấy kết quả~~ (KHÔNG đúng!)
+- ~~GET `/sentence-analysis` để lấy kết quả~~ (KHÔNG có endpoint này!)
+
+### 📊 Tóm Tắt:
+- **1 endpoint duy nhất trả về kết quả phân tích từ AI**: `POST /sentence-analysis`
+- **2 endpoints chỉ để lấy câu ví dụ** (không phải kết quả phân tích): `GET /sentence-examples/{level}` và `GET /sentence-examples/{level}/random`
+- **Response time**: POST `/sentence-analysis` có thể mất 2-5 giây vì phải gọi AI
+- **Synchronous**: Tất cả đều synchronous, không có async/polling
+
+---
+
+## 💻 Cách FE Call API (Code Examples)
+
+### 1. Phân Tích Câu (Main API)
+
+#### Sử dụng Fetch API (Vanilla JavaScript)
+
+```javascript
+// Function để phân tích câu
+async function analyzeSentence(sentence, level) {
+  try {
+    // Hiển thị loading
+    setLoading(true);
+    
+    // Gọi API
+    const response = await fetch('/api/ai/sentence-analysis', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sentence: sentence,
+        level: level // "N5", "N4", "N3", "N2", "N1"
+      })
+    });
+    
+    const result = await response.json();
+    
+    // Kiểm tra kết quả
+    if (result.success) {
+      // result.data chứa toàn bộ kết quả phân tích
+      const analysisData = result.data;
+      
+      console.log('Vocabulary:', analysisData.vocabulary);
+      console.log('Grammar:', analysisData.grammar);
+      console.log('Sentence Breakdown:', analysisData.sentenceBreakdown);
+      console.log('Related Sentences:', analysisData.relatedSentences);
+      
+      // Hiển thị kết quả lên UI
+      displayAnalysisResult(analysisData);
+    } else {
+      // Xử lý lỗi
+      console.error('Error:', result.message);
+      showError(result.message);
+    }
+  } catch (error) {
+    console.error('Network error:', error);
+    showError('Lỗi kết nối. Vui lòng thử lại.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// Sử dụng
+analyzeSentence('私は日本語を勉強しています', 'N5');
+```
+
+#### Sử dụng Axios (React/Vue)
+
+```typescript
+import axios from 'axios';
+
+// TypeScript interfaces
+interface SentenceAnalysisRequest {
+  sentence: string;
+  level: 'N5' | 'N4' | 'N3' | 'N2' | 'N1';
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T | null;
+}
+
+interface SentenceAnalysisResponse {
+  sentence: string;
+  level: string;
+  vocabulary: VocabularyItem[];
+  grammar: GrammarItem[];
+  sentenceBreakdown?: SentenceBreakdown;
+  relatedSentences?: string[];
+}
+
+// Service function
+async function analyzeSentence(
+  sentence: string, 
+  level: 'N5' | 'N4' | 'N3' | 'N2' | 'N1'
+): Promise<SentenceAnalysisResponse> {
+  const response = await axios.post<ApiResponse<SentenceAnalysisResponse>>(
+    '/api/ai/sentence-analysis',
+    {
+      sentence: sentence,
+      level: level
+    } as SentenceAnalysisRequest
+  );
+  
+  if (!response.data.success) {
+    throw new Error(response.data.message);
+  }
+  
+  return response.data.data!;
+}
+
+// React Hook Example
+import { useState } from 'react';
+
+function useSentenceAnalysis() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<SentenceAnalysisResponse | null>(null);
+  
+  const analyze = async (sentence: string, level: 'N5' | 'N4' | 'N3' | 'N2' | 'N1') => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const data = await analyzeSentence(sentence, level);
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Lỗi không xác định');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  return { analyze, loading, error, result };
+}
+
+// Sử dụng trong component
+function SentenceAnalysisComponent() {
+  const { analyze, loading, error, result } = useSentenceAnalysis();
+  const [sentence, setSentence] = useState('');
+  const [level, setLevel] = useState<'N5' | 'N4' | 'N3' | 'N2' | 'N1'>('N5');
+  
+  const handleSubmit = () => {
+    if (sentence.trim().length === 0) {
+      alert('Vui lòng nhập câu');
+      return;
+    }
+    
+    if (sentence.length > 50) {
+      alert('Câu không được quá 50 ký tự');
+      return;
+    }
+    
+    analyze(sentence, level);
+  };
+  
+  return (
+    <div>
+      <input 
+        value={sentence}
+        onChange={(e) => setSentence(e.target.value)}
+        maxLength={50}
+        placeholder="Nhập câu tiếng Nhật..."
+      />
+      <select value={level} onChange={(e) => setLevel(e.target.value as any)}>
+        <option value="N5">N5</option>
+        <option value="N4">N4</option>
+        <option value="N3">N3</option>
+        <option value="N2">N2</option>
+        <option value="N1">N1</option>
+      </select>
+      <button onClick={handleSubmit} disabled={loading}>
+        {loading ? 'Đang phân tích...' : 'Phân Tích'}
+      </button>
+      
+      {error && <div className="error">{error}</div>}
+      
+      {result && (
+        <div>
+          <h3>Từ Vựng ({result.vocabulary.length})</h3>
+          {result.vocabulary.map((vocab, idx) => (
+            <div key={idx}>
+              <strong>{vocab.word}</strong> ({vocab.reading}) - {vocab.meaningVi}
+            </div>
+          ))}
+          
+          <h3>Ngữ Pháp ({result.grammar.length})</h3>
+          {result.grammar.map((grammar, idx) => (
+            <div key={idx}>
+              <strong>{grammar.pattern}</strong> - {grammar.explanationVi}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+### 2. Lấy Danh Sách Câu Ví Dụ
+
+```typescript
+// Lấy danh sách câu ví dụ
+async function getExampleSentences(level: string) {
+  const response = await axios.get<ApiResponse<{
+    level: string;
+    sentences: Array<{
+      sentence: string;
+      translation: string;
+    }>;
+    count: number;
+  }>>(`/api/ai/sentence-examples/${level}`);
+  
+  if (!response.data.success) {
+    throw new Error(response.data.message);
+  }
+  
+  return response.data.data!;
+}
+
+// Sử dụng
+const examples = await getExampleSentences('N5');
+console.log(examples.sentences); // Array of sentences
+```
+
+---
+
+### 3. Lấy Câu Ngẫu Nhiên
+
+```typescript
+// Lấy câu ngẫu nhiên
+async function getRandomSentence(level: string) {
+  const response = await axios.get<ApiResponse<{
+    sentence: string;
+    translation: string;
+  }>>(`/api/ai/sentence-examples/${level}/random`);
+  
+  if (!response.data.success) {
+    throw new Error(response.data.message);
+  }
+  
+  return response.data.data!;
+}
+
+// Sử dụng: Lấy câu ngẫu nhiên và tự động phân tích
+async function handleRandomSentence(level: 'N5' | 'N4' | 'N3' | 'N2' | 'N1') {
+  try {
+    // Bước 1: Lấy câu ngẫu nhiên
+    const randomSentence = await getRandomSentence(level);
+    
+    // Bước 2: Tự động phân tích câu đó
+    const analysisResult = await analyzeSentence(randomSentence.sentence, level);
+    
+    // Hiển thị kết quả
+    displayAnalysisResult(analysisResult);
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
+```
+
+---
+
+### 4. Flow Hoàn Chỉnh: User Chọn Câu Từ Danh Sách
+
+```typescript
+// Component: User chọn câu từ danh sách
+function SentenceExampleList({ level }: { level: string }) {
+  const [examples, setExamples] = useState<Array<{sentence: string, translation: string}>>([]);
+  const { analyze } = useSentenceAnalysis();
+  
+  useEffect(() => {
+    // Load danh sách câu ví dụ khi component mount
+    getExampleSentences(level).then(data => {
+      setExamples(data.sentences);
+    });
+  }, [level]);
+  
+  const handleSelectSentence = (sentence: string) => {
+    // User chọn câu → Tự động phân tích
+    analyze(sentence, level as any);
+  };
+  
+  return (
+    <div>
+      <h3>Chọn câu để phân tích:</h3>
+      {examples.map((example, idx) => (
+        <div 
+          key={idx} 
+          onClick={() => handleSelectSentence(example.sentence)}
+          style={{ cursor: 'pointer' }}
+        >
+          <p>{example.sentence}</p>
+          <p>{example.translation}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+### 5. Xử Lý Lỗi
+
+```typescript
+try {
+  const result = await analyzeSentence(sentence, level);
+  // Success
+} catch (error) {
+  if (axios.isAxiosError(error)) {
+    // Lỗi từ API
+    if (error.response) {
+      const apiError = error.response.data as ApiResponse<null>;
+      console.error('API Error:', apiError.message);
+      
+      // Xử lý các loại lỗi cụ thể
+      if (apiError.message.includes('exceeds maximum length')) {
+        alert('Câu quá dài. Tối đa 50 ký tự.');
+      } else if (apiError.message.includes('Invalid JLPT level')) {
+        alert('Trình độ không hợp lệ.');
+      } else {
+        alert('Lỗi: ' + apiError.message);
+      }
+    } else if (error.request) {
+      // Không nhận được response
+      alert('Không thể kết nối đến server. Vui lòng thử lại.');
+    }
+  } else {
+    // Lỗi khác
+    console.error('Unexpected error:', error);
+    alert('Đã xảy ra lỗi không xác định.');
+  }
+}
+```
+
+---
+
+### 6. Base URL Configuration
+
+```typescript
+// config/api.ts
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+
+// Setup axios instance
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Sử dụng
+const response = await apiClient.post('/api/ai/sentence-analysis', {
+  sentence: sentence,
+  level: level
+});
+```
+
+---
+
+## 📋 Checklist cho FE
+
+- [ ] Validate input: sentence không rỗng, max 50 ký tự
+- [ ] Validate level: chỉ nhận N5, N4, N3, N2, N1
+- [ ] Hiển thị loading spinner khi gọi API (có thể mất 2-5 giây)
+- [ ] Xử lý lỗi và hiển thị thông báo cho user
+- [ ] Hiển thị kết quả phân tích:
+  - [ ] Section Từ Vựng (vocabulary array)
+  - [ ] Section Ngữ Pháp (grammar array)
+  - [ ] Section Cấu Trúc Câu (sentenceBreakdown) - optional
+  - [ ] Section Câu Liên Quan (relatedSentences) - optional
+- [ ] Nếu dùng GET `/sentence-examples` → Nhớ gọi POST `/sentence-analysis` sau khi user chọn câu
 
 ---
 
