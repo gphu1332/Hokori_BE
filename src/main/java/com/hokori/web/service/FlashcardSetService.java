@@ -169,7 +169,8 @@ public class FlashcardSetService {
 
     @Transactional
     public void deleteCardFromSet(Long setId, Long cardId) {
-        Flashcard card = cardRepo.findById(cardId)
+        // Use eager fetching to avoid LazyInitializationException when accessing card.getSet()
+        Flashcard card = cardRepo.findByIdWithSetAndCreatedBy(cardId)
                 .orElseThrow(() -> new EntityNotFoundException("Flashcard not found"));
 
         // Đảm bảo card thuộc đúng set
@@ -189,7 +190,9 @@ public class FlashcardSetService {
 
     @Transactional
     public void softDeleteSet(Long setId) {
-        FlashcardSet set = getSetOrThrow(setId);
+        // Use eager fetching to avoid LazyInitializationException when accessing set.getCards()
+        FlashcardSet set = setRepo.findByIdWithCreatedByAndCards(setId)
+                .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found"));
 
         if (set.isDeletedFlag()) {
             return;
@@ -198,10 +201,12 @@ public class FlashcardSetService {
         // 1. Soft delete set
         set.setDeletedFlag(true);
 
-        // 2. Soft delete các card thuộc set
+        // 2. Soft delete các card thuộc set (cards đã được eager fetch)
         if (set.getCards() != null) {
             for (Flashcard card : set.getCards()) {
-                card.setDeletedFlag(true);
+                if (!card.isDeletedFlag()) {
+                    card.setDeletedFlag(true);
+                }
             }
         }
     }

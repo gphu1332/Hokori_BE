@@ -62,6 +62,18 @@ public interface FlashcardSetRepository extends JpaRepository<FlashcardSet, Long
             @Param("userId") Long userId, 
             @Param("type") FlashcardSetType type);
 
+    /**
+     * Find flashcard set by ID with eager fetching of createdBy, role, sectionContent, and cards
+     * to avoid LazyInitializationException when accessing set.getCards().
+     */
+    @Query("SELECT DISTINCT s FROM FlashcardSet s " +
+           "LEFT JOIN FETCH s.createdBy u " +
+           "LEFT JOIN FETCH u.role " +
+           "LEFT JOIN FETCH s.sectionContent " +
+           "LEFT JOIN FETCH s.cards c " +
+           "WHERE s.id = :id AND s.deletedFlag = false")
+    Optional<FlashcardSet> findByIdWithCreatedByAndCards(@Param("id") Long id);
+
     long countByCreatedBy_IdAndDeletedFlagFalse(Long userId);
 
     long countByCreatedBy_IdAndLevelAndDeletedFlagFalse(Long userId, String level);
