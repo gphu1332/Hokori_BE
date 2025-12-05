@@ -44,7 +44,7 @@ public class GeminiService {
     @Value("${gemini.api.key:}")
     private String apiKey;
 
-    @Value("${gemini.model:gemini-2.0-flash-exp}")
+    @Value("${gemini.model:gemini-1.5-flash}")
     private String modelName;
 
     // Service account credentials for OAuth2 (alternative to API key)
