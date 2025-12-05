@@ -441,14 +441,16 @@ public class FlashcardSetController {
             Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
                     .orElse(null);
             
-            // Nếu không phải course owner, có thể là learner đã enroll (nhưng nên dùng endpoint riêng)
-            // Hoặc có thể là teacher khác → không cho phép
-            if (courseOwnerId != null && !courseOwnerId.equals(currentUserId)) {
-                // Không phải owner → có thể là learner, nhưng endpoint này không check enrollment
-                // Nên để FE dùng endpoint riêng cho learner
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You are not authorized to view this flashcard set. " +
-                    "If you are a learner, please use /api/learner/contents/{sectionContentId}/flashcard-set");
+            if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
+                // Teacher owner, allow access
+            } else {
+                // Not owner, check if learner is enrolled
+                Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                
+                enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "You must enroll in this course to access flashcard sets"));
             }
         } else if (set.getType() == FlashcardSetType.PERSONAL) {
             // PERSONAL: chỉ cho phép người tạo
