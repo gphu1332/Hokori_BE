@@ -14,6 +14,7 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import jakarta.persistence.EntityNotFoundException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -47,6 +48,20 @@ public class GlobalExceptionHandler {
         logger.warn("Validation failed: {}", errors);
         
         return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleEntityNotFoundException(
+            EntityNotFoundException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", ex.getMessage() != null ? ex.getMessage() : "Resource not found");
+        response.put("status", "error");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false));
+        
+        logger.debug("EntityNotFoundException: {}", ex.getMessage());
+        
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
     @ExceptionHandler(RuntimeException.class)

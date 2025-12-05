@@ -6,6 +6,7 @@ import com.hokori.web.dto.flashcard.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.FlashcardSetRepository;
 import com.hokori.web.repository.SectionsContentRepository;
+import com.hokori.web.repository.EnrollmentRepository;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.FlashcardSetService;
 import com.hokori.web.service.CourseService;
@@ -47,6 +48,7 @@ public class FlashcardSetController {
     private final FlashcardSetRepository setRepo;
     private final CurrentUserService currentUserService;
     private final SectionsContentRepository sectionsContentRepo;
+    private final EnrollmentRepository enrollmentRepo;
     private final CourseService courseService;
 
     // ===== 1. Learner tạo set cá nhân =====
@@ -350,16 +352,36 @@ public class FlashcardSetController {
             @PathVariable Long setId
     ) {
         FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        Long currentUserId = currentUserService.getUserIdOrThrow();
         
-        // Allow moderator if course is pending approval
+        // Authorization check for COURSE_VOCAB sets
         if (set.getType() == FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
+            Long sectionContentId = set.getSectionContent().getId();
+            
+            // Allow moderator if course is pending approval
             if (currentUserService.hasRole("MODERATOR")) {
                 try {
-                    courseService.requireSectionContentBelongsToPendingApprovalCourse(set.getSectionContent().getId());
+                    courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
                     // Validated, continue to return cards
                 } catch (ResponseStatusException e) {
                     // Not pending approval, continue with normal check
                 }
+            }
+            
+            // Check if user is course owner (teacher)
+            Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
+                    .orElse(null);
+            
+            if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
+                // Teacher owner, allow access
+            } else {
+                // Not owner, check if learner is enrolled
+                Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                
+                enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "You must enroll in this course to access flashcard cards"));
             }
         }
         
