@@ -441,7 +441,23 @@ public class JlptTestService {
         sessionRepo.delete(session);
         answerRepo.deleteByUser_IdAndTest_Id(userId, testId);
 
-        return result;
+        // Cập nhật result với thông tin attempt vừa tạo
+        return JlptTestResultResponse.builder()
+                .testId(result.getTestId())
+                .userId(result.getUserId())
+                .totalQuestions(result.getTotalQuestions())
+                .correctCount(result.getCorrectCount())
+                .score(result.getScore())
+                .level(result.getLevel())
+                .passScore(result.getPassScore())
+                .passed(result.getPassed())
+                .attemptId(attempt.getId())
+                .startedAt(session.getStartedAt())
+                .submittedAt(now)
+                .grammarVocab(result.getGrammarVocab())
+                .reading(result.getReading())
+                .listening(result.getListening())
+                .build();
     }
 
     /**
