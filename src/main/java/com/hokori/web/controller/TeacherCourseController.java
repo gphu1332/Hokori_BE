@@ -1,10 +1,13 @@
 package com.hokori.web.controller;
 
 import com.hokori.web.Enum.CourseStatus;
+import com.hokori.web.dto.ApiResponse;
 import com.hokori.web.dto.course.*;
+import com.hokori.web.dto.teacher.TeacherLearnerStatisticsResponse;
 import com.hokori.web.repository.UserRepository;
 import com.hokori.web.service.CourseService;
 import com.hokori.web.service.FileStorageService;
+import com.hokori.web.service.TeacherStatisticsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -37,6 +40,7 @@ public class TeacherCourseController {
     private final CourseService courseService;
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
+    private final TeacherStatisticsService teacherStatisticsService;
 
     /** Lấy userId (teacher) từ SecurityContext (principal=email). */
     private Long currentUserIdOrThrow() {
@@ -333,5 +337,23 @@ public class TeacherCourseController {
                                      @RequestBody ReorderReq req) {
         return courseService.reorderContent(
                 contentId, currentUserIdOrThrow(), req.orderIndex() == null ? 0 : req.orderIndex());
+    }
+
+    // ===== Statistics =====
+
+    @Operation(
+            summary = "Teacher xem statistics của learners trong course",
+            description = """
+                    Xem thống kê chi tiết về learners đã enroll vào course:
+                    - Statistics tổng hợp: tổng số learners, số đang học, số đã hoàn thành, % progress trung bình
+                    - Danh sách từng learner với progress chi tiết
+                    
+                    Chỉ teacher owner của course mới được xem.
+                    """
+    )
+    @GetMapping("/{courseId}/learners/statistics")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ApiResponse<TeacherLearnerStatisticsResponse> getLearnerStatistics(@PathVariable Long courseId) {
+        return ApiResponse.success("OK", teacherStatisticsService.getCourseLearnerStatistics(courseId));
     }
 }

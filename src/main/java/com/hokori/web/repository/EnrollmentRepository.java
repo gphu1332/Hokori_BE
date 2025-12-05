@@ -39,4 +39,7 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     long countByCourseId(Long courseId);
     long countByUserId(Long userId);
     long countByUserIdAndCompletedAtIsNotNull(Long userId);
+    
+    // ====== Teacher: lấy danh sách learners trong course ======
+    List<Enrollment> findByCourseIdOrderByCreatedAtDesc(Long courseId);
 }
