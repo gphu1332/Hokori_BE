@@ -431,31 +431,38 @@ public class FlashcardSetController {
                 // User created this set, allow access
             } else if (set.getSectionContent() != null) {
                 Long sectionContentId = set.getSectionContent().getId();
+                boolean authorized = false;
                 
                 // Allow moderator if course is pending approval
                 if (currentUserService.hasRole("MODERATOR")) {
                     try {
                         courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
-                        // Validated, continue to return cards
+                        // Validated, moderator can access
+                        authorized = true;
                     } catch (ResponseStatusException e) {
                         // Not pending approval, continue with normal check
                     }
                 }
                 
-                // Check if user is course owner (teacher)
-                Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
-                        .orElse(null);
-                
-                if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
-                    // Teacher owner, allow access
-                } else {
-                    // Not owner, check if learner is enrolled
-                    Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
-                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                // If not authorized by moderator, check other permissions
+                if (!authorized) {
+                    // Check if user is course owner (teacher)
+                    Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
+                            .orElse(null);
                     
-                    enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
-                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                                "You must enroll in this course to access flashcard cards"));
+                    if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
+                        // Teacher owner, allow access
+                        authorized = true;
+                    } else {
+                        // Not owner, check if learner is enrolled
+                        Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                        
+                        enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                    "You must enroll in this course to access flashcard cards"));
+                        authorized = true;
+                    }
                 }
             } else {
                 // SectionContent is null but set is COURSE_VOCAB - only allow creator
@@ -707,31 +714,38 @@ public class FlashcardSetController {
                 // User created this set, allow access
             } else if (set.getSectionContent() != null) {
                 Long sectionContentId = set.getSectionContent().getId();
+                boolean authorized = false;
                 
                 // Allow moderator if course is pending approval
                 if (currentUserService.hasRole("MODERATOR")) {
                     try {
                         courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
-                        // Validated, continue to allow review
+                        // Validated, moderator can access
+                        authorized = true;
                     } catch (ResponseStatusException e) {
                         // Not pending approval, continue with normal check
                     }
                 }
                 
-                // Check if user is course owner (teacher)
-                Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
-                        .orElse(null);
-                
-                if (courseOwnerId != null && courseOwnerId.equals(current.getId())) {
-                    // Teacher owner, allow access
-                } else {
-                    // Not owner, check if learner is enrolled
-                    Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
-                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                // If not authorized by moderator, check other permissions
+                if (!authorized) {
+                    // Check if user is course owner (teacher)
+                    Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
+                            .orElse(null);
                     
-                    enrollmentRepo.findByUserIdAndCourseId(current.getId(), courseId)
-                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                                "You must enroll in this course to review flashcard cards"));
+                    if (courseOwnerId != null && courseOwnerId.equals(current.getId())) {
+                        // Teacher owner, allow access
+                        authorized = true;
+                    } else {
+                        // Not owner, check if learner is enrolled
+                        Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                        
+                        enrollmentRepo.findByUserIdAndCourseId(current.getId(), courseId)
+                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                    "You must enroll in this course to review flashcard cards"));
+                        authorized = true;
+                    }
                 }
             } else {
                 // SectionContent is null but set is COURSE_VOCAB - only allow creator
