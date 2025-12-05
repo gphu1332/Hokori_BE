@@ -19,12 +19,13 @@ public interface FlashcardSetRepository extends JpaRepository<FlashcardSet, Long
     Optional<FlashcardSet> findBySectionContent_IdAndDeletedFlagFalse(Long sectionContentId);
 
     /**
-     * Find flashcard set by section content ID with eager fetching of createdBy and role
-     * to avoid LazyInitializationException when serializing response.
+     * Find flashcard set by section content ID with eager fetching of createdBy, role, and sectionContent
+     * to avoid LazyInitializationException when serializing response or accessing set.getSectionContent().
      */
     @Query("SELECT s FROM FlashcardSet s " +
            "LEFT JOIN FETCH s.createdBy u " +
            "LEFT JOIN FETCH u.role " +
+           "LEFT JOIN FETCH s.sectionContent " +
            "WHERE s.sectionContent.id = :sectionContentId AND s.deletedFlag = false")
     Optional<FlashcardSet> findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(@Param("sectionContentId") Long sectionContentId);
 

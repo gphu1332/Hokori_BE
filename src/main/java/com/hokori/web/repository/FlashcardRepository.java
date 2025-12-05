@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface FlashcardRepository extends JpaRepository<Flashcard, Long> {
 
@@ -24,6 +25,17 @@ public interface FlashcardRepository extends JpaRepository<Flashcard, Long> {
            "WHERE c.set.id = :setId AND c.deletedFlag = false " +
            "ORDER BY c.orderIndex ASC")
     List<Flashcard> findBySetIdWithSetAndCreatedByOrderByOrderIndexAsc(@Param("setId") Long setId);
+
+    /**
+     * Find flashcard by ID with eager fetching of set, set.createdBy, and set.createdBy.role
+     * to avoid LazyInitializationException when accessing card.getSet().
+     */
+    @Query("SELECT c FROM Flashcard c " +
+           "LEFT JOIN FETCH c.set s " +
+           "LEFT JOIN FETCH s.createdBy u " +
+           "LEFT JOIN FETCH u.role " +
+           "WHERE c.id = :cardId AND c.deletedFlag = false")
+    Optional<Flashcard> findByIdWithSetAndCreatedBy(@Param("cardId") Long cardId);
 
     long countBySet_CreatedBy_IdAndSet_DeletedFlagFalseAndDeletedFlagFalse(Long userId);
 

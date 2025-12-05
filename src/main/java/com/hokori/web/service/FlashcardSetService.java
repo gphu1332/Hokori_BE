@@ -85,6 +85,15 @@ public class FlashcardSetService {
                 .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found"));
     }
 
+    /**
+     * Get flashcard by ID with eager fetching of set, createdBy, and role
+     * to avoid LazyInitializationException when accessing card.getSet().
+     */
+    public Flashcard getCardByIdWithSet(Long cardId) {
+        return cardRepo.findByIdWithSetAndCreatedBy(cardId)
+                .orElseThrow(() -> new EntityNotFoundException("Flashcard not found"));
+    }
+
     // =======================
     // CARD CRUD
     // =======================
@@ -96,7 +105,8 @@ public class FlashcardSetService {
                                   String reading,
                                   String example,
                                   Integer orderIndex) {
-        FlashcardSet set = getSetOrThrow(setId);
+        // Use eager fetching to ensure set is fully loaded
+        FlashcardSet set = getSetOrThrowWithCreatedBy(setId);
         Flashcard card = Flashcard.builder()
                 .set(set)
                 .frontText(front)
@@ -105,7 +115,12 @@ public class FlashcardSetService {
                 .exampleSentence(example)
                 .orderIndex(orderIndex)
                 .build();
-        return cardRepo.save(card);
+        Flashcard saved = cardRepo.save(card);
+        // Flush to ensure the entity is persisted
+        cardRepo.flush();
+        // Reload with eager fetch to avoid lazy loading when serializing response
+        return cardRepo.findByIdWithSetAndCreatedBy(saved.getId())
+                .orElse(saved);
     }
 
     public List<Flashcard> listCards(Long setId) {
@@ -134,7 +149,8 @@ public class FlashcardSetService {
                                      String exampleSentence,
                                      Integer orderIndex) {
 
-        Flashcard card = cardRepo.findById(cardId)
+        // Use eager fetching to avoid LazyInitializationException when accessing card.getSet()
+        Flashcard card = cardRepo.findByIdWithSetAndCreatedBy(cardId)
                 .orElseThrow(() -> new EntityNotFoundException("Flashcard not found"));
 
         // Đảm bảo card thuộc đúng set

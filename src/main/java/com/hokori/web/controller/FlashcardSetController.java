@@ -585,10 +585,14 @@ public class FlashcardSetController {
 
         // Use method with eager fetching to avoid LazyInitializationException
         FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
-        Flashcard card = set.getCards().stream()
-                .filter(c -> c.getId().equals(cardId))
-                .findFirst()
-                .orElseThrow(() -> new EntityNotFoundException("Flashcard not in set"));
+        
+        // Get card with eager fetch instead of accessing set.getCards() (which is lazy)
+        Flashcard card = flashcardSetService.getCardByIdWithSet(cardId);
+        
+        // Verify card belongs to the set
+        if (!card.getSet().getId().equals(setId)) {
+            throw new EntityNotFoundException("Flashcard not in set");
+        }
 
         // 1) PERSONAL: chỉ cho owner
         if (set.getType() == FlashcardSetType.PERSONAL &&
