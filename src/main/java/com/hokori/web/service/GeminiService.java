@@ -74,76 +74,131 @@ public class GeminiService {
     /**
      * Call Gemini API with a prompt
      * Returns the text response from Gemini
+     * Includes retry logic for rate limit errors (429) with exponential backoff
      */
     public String generateContent(String prompt) {
+        return generateContentWithRetry(prompt, 3); // Max 3 retries
+    }
+
+    /**
+     * Call Gemini API with retry logic for rate limit errors
+     * @param prompt The prompt to send to Gemini
+     * @param maxRetries Maximum number of retries (default: 3)
+     * @return The text response from Gemini
+     */
+    private String generateContentWithRetry(String prompt, int maxRetries) {
         if (!googleCloudEnabled) {
             throw new RuntimeException("Google Cloud AI is not enabled");
         }
 
-        try {
-            String url = String.format(GEMINI_API_URL, modelName);
-            
-            // Add API key to URL if available, otherwise use OAuth2 token
-            if (apiKey != null && !apiKey.isEmpty()) {
-                url += "?key=" + apiKey;
-            }
-            
-            Map<String, Object> requestBody = new HashMap<>();
-            List<Map<String, Object>> contents = new ArrayList<>();
-            Map<String, Object> content = new HashMap<>();
-            List<Map<String, Object>> parts = new ArrayList<>();
-            Map<String, Object> part = new HashMap<>();
-            part.put("text", prompt);
-            parts.add(part);
-            content.put("parts", parts);
-            contents.add(content);
-            requestBody.put("contents", contents);
+        int retryCount = 0;
+        long baseDelayMs = 7000; // 7 seconds as suggested by API
 
-            // Generation config
-            Map<String, Object> generationConfig = new HashMap<>();
-            generationConfig.put("temperature", 0.7);
-            generationConfig.put("topK", 40);
-            generationConfig.put("topP", 0.95);
-            generationConfig.put("maxOutputTokens", 8192);
-            requestBody.put("generationConfig", generationConfig);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            
-            // If no API key, use OAuth2 token
-            if (apiKey == null || apiKey.isEmpty()) {
-                String accessToken = getAccessToken();
-                headers.setBearerAuth(accessToken);
-            }
-
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-
-            log.debug("Calling Gemini API: {}", url);
-            ResponseEntity<GeminiResponse> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    request,
-                    GeminiResponse.class
-            );
-
-            if (response.getBody() != null && response.getBody().getCandidates() != null 
-                    && !response.getBody().getCandidates().isEmpty()) {
-                GeminiResponse.Candidate candidate = response.getBody().getCandidates().get(0);
-                if (candidate.getContent() != null && candidate.getContent().getParts() != null
-                        && !candidate.getContent().getParts().isEmpty()) {
-                    String text = candidate.getContent().getParts().get(0).getText();
-                    log.debug("Gemini response received, length: {}", text.length());
-                    return text;
+        while (retryCount <= maxRetries) {
+            try {
+                return callGeminiAPI(prompt);
+            } catch (IOException e) {
+                // IO errors (e.g., token generation) - don't retry
+                log.error("IO error calling Gemini API", e);
+                throw new RuntimeException("Failed to call Gemini API: " + e.getMessage(), e);
+            } catch (org.springframework.web.client.HttpClientErrorException e) {
+                // Handle rate limit errors (429) with retry
+                if (e.getStatusCode() != null && e.getStatusCode().value() == 429) {
+                    if (retryCount < maxRetries) {
+                        // Exponential backoff: 7s, 14s, 28s
+                        long delayMs = baseDelayMs * (1L << retryCount);
+                        log.warn("Gemini API rate limit exceeded (429). Retrying in {}ms (attempt {}/{})", 
+                            delayMs, retryCount + 1, maxRetries + 1);
+                        try {
+                            Thread.sleep(delayMs);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException("Retry interrupted", ie);
+                        }
+                        retryCount++;
+                        continue;
+                    } else {
+                        log.error("Gemini API rate limit exceeded (429). Max retries ({}) exceeded.", maxRetries);
+                        throw new RuntimeException(
+                            "Gemini API rate limit exceeded after " + maxRetries + " retries. " +
+                            "Free tier limit: ~10 requests/minute. Please try again later.", e);
+                    }
                 }
+                // Other HTTP errors - don't retry
+                log.error("Error calling Gemini API: HTTP {}", e.getStatusCode(), e);
+                throw new RuntimeException("Failed to call Gemini API: " + e.getMessage(), e);
+            } catch (Exception e) {
+                // Non-HTTP errors - don't retry
+                log.error("Error calling Gemini API", e);
+                throw new RuntimeException("Failed to call Gemini API: " + e.getMessage(), e);
             }
-
-            log.warn("Gemini API returned empty response");
-            return null;
-
-        } catch (Exception e) {
-            log.error("Error calling Gemini API", e);
-            throw new RuntimeException("Failed to call Gemini API: " + e.getMessage(), e);
         }
+
+        throw new RuntimeException("Failed to call Gemini API after " + maxRetries + " retries");
+    }
+
+    /**
+     * Actual API call to Gemini
+     */
+    private String callGeminiAPI(String prompt) throws IOException {
+        String url = String.format(GEMINI_API_URL, modelName);
+        
+        // Add API key to URL if available, otherwise use OAuth2 token
+        if (apiKey != null && !apiKey.isEmpty()) {
+            url += "?key=" + apiKey;
+        }
+        
+        Map<String, Object> requestBody = new HashMap<>();
+        List<Map<String, Object>> contents = new ArrayList<>();
+        Map<String, Object> content = new HashMap<>();
+        List<Map<String, Object>> parts = new ArrayList<>();
+        Map<String, Object> part = new HashMap<>();
+        part.put("text", prompt);
+        parts.add(part);
+        content.put("parts", parts);
+        contents.add(content);
+        requestBody.put("contents", contents);
+
+        // Generation config
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("temperature", 0.7);
+        generationConfig.put("topK", 40);
+        generationConfig.put("topP", 0.95);
+        generationConfig.put("maxOutputTokens", 8192);
+        requestBody.put("generationConfig", generationConfig);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        
+        // If no API key, use OAuth2 token
+        if (apiKey == null || apiKey.isEmpty()) {
+            String accessToken = getAccessToken();
+            headers.setBearerAuth(accessToken);
+        }
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+
+        log.debug("Calling Gemini API: {}", url);
+        ResponseEntity<GeminiResponse> response = restTemplate.exchange(
+                url,
+                HttpMethod.POST,
+                request,
+                GeminiResponse.class
+        );
+
+        if (response.getBody() != null && response.getBody().getCandidates() != null 
+                && !response.getBody().getCandidates().isEmpty()) {
+            GeminiResponse.Candidate candidate = response.getBody().getCandidates().get(0);
+            if (candidate.getContent() != null && candidate.getContent().getParts() != null
+                    && !candidate.getContent().getParts().isEmpty()) {
+                String text = candidate.getContent().getParts().get(0).getText();
+                log.debug("Gemini response received, length: {}", text.length());
+                return text;
+            }
+        }
+
+        log.warn("Gemini API returned empty response");
+        return null;
     }
 
     /**
