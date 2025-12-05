@@ -41,20 +41,20 @@ public class CurrentUserService {
                 : String.valueOf(auth.getPrincipal());
     }
 
-    /** Lấy User hiện tại (Optional). */
+    /** Lấy User hiện tại (Optional) với eager fetch role. */
     public Optional<User> getCurrentUser() {
         try {
             String email = principalOrThrow();
-            return userRepository.findByEmail(email);
+            return userRepository.findByEmailWithRole(email);
         } catch (ResponseStatusException e) {
             return Optional.empty();
         }
     }
 
-    /** Lấy User hiện tại hoặc throw 401/403. */
+    /** Lấy User hiện tại hoặc throw 401/403 với eager fetch role. */
     public User getCurrentUserOrThrow() {
         String email = principalOrThrow();
-        User u = userRepository.findByEmail(email)
+        User u = userRepository.findByEmailWithRole(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
         if (u.getIsActive() != null && !u.getIsActive()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is disabled");

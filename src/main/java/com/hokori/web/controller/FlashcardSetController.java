@@ -26,6 +26,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -472,6 +473,7 @@ public class FlashcardSetController {
 
     @GetMapping("/by-section-content/{sectionContentId}")
     @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
     @Operation(
             summary = "Lấy flashcard set (COURSE_VOCAB) gắn với 1 SectionsContent",
             description = """
@@ -506,16 +508,23 @@ public class FlashcardSetController {
         // Get the most recent set (first in list due to ORDER BY createdAt DESC)
         FlashcardSet set = sets.get(0);
         
-        // Ensure all lazy relationships are accessed within transaction
-        // Access createdBy and sectionContent to trigger any lazy loading issues early
-        if (set.getCreatedBy() != null) {
-            set.getCreatedBy().getId(); // Access to ensure it's loaded
-            if (set.getCreatedBy().getRole() != null) {
-                set.getCreatedBy().getRole().getId(); // Access to ensure role is loaded
+        // Force initialize all lazy relationships within transaction to avoid LazyInitializationException
+        // This ensures all data is loaded before transaction closes and Jackson serializes
+        User createdBy = set.getCreatedBy();
+        if (createdBy != null) {
+            // Force load createdBy
+            Long userId = createdBy.getId();
+            // Force load role
+            Role role = createdBy.getRole();
+            if (role != null) {
+                Long roleId = role.getId();
+                String roleName = role.getRoleName(); // Access all fields to ensure full initialization
             }
         }
-        if (set.getSectionContent() != null) {
-            set.getSectionContent().getId(); // Access to ensure sectionContent is loaded
+        SectionsContent sectionContent = set.getSectionContent();
+        if (sectionContent != null) {
+            // Force load sectionContent
+            Long sectionContentIdLoaded = sectionContent.getId();
         }
         
         // Validation: 
