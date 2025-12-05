@@ -74,11 +74,11 @@ public class JlptEventController {
         return JlptEventResponse.fromEntity(e);
     }
 
-    // ===== Admin/Moderator: xem tất cả event =====
+    // ===== Admin/Moderator/Teacher: xem tất cả event =====
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','TEACHER')")
     @Operation(
-            summary = "List tất cả JLPT event (Admin/Moderator)",
+            summary = "List tất cả JLPT event (Admin/Moderator/Teacher)",
             description = "Có thể filter theo status, level"
     )
     @ApiResponse(

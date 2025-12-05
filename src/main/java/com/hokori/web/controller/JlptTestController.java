@@ -40,14 +40,14 @@ public class JlptTestController {
     private final CurrentUserService currentUserService;
     private final FileStorageService fileStorageService;
 
-    // ===== Moderator: tạo test trong 1 event =====
+    // ===== Moderator/Teacher: tạo test trong 1 event =====
 
     @PostMapping("/events/{eventId}/tests")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'TEACHER')")
     @Operation(
-            summary = "Moderator tạo JLPT Test cho 1 Event",
+            summary = "Moderator/Teacher tạo JLPT Test cho 1 Event",
             description = """
-                    - Chỉ moderator mới tạo được đề.
+                    - Moderator và Teacher có thể tạo đề.
                     - eventId: sự kiện mà đề thuộc về.
                     """
     )
@@ -69,10 +69,10 @@ public class JlptTestController {
         return JlptTestResponse.fromEntity(test);
     }
 
-    // ===== Moderator/Admin: list test trong 1 event =====
+    // ===== Moderator/Teacher/Admin: list test trong 1 event =====
 
     @GetMapping("/events/{eventId}/tests")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','TEACHER')")
     @Operation(
             summary = "List test của 1 event (Admin/Moderator)",
             description = "Dùng cho màn quản lý đề."
@@ -91,12 +91,12 @@ public class JlptTestController {
                 .toList();
     }
 
-    // ===== Moderator: upload audio file cho JLPT test/question =====
+    // ===== Moderator/Teacher: upload audio file cho JLPT test/question =====
 
     @PostMapping(value = "/tests/{testId}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'TEACHER')")
     @Operation(
-            summary = "Moderator upload audio file cho JLPT test",
+            summary = "Moderator/Teacher upload audio file cho JLPT test",
             description = """
                     Upload audio file cho listening questions.
                     Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WEBM, OPUS
@@ -152,12 +152,12 @@ public class JlptTestController {
         return new FileUploadResponse(relativePath, url);
     }
 
-    // ===== Moderator: thêm câu hỏi cho test =====
+    // ===== Moderator/Teacher: thêm câu hỏi cho test =====
 
     @PostMapping("/tests/{testId}/questions")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'TEACHER')")
     @Operation(
-            summary = "Moderator thêm câu hỏi cho test",
+            summary = "Moderator/Teacher thêm câu hỏi cho test",
             description = """
                     Tạo 1 JLPT Question thuộc về test:
                     - Content, questionType, orderIndex
@@ -180,12 +180,12 @@ public class JlptTestController {
         return question;
     }
 
-    // ===== Moderator: thêm option cho 1 câu hỏi =====
+    // ===== Moderator/Teacher: thêm option cho 1 câu hỏi =====
 
     @PostMapping("/questions/{questionId}/options")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'TEACHER')")
     @Operation(
-            summary = "Moderator thêm option cho câu hỏi",
+            summary = "Moderator/Teacher thêm option cho câu hỏi",
             description = """
                     Tạo JLPT Option:
                     - content, orderIndex, correct flag
@@ -278,10 +278,10 @@ public class JlptTestController {
         return jlptTestService.getResultForUser(testId, userId);
     }
 
-    // ===== Moderator/Admin: cập nhật 1 test =====
+    // ===== Moderator/Teacher/Admin: cập nhật 1 test =====
 
     @PutMapping("/tests/{testId}")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','TEACHER')")
     @Operation(
             summary = "Cập nhật JLPT Test",
             description = "Sửa level, duration, totalScore, resultNote của 1 test."
@@ -299,10 +299,10 @@ public class JlptTestController {
         return jlptTestService.updateTest(testId, moderator, req);
     }
 
-    // ===== Moderator/Admin: xoá mềm 1 test =====
+    // ===== Moderator/Teacher/Admin: xoá mềm 1 test =====
 
     @DeleteMapping("/tests/{testId}")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','TEACHER')")
     @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
     @Operation(
             summary = "Xoá mềm JLPT Test",
@@ -315,12 +315,12 @@ public class JlptTestController {
         jlptTestService.softDeleteTest(testId, moderator);
     }
 
-    // ===== Moderator: cập nhật 1 câu hỏi =====
+    // ===== Moderator/Teacher: cập nhật 1 câu hỏi =====
 
     @PutMapping("/tests/{testId}/questions/{questionId}")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'TEACHER')")
     @Operation(
-            summary = "Moderator chỉnh sửa câu hỏi",
+            summary = "Moderator/Teacher chỉnh sửa câu hỏi",
             description = "Sửa nội dung, type, giải thích, thứ tự, media của 1 câu hỏi."
     )
     @ApiResponse(
@@ -337,13 +337,13 @@ public class JlptTestController {
         return jlptTestService.updateQuestion(testId, questionId, moderator, req);
     }
 
-    // ===== Moderator: xoá mềm câu hỏi =====
+    // ===== Moderator/Teacher: xoá mềm câu hỏi =====
 
     @DeleteMapping("/tests/{testId}/questions/{questionId}")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'TEACHER')")
     @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
     @Operation(
-            summary = "Moderator xoá câu hỏi",
+            summary = "Moderator/Teacher xoá câu hỏi",
             description = "Đặt deleted_flag = true. Các câu trả lời cũ vẫn giữ."
     )
     public void deleteQuestion(
@@ -354,12 +354,12 @@ public class JlptTestController {
         jlptTestService.softDeleteQuestion(testId, questionId, moderator);
     }
 
-    // ===== Moderator: cập nhật 1 option =====
+    // ===== Moderator/Teacher: cập nhật 1 option =====
 
     @PutMapping("/questions/{questionId}/options/{optionId}")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'TEACHER')")
     @Operation(
-            summary = "Moderator chỉnh sửa option của câu hỏi",
+            summary = "Moderator/Teacher chỉnh sửa option của câu hỏi",
             description = "Sửa nội dung, cờ đúng/sai, thứ tự, image cho 1 option."
     )
     @ApiResponse(
@@ -376,13 +376,13 @@ public class JlptTestController {
         return jlptTestService.updateOption(questionId, optionId, moderator, req);
     }
 
-    // ===== Moderator: xoá 1 option =====
+    // ===== Moderator/Teacher: xoá 1 option =====
 
     @DeleteMapping("/questions/{questionId}/options/{optionId}")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'TEACHER')")
     @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
     @Operation(
-            summary = "Moderator xoá option",
+            summary = "Moderator/Teacher xoá option",
             description = "Xoá cứng bản ghi option khỏi DB."
     )
     public void deleteOption(
