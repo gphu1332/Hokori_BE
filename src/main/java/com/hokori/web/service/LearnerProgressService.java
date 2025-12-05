@@ -384,8 +384,8 @@ public class LearnerProgressService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, 
                     "You must enroll in this course to access flashcard sets"));
 
-        // Get flashcard set
-        FlashcardSet set = flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalse(sectionContentId)
+        // Get flashcard set with eager fetching to avoid LazyInitializationException
+        FlashcardSet set = flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
                     "Flashcard set not found for this section content"));
 

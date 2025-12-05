@@ -121,7 +121,7 @@ public class GeminiService {
                         log.error("Gemini API rate limit exceeded (429). Max retries ({}) exceeded.", maxRetries);
                         throw new RuntimeException(
                             "Gemini API rate limit exceeded after " + maxRetries + " retries. " +
-                            "Free tier limit: ~10 requests/minute. Please try again later.", e);
+                            "Free tier limit: 15 requests/minute (gemini-1.5-flash). Please try again later.", e);
                     }
                 }
                 // Other HTTP errors - don't retry

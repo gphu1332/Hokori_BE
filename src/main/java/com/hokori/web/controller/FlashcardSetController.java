@@ -391,8 +391,8 @@ public class FlashcardSetController {
     ) {
         User current = currentUserService.getCurrentUserOrThrow();
         
-        // Get flashcard set
-        FlashcardSet set = setRepo.findBySectionContent_IdAndDeletedFlagFalse(sectionContentId)
+        // Get flashcard set with eager fetching to avoid LazyInitializationException
+        FlashcardSet set = setRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId)
                 .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found for this sectionContent"));
         
         // Validation: 
