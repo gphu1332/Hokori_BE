@@ -385,9 +385,14 @@ public class LearnerProgressService {
                     "You must enroll in this course to access flashcard sets"));
 
         // Get flashcard set with eager fetching to avoid LazyInitializationException
-        FlashcardSet set = flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
-                    "Flashcard set not found for this section content"));
+        // If multiple sets exist, get the most recent one (ORDER BY createdAt DESC)
+        List<FlashcardSet> sets = flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId);
+        if (sets.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                "Flashcard set not found for this section content");
+        }
+        // Get the most recent set (first in list due to ORDER BY createdAt DESC)
+        FlashcardSet set = sets.get(0);
 
         return FlashcardSetResponse.fromEntity(set);
     }
