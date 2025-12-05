@@ -219,27 +219,37 @@ public class FlashcardSetController {
             if (!set.getCreatedBy().getId().equals(currentUserId)) {
                 throw new AccessDeniedException("You are not the owner of this flashcard set");
             }
-        } else if (set.getType() == FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
+        } else if (set.getType() == FlashcardSetType.COURSE_VOCAB) {
             // COURSE_VOCAB: check enrollment or ownership
-            Long sectionContentId = set.getSectionContent().getId();
-            
-            // Allow moderator if course is pending approval
-            if (currentUserService.hasRole("MODERATOR")) {
-                try {
-                    courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
-                    return FlashcardSetResponse.fromEntity(set);
-                } catch (ResponseStatusException e) {
-                    // Not pending approval, continue with normal check
-                }
+            // First, allow if user is the creator of the set (fallback for edge cases)
+            if (set.getCreatedBy().getId().equals(currentUserId)) {
+                // User created this set, allow access
+                return FlashcardSetResponse.fromEntity(set);
             }
             
-            // Check if user is course owner (teacher)
-            Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
-                    .orElse(null);
-            
-            if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
-                // Teacher owner, allow access
-            } else {
+            // Then check via sectionContent if available
+            if (set.getSectionContent() != null) {
+                Long sectionContentId = set.getSectionContent().getId();
+                
+                // Allow moderator if course is pending approval
+                if (currentUserService.hasRole("MODERATOR")) {
+                    try {
+                        courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
+                        return FlashcardSetResponse.fromEntity(set);
+                    } catch (ResponseStatusException e) {
+                        // Not pending approval, continue with normal check
+                    }
+                }
+                
+                // Check if user is course owner (teacher)
+                Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
+                        .orElse(null);
+                
+                if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
+                    // Teacher owner, allow access
+                    return FlashcardSetResponse.fromEntity(set);
+                }
+                
                 // Not owner, check if learner is enrolled
                 Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
@@ -247,6 +257,10 @@ public class FlashcardSetController {
                 enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
                             "You must enroll in this course to access flashcard sets"));
+            } else {
+                // SectionContent is null but set is COURSE_VOCAB - this shouldn't happen normally
+                // But if it does, only allow creator
+                throw new AccessDeniedException("You are not the owner of this flashcard set");
             }
         }
         
@@ -400,33 +414,41 @@ public class FlashcardSetController {
         Long currentUserId = currentUserService.getUserIdOrThrow();
         
         // Authorization check for COURSE_VOCAB sets
-        if (set.getType() == FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
-            Long sectionContentId = set.getSectionContent().getId();
-            
-            // Allow moderator if course is pending approval
-            if (currentUserService.hasRole("MODERATOR")) {
-                try {
-                    courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
-                    // Validated, continue to return cards
-                } catch (ResponseStatusException e) {
-                    // Not pending approval, continue with normal check
-                }
-            }
-            
-            // Check if user is course owner (teacher)
-            Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
-                    .orElse(null);
-            
-            if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
-                // Teacher owner, allow access
-            } else {
-                // Not owner, check if learner is enrolled
-                Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+        if (set.getType() == FlashcardSetType.COURSE_VOCAB) {
+            // First, allow if user is the creator of the set (fallback for edge cases)
+            if (set.getCreatedBy().getId().equals(currentUserId)) {
+                // User created this set, allow access
+            } else if (set.getSectionContent() != null) {
+                Long sectionContentId = set.getSectionContent().getId();
                 
-                enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "You must enroll in this course to access flashcard cards"));
+                // Allow moderator if course is pending approval
+                if (currentUserService.hasRole("MODERATOR")) {
+                    try {
+                        courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
+                        // Validated, continue to return cards
+                    } catch (ResponseStatusException e) {
+                        // Not pending approval, continue with normal check
+                    }
+                }
+                
+                // Check if user is course owner (teacher)
+                Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
+                        .orElse(null);
+                
+                if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
+                    // Teacher owner, allow access
+                } else {
+                    // Not owner, check if learner is enrolled
+                    Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                    
+                    enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "You must enroll in this course to access flashcard cards"));
+                }
+            } else {
+                // SectionContent is null but set is COURSE_VOCAB - only allow creator
+                throw new AccessDeniedException("You are not the owner of this flashcard set");
             }
         }
         
@@ -641,34 +663,42 @@ public class FlashcardSetController {
             if (!set.getCreatedBy().getId().equals(current.getId())) {
                 throw new AccessDeniedException("You are not the owner of this flashcard set");
             }
-        } else if (set.getType() == FlashcardSetType.COURSE_VOCAB && set.getSectionContent() != null) {
-            // COURSE_VOCAB: check enrollment or ownership (same logic as listCards)
-            Long sectionContentId = set.getSectionContent().getId();
-            
-            // Allow moderator if course is pending approval
-            if (currentUserService.hasRole("MODERATOR")) {
-                try {
-                    courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
-                    // Validated, continue to allow review
-                } catch (ResponseStatusException e) {
-                    // Not pending approval, continue with normal check
-                }
-            }
-            
-            // Check if user is course owner (teacher)
-            Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
-                    .orElse(null);
-            
-            if (courseOwnerId != null && courseOwnerId.equals(current.getId())) {
-                // Teacher owner, allow access
-            } else {
-                // Not owner, check if learner is enrolled
-                Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+        } else if (set.getType() == FlashcardSetType.COURSE_VOCAB) {
+            // COURSE_VOCAB: check enrollment or ownership
+            // First, allow if user is the creator of the set (fallback for edge cases)
+            if (set.getCreatedBy().getId().equals(current.getId())) {
+                // User created this set, allow access
+            } else if (set.getSectionContent() != null) {
+                Long sectionContentId = set.getSectionContent().getId();
                 
-                enrollmentRepo.findByUserIdAndCourseId(current.getId(), courseId)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "You must enroll in this course to review flashcard cards"));
+                // Allow moderator if course is pending approval
+                if (currentUserService.hasRole("MODERATOR")) {
+                    try {
+                        courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
+                        // Validated, continue to allow review
+                    } catch (ResponseStatusException e) {
+                        // Not pending approval, continue with normal check
+                    }
+                }
+                
+                // Check if user is course owner (teacher)
+                Long courseOwnerId = sectionsContentRepo.findCourseOwnerIdBySectionContentId(sectionContentId)
+                        .orElse(null);
+                
+                if (courseOwnerId != null && courseOwnerId.equals(current.getId())) {
+                    // Teacher owner, allow access
+                } else {
+                    // Not owner, check if learner is enrolled
+                    Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                    
+                    enrollmentRepo.findByUserIdAndCourseId(current.getId(), courseId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "You must enroll in this course to review flashcard cards"));
+                }
+            } else {
+                // SectionContent is null but set is COURSE_VOCAB - only allow creator
+                throw new AccessDeniedException("You are not the owner of this flashcard set");
             }
         }
 
