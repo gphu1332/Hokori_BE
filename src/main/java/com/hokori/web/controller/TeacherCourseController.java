@@ -23,7 +23,6 @@ import org.springframework.web.multipart.MultipartFile;
 // Swagger
 import io.swagger.v3.oas.annotations.*;
 import io.swagger.v3.oas.annotations.media.*;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -72,7 +71,7 @@ public class TeacherCourseController {
 
     @Operation(summary = "Tạo khoá học (CREATE)",
             description = "Slug sinh từ title (duy nhất). Mặc định DRAFT; level null => N5.")
-    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = CourseRes.class)))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = CourseRes.class)))
     @PostMapping
     @PreAuthorize("hasRole('TEACHER')")
     public CourseRes create(@Valid @RequestBody CourseUpsertReq req) {
