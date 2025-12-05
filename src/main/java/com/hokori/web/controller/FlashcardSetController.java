@@ -232,7 +232,8 @@ public class FlashcardSetController {
             @Valid @RequestBody FlashcardCreateRequest req
     ) {
         User current = currentUserService.getCurrentUserOrThrow();
-        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        // Use method with eager fetching to avoid LazyInitializationException
+        FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
         if (!set.getCreatedBy().getId().equals(current.getId())) {
             throw new AccessDeniedException("You are not the owner of this flashcard set");
         }
@@ -270,7 +271,8 @@ public class FlashcardSetController {
             @Valid @RequestBody FlashcardSetUpdateRequest req
     ) {
         User current = currentUserService.getCurrentUserOrThrow();
-        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        // Use method with eager fetching to avoid LazyInitializationException
+        FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
 
         if (!set.getCreatedBy().getId().equals(current.getId())) {
             throw new AccessDeniedException("You are not the owner of this flashcard set");
@@ -307,7 +309,8 @@ public class FlashcardSetController {
             @Valid @RequestBody FlashcardUpdateRequest req
     ) {
         User current = currentUserService.getCurrentUserOrThrow();
-        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        // Use method with eager fetching to avoid LazyInitializationException
+        FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
 
         if (!set.getCreatedBy().getId().equals(current.getId())) {
             throw new AccessDeniedException("You are not the owner of this flashcard set");
@@ -489,8 +492,8 @@ public class FlashcardSetController {
     ) {
         User current = currentUserService.getCurrentUserOrThrow();
 
-        // 1. Lấy set và check owner
-        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        // 1. Lấy set và check owner (use eager fetching to avoid LazyInitializationException)
+        FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
         if (!set.getCreatedBy().getId().equals(current.getId())) {
             throw new AccessDeniedException("You are not the owner of this flashcard set");
         }
@@ -525,8 +528,8 @@ public class FlashcardSetController {
     ) {
         User current = currentUserService.getCurrentUserOrThrow();
 
-        // 1. Lấy set
-        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        // 1. Lấy set (use eager fetching to avoid LazyInitializationException)
+        FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
 
         // 2. Check owner
         if (!set.getCreatedBy().getId().equals(current.getId())) {
@@ -580,7 +583,8 @@ public class FlashcardSetController {
     ) {
         User current = currentUserService.getCurrentUserOrThrow();
 
-        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        // Use method with eager fetching to avoid LazyInitializationException
+        FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
         Flashcard card = set.getCards().stream()
                 .filter(c -> c.getId().equals(cardId))
                 .findFirst()

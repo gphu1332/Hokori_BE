@@ -109,7 +109,9 @@ public class FlashcardSetService {
     }
 
     public List<Flashcard> listCards(Long setId) {
-        FlashcardSet set = getSetOrThrow(setId);
+        // Use eager fetching to ensure set is fully loaded (though we don't serialize set in response)
+        // This is defensive programming to avoid any potential lazy loading issues
+        FlashcardSet set = getSetOrThrowWithCreatedBy(setId);
         return cardRepo.findBySetAndDeletedFlagFalseOrderByOrderIndexAsc(set);
     }
 
