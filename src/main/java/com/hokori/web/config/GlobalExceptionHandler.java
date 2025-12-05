@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import jakarta.persistence.EntityNotFoundException;
+import org.hibernate.LazyInitializationException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -62,6 +63,22 @@ public class GlobalExceptionHandler {
         logger.debug("EntityNotFoundException: {}", ex.getMessage());
         
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
+    @ExceptionHandler(LazyInitializationException.class)
+    public ResponseEntity<Map<String, Object>> handleLazyInitializationException(
+            LazyInitializationException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Lazy loading error: " + (ex.getMessage() != null ? ex.getMessage() : "no Session"));
+        response.put("status", "error");
+        response.put("errorType", "LazyInitializationException");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false));
+        
+        // Log full stack trace for debugging
+        logger.error("LazyInitializationException occurred - this indicates a missing JOIN FETCH in repository query", ex);
+        
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 
     @ExceptionHandler(RuntimeException.class)

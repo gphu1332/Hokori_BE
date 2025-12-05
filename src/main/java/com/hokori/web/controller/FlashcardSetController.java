@@ -487,8 +487,21 @@ public class FlashcardSetController {
         Long currentUserId = currentUserService.getUserIdOrThrow();
         
         // Get flashcard set with eager fetching to avoid LazyInitializationException
+        // This query eagerly fetches: createdBy, createdBy.role, and sectionContent
         FlashcardSet set = setRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId)
                 .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found for this sectionContent"));
+        
+        // Ensure all lazy relationships are accessed within transaction
+        // Access createdBy and sectionContent to trigger any lazy loading issues early
+        if (set.getCreatedBy() != null) {
+            set.getCreatedBy().getId(); // Access to ensure it's loaded
+            if (set.getCreatedBy().getRole() != null) {
+                set.getCreatedBy().getRole().getId(); // Access to ensure role is loaded
+            }
+        }
+        if (set.getSectionContent() != null) {
+            set.getSectionContent().getId(); // Access to ensure sectionContent is loaded
+        }
         
         // Validation: 
         // - Nếu là COURSE_VOCAB: chỉ cho phép teacher (owner của course), learner (đã enroll), hoặc moderator (nếu course pending approval)
