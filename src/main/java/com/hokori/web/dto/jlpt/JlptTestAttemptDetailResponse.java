@@ -54,10 +54,10 @@ public class JlptTestAttemptDetailResponse {
         String imagePath;      // null nếu không có
         String imageAltText;   // null nếu không có
         
-        // Đáp án đã chọn (của user)
-        Long selectedOptionId;
-        String selectedOptionContent;
-        String selectedOptionImagePath;  // null nếu không có
+        // Đáp án đã chọn (của user) - null nếu không chọn
+        Long selectedOptionId;           // null nếu không chọn đáp án
+        String selectedOptionContent;    // null nếu không chọn đáp án
+        String selectedOptionImagePath;  // null nếu không có hoặc không chọn đáp án
         
         // Đáp án đúng
         Long correctOptionId;

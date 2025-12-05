@@ -588,23 +588,41 @@ public class JlptTestService {
 
         attemptRepo.save(attempt);
 
-        // Lưu chi tiết answers vào attempt trước khi xóa
+        // Lưu chi tiết TẤT CẢ câu hỏi vào attempt (kể cả những câu chưa chọn đáp án)
+        // Lấy tất cả câu hỏi của test
+        List<JlptQuestion> allQuestions = questionRepo.findByTest_IdAndDeletedFlagFalseOrderByOrderIndexAsc(testId);
+        
+        // Lấy tất cả answers đã chọn để map nhanh
         List<JlptAnswer> answers = answerRepo.findByUser_IdAndTest_Id(userId, testId);
-        for (JlptAnswer answer : answers) {
+        java.util.Map<Long, JlptAnswer> answerMap = answers.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        a -> a.getQuestion().getId(),
+                        a -> a
+                ));
+
+        // Lưu từng câu hỏi vào attempt answer
+        for (JlptQuestion question : allQuestions) {
+            JlptAnswer answer = answerMap.get(question.getId());
+            
             // Tìm đáp án đúng của câu hỏi này
-            JlptOption correctOption = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(answer.getQuestion().getId())
+            JlptOption correctOption = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(question.getId())
                     .stream()
                     .filter(opt -> Boolean.TRUE.equals(opt.getIsCorrect()))
                     .findFirst()
-                    .orElseThrow(() -> new IllegalStateException("Question " + answer.getQuestion().getId() + " has no correct option"));
+                    .orElseThrow(() -> new IllegalStateException("Question " + question.getId() + " has no correct option"));
+
+            // Nếu có answer → lấy selectedOption và isCorrect
+            // Nếu không có answer → selectedOption = null, isCorrect = false
+            JlptOption selectedOption = (answer != null) ? answer.getSelectedOption() : null;
+            Boolean isCorrect = (answer != null) ? answer.getIsCorrect() : false;
 
             // Lưu vào attempt answer
             JlptTestAttemptAnswer attemptAnswer = JlptTestAttemptAnswer.builder()
                     .attempt(attempt)
-                    .question(answer.getQuestion())
-                    .selectedOption(answer.getSelectedOption())
+                    .question(question)
+                    .selectedOption(selectedOption)
                     .correctOption(correctOption)
-                    .isCorrect(answer.getIsCorrect())
+                    .isCorrect(isCorrect)
                     .build();
             attemptAnswerRepo.save(attemptAnswer);
         }
@@ -716,10 +734,10 @@ public class JlptTestService {
                         .build())
                 .build();
 
-        // Lấy tất cả answers của attempt
+        // Lấy tất cả answers của attempt (đã lưu TẤT CẢ câu hỏi khi submit)
         List<JlptTestAttemptAnswer> attemptAnswers = attemptAnswerRepo.findByAttempt_IdOrderByQuestion_OrderIndexAsc(attemptId);
         
-        // Build question details
+        // Build question details từ attempt answers (đã bao gồm TẤT CẢ câu hỏi)
         List<JlptTestAttemptDetailResponse.QuestionDetail> questionDetails = attemptAnswers.stream().map(attemptAnswer -> {
             JlptQuestion question = attemptAnswer.getQuestion();
             JlptOption selectedOption = attemptAnswer.getSelectedOption();
@@ -744,7 +762,8 @@ public class JlptTestService {
                 audioUrl = "/files" + question.getAudioPath();
             }
 
-            return JlptTestAttemptDetailResponse.QuestionDetail.builder()
+            // Build question detail
+            JlptTestAttemptDetailResponse.QuestionDetail.QuestionDetailBuilder builder = JlptTestAttemptDetailResponse.QuestionDetail.builder()
                     .questionId(question.getId())
                     .questionContent(question.getContent())
                     .questionType(question.getQuestionType() != null ? question.getQuestionType().name() : null)
@@ -753,15 +772,25 @@ public class JlptTestService {
                     .audioUrl(audioUrl)
                     .imagePath(question.getImagePath())
                     .imageAltText(question.getImageAltText())
-                    .selectedOptionId(selectedOption.getId())
-                    .selectedOptionContent(selectedOption.getContent())
-                    .selectedOptionImagePath(selectedOption.getImagePath())
                     .correctOptionId(correctOption.getId())
                     .correctOptionContent(correctOption.getContent())
                     .correctOptionImagePath(correctOption.getImagePath())
                     .isCorrect(attemptAnswer.getIsCorrect())
-                    .allOptions(optionDetails)
-                    .build();
+                    .allOptions(optionDetails);
+
+            // Nếu có selectedOption → set values, nếu không → set null
+            if (selectedOption != null) {
+                builder.selectedOptionId(selectedOption.getId())
+                        .selectedOptionContent(selectedOption.getContent())
+                        .selectedOptionImagePath(selectedOption.getImagePath());
+            } else {
+                // Không chọn đáp án
+                builder.selectedOptionId(null)
+                        .selectedOptionContent(null)
+                        .selectedOptionImagePath(null);
+            }
+
+            return builder.build();
         }).toList();
 
         return JlptTestAttemptDetailResponse.builder()

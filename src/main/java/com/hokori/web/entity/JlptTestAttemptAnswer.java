@@ -51,11 +51,11 @@ public class JlptTestAttemptAnswer {
     )
     private JlptQuestion question;
 
-    // Option mà user đã chọn
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    // Option mà user đã chọn (null nếu user không chọn đáp án)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(
             name = "selected_option_id",
-            nullable = false,
+            nullable = true,
             foreignKey = @ForeignKey(name = "fk_jlpt_attempt_answer_selected_option")
     )
     private JlptOption selectedOption;
