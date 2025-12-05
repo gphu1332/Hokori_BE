@@ -138,6 +138,16 @@ public class FlashcardSetController {
                 "You are not the owner of this course. Only the course owner can create flashcard sets for course vocabulary.");
         }
 
+        // 2.5. Check if there's already an active flashcard set for this sectionContent
+        // If exists, soft delete the old one(s) before creating a new one
+        List<FlashcardSet> existingSets = setRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(req.getSectionContentId());
+        if (!existingSets.isEmpty()) {
+            // Soft delete all existing sets for this sectionContent
+            for (FlashcardSet existingSet : existingSets) {
+                flashcardSetService.softDeleteSet(existingSet.getId());
+            }
+        }
+
         // 3. Tạo set type COURSE_VOCAB và gắn với sectionContent
         FlashcardSet set = flashcardSetService.createCourseVocabSet(
                 current,
@@ -488,8 +498,13 @@ public class FlashcardSetController {
         
         // Get flashcard set with eager fetching to avoid LazyInitializationException
         // This query eagerly fetches: createdBy, createdBy.role, and sectionContent
-        FlashcardSet set = setRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId)
-                .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found for this sectionContent"));
+        // If multiple sets exist, get the most recent one (ORDER BY createdAt DESC)
+        List<FlashcardSet> sets = setRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId);
+        if (sets.isEmpty()) {
+            throw new EntityNotFoundException("FlashcardSet not found for this sectionContent");
+        }
+        // Get the most recent set (first in list due to ORDER BY createdAt DESC)
+        FlashcardSet set = sets.get(0);
         
         // Ensure all lazy relationships are accessed within transaction
         // Access createdBy and sectionContent to trigger any lazy loading issues early
