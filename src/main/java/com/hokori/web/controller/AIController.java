@@ -571,7 +571,7 @@ public class AIController {
     @PostMapping("/sentence-analysis")
     @Operation(
         summary = "Analyze Japanese sentence", 
-        description = "Analyze Japanese sentence for vocabulary and grammar patterns using AI. Designed for Vietnamese users learning Japanese. All explanations are in Vietnamese.",
+        description = "Analyze Japanese sentence (max 50 characters) for notable vocabulary and grammar patterns using AI. Focuses on words and grammar worth learning at user's JLPT level. Designed for Vietnamese users learning Japanese. All explanations are in Vietnamese. Response is structured separately for vocabulary and grammar to make it easy to display in UI.",
         requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
             description = "Japanese sentence and user's JLPT level",
             required = true,
@@ -692,5 +692,82 @@ public class AIController {
             logger.error("Sentence analysis failed", e);
             return ResponseEntity.ok(ApiResponse.error("Sentence analysis failed: " + e.getMessage()));
         }
+    }
+
+    @GetMapping("/sentence-examples/{level}")
+    @Operation(
+        summary = "Get example sentences for sentence analysis practice",
+        description = "Get list of example Japanese sentences suitable for vocabulary and grammar analysis (NOT conversation practice). These sentences are designed for learning vocabulary and grammar patterns, not for speaking practice."
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getSentenceExamples(
+            @PathVariable String level) {
+        logger.info("Getting sentence examples for level: {}", level);
+        
+        if (sentenceAnalysisService == null) {
+            return ResponseEntity.ok(ApiResponse.error("Sentence analysis service is not available"));
+        }
+        
+        try {
+            // Validate level
+            if (!isValidLevel(level)) {
+                return ResponseEntity.ok(ApiResponse.error("Invalid JLPT level. Valid levels: N5, N4, N3, N2, N1"));
+            }
+
+            List<Map<String, Object>> sentences = sentenceAnalysisService.getExampleSentences(level);
+            
+            Map<String, Object> result = new java.util.HashMap<>();
+            result.put("level", level.toUpperCase());
+            result.put("sentences", sentences);
+            result.put("count", sentences.size());
+            
+            return ResponseEntity.ok(ApiResponse.success("Example sentences for sentence analysis - " + level, result));
+        } catch (Exception e) {
+            logger.error("Failed to get sentence examples", e);
+            return ResponseEntity.ok(ApiResponse.error("Failed to get sentence examples: " + e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/sentence-examples/{level}/random")
+    @Operation(
+        summary = "Get random example sentence for sentence analysis practice",
+        description = "Get a random example Japanese sentence suitable for vocabulary and grammar analysis (NOT conversation practice)"
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getRandomSentenceExample(
+            @PathVariable String level) {
+        logger.info("Getting random sentence example for level: {}", level);
+        
+        if (sentenceAnalysisService == null) {
+            return ResponseEntity.ok(ApiResponse.error("Sentence analysis service is not available"));
+        }
+        
+        try {
+            // Validate level
+            if (!isValidLevel(level)) {
+                return ResponseEntity.ok(ApiResponse.error("Invalid JLPT level. Valid levels: N5, N4, N3, N2, N1"));
+            }
+
+            Map<String, Object> sentence = sentenceAnalysisService.getRandomExampleSentence(level);
+            
+            if (sentence == null) {
+                return ResponseEntity.ok(ApiResponse.error("No example sentences available for level " + level));
+            }
+            
+            return ResponseEntity.ok(ApiResponse.success("Random sentence example for " + level, sentence));
+        } catch (Exception e) {
+            logger.error("Failed to get random sentence example", e);
+            return ResponseEntity.ok(ApiResponse.error("Failed to get random sentence example: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Helper method to validate JLPT level
+     */
+    private boolean isValidLevel(String level) {
+        if (level == null || level.isEmpty()) {
+            return false;
+        }
+        String upperLevel = level.toUpperCase();
+        return upperLevel.equals("N5") || upperLevel.equals("N4") || 
+               upperLevel.equals("N3") || upperLevel.equals("N2") || upperLevel.equals("N1");
     }
 }

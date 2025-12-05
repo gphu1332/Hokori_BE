@@ -12,10 +12,10 @@ import jakarta.validation.constraints.Size;
 public class SentenceAnalysisRequest {
 
     @NotBlank(message = "Sentence is required")
-    @Size(min = 1, max = 100, message = "Sentence must be between 1 and 100 characters")
-    @Schema(description = "Japanese sentence to analyze (15-30 characters recommended)", 
+    @Size(min = 1, max = 50, message = "Sentence must be between 1 and 50 characters")
+    @Schema(description = "Japanese sentence to analyze (max 50 characters)", 
             example = "私は日本語を勉強しています", required = true)
-    private String sentence; // Japanese sentence to analyze (15-30 characters recommended)
+    private String sentence; // Japanese sentence to analyze (max 50 characters)
 
     @NotBlank(message = "Level is required")
     @Schema(description = "User's JLPT level", 

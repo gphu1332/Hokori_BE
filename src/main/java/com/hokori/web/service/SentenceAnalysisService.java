@@ -10,10 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 
@@ -34,7 +32,7 @@ public class SentenceAnalysisService {
     @Value("${google.cloud.enabled:false}")
     private boolean googleCloudEnabled;
 
-    @Value("${ai.sentence-analysis.max-length:100}")
+    @Value("${ai.sentence-analysis.max-length:50}")
     private int maxSentenceLength;
 
     @Autowired(required = false)
@@ -199,7 +197,11 @@ public class SentenceAnalysisService {
             "You are analyzing Japanese vocabulary for Vietnamese users learning Japanese.\n\n" +
             "Analyze the vocabulary in this Japanese sentence: \"%s\"\n\n" +
             "User's JLPT level: %s\n\n" +
-            "Extract all words and provide detailed information in JSON format:\n" +
+            "Focus on NOTABLE and IMPORTANT vocabulary that:\n" +
+            "- Matches user's level (%s) or is essential for understanding\n" +
+            "- Contains interesting kanji or grammar patterns\n" +
+            "- Is worth learning at this level\n\n" +
+            "Extract notable words and provide detailed information in JSON format:\n" +
             "{\n" +
             "  \"vocabulary\": [\n" +
             "    {\n" +
@@ -223,9 +225,10 @@ public class SentenceAnalysisService {
             "Important:\n" +
             "- ALL meanings MUST be in Vietnamese (Tiếng Việt), NOT English\n" +
             "- This is for Vietnamese users learning Japanese\n" +
+            "- Focus on words that are NOTABLE and WORTH LEARNING at level %s\n" +
             "- Mark words as \"high\" importance if they match user's level (%s) or are essential\n" +
-            "- Mark words as \"medium\" if they are slightly above user's level\n" +
-            "- Mark words as \"low\" if they are well below user's level\n" +
+            "- Mark words as \"medium\" if they are slightly above user's level (good to learn)\n" +
+            "- Skip very basic/common words that are well below user's level (unless they have interesting kanji)\n" +
             "- If word is hiragana (e.g., わたし), provide kanji_variants with kanji form (e.g., [\"私\", \"わたし\"])\n" +
             "- If word is kanji, provide kanji_variants with hiragana reading and alternative kanji forms\n" +
             "- Break down kanji radicals/components appropriate for user's level (%s)\n" +
@@ -243,7 +246,11 @@ public class SentenceAnalysisService {
             "You are analyzing Japanese grammar for Vietnamese users learning Japanese.\n\n" +
             "Analyze the grammar patterns in this Japanese sentence: \"%s\"\n\n" +
             "User's JLPT level: %s\n\n" +
-            "Identify all grammar patterns and provide detailed information in JSON format:\n" +
+            "Focus on NOTABLE and IMPORTANT grammar patterns that:\n" +
+            "- Match user's level (%s) or are essential for understanding\n" +
+            "- Are worth learning and practicing at this level\n" +
+            "- Have clear patterns that can be explained\n\n" +
+            "Identify notable grammar patterns and provide detailed information in JSON format:\n" +
             "{\n" +
             "  \"grammar\": [\n" +
             "    {\n" +
@@ -333,6 +340,90 @@ public class SentenceAnalysisService {
             logger.error("Failed to parse related sentences", e);
             return new ArrayList<>(); // Return empty list if parsing fails
         }
+    }
+
+    /**
+     * Get example sentences for sentence analysis practice
+     * These are sentences suitable for vocabulary and grammar analysis (not conversation practice)
+     * 
+     * @param level JLPT level (N5-N1)
+     * @return List of example sentences with translations
+     */
+    public List<Map<String, Object>> getExampleSentences(String level) {
+        if (!googleCloudEnabled) {
+            throw new AIServiceException("Sentence Analysis",
+                "Google Cloud AI is not enabled. Please enable it in application properties.",
+                "SENTENCE_ANALYSIS_SERVICE_DISABLED");
+        }
+
+        if (geminiService == null) {
+            throw new AIServiceException("Sentence Analysis",
+                "Gemini service is not available. Please ensure Google Cloud is properly configured.",
+                "GEMINI_SERVICE_NOT_AVAILABLE");
+        }
+
+        String normalizedLevel = normalizeLevel(level);
+        logger.info("Getting example sentences for sentence analysis: level={}", normalizedLevel);
+
+        try {
+            String prompt = buildExampleSentencesPrompt(normalizedLevel);
+            String jsonResponse = geminiService.generateContent(prompt);
+            
+            // Extract JSON from response
+            jsonResponse = extractJsonFromText(jsonResponse);
+
+            Map<String, Object> responseMap = objectMapper.readValue(jsonResponse, new TypeReference<Map<String, Object>>() {});
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> sentences = (List<Map<String, Object>>) responseMap.get("sentences");
+            
+            return sentences != null ? sentences : new ArrayList<>();
+        } catch (Exception e) {
+            logger.error("Failed to get example sentences", e);
+            throw new AIServiceException("Sentence Analysis",
+                "Failed to get example sentences: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get a random example sentence for sentence analysis practice
+     */
+    public Map<String, Object> getRandomExampleSentence(String level) {
+        List<Map<String, Object>> sentences = getExampleSentences(level);
+        if (sentences.isEmpty()) {
+            return null;
+        }
+        Random random = new Random();
+        return sentences.get(random.nextInt(sentences.size()));
+    }
+
+    /**
+     * Build prompt for generating example sentences for sentence analysis
+     */
+    private String buildExampleSentencesPrompt(String level) {
+        return String.format(
+            "You are generating example Japanese sentences for Vietnamese users learning Japanese.\n\n" +
+            "Generate 10-15 example sentences suitable for VOCABULARY AND GRAMMAR ANALYSIS (not conversation practice).\n\n" +
+            "User's JLPT level: %s\n\n" +
+            "Requirements:\n" +
+            "- Sentences should contain interesting vocabulary and grammar patterns appropriate for level %s\n" +
+            "- Focus on sentences that demonstrate clear grammar structures and useful vocabulary\n" +
+            "- Sentences should be 15-40 characters long\n" +
+            "- Include a mix of common patterns and vocabulary for level %s\n" +
+            "- NOT conversational phrases (like greetings or small talk)\n" +
+            "- Examples: sentences about daily activities, descriptions, explanations, etc.\n\n" +
+            "Provide in JSON format:\n" +
+            "{\n" +
+            "  \"sentences\": [\n" +
+            "    {\n" +
+            "      \"sentence\": \"Japanese sentence\",\n" +
+            "      \"translation\": \"Vietnamese translation\"\n" +
+            "    }\n" +
+            "  ]\n" +
+            "}\n\n" +
+            "Important:\n" +
+            "- ALL translations MUST be in Vietnamese (Tiếng Việt), NOT English\n" +
+            "- Return ONLY valid JSON, no additional text",
+            level, level, level);
     }
 
     /**
