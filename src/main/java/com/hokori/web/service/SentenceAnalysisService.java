@@ -34,17 +34,11 @@ public class SentenceAnalysisService {
     @Value("${google.cloud.enabled:false}")
     private boolean googleCloudEnabled;
 
-    @Value("${google.cloud.gemini.api-key:}")
-    private String geminiApiKey;
-
-    @Value("${google.cloud.gemini.model:gemini-pro}")
-    private String geminiModel;
-
     @Value("${ai.sentence-analysis.max-length:100}")
     private int maxSentenceLength;
 
-    @Autowired
-    private RestTemplate restTemplate;
+    @Autowired(required = false)
+    private GeminiService geminiService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -62,11 +56,11 @@ public class SentenceAnalysisService {
                 "SENTENCE_ANALYSIS_SERVICE_DISABLED");
         }
 
-        // Validate API key
-        if (!StringUtils.hasText(geminiApiKey)) {
+        // Validate GeminiService is available
+        if (geminiService == null) {
             throw new AIServiceException("Sentence Analysis",
-                "Gemini API key is not configured. Please set GOOGLE_CLOUD_GEMINI_API_KEY environment variable.",
-                "GEMINI_API_KEY_NOT_CONFIGURED");
+                "Gemini service is not available. Please ensure Google Cloud is properly configured.",
+                "GEMINI_SERVICE_NOT_AVAILABLE");
         }
 
         // Input validation
@@ -89,12 +83,20 @@ public class SentenceAnalysisService {
             // Step 2: Analyze grammar
             List<GrammarItem> grammar = analyzeGrammar(sentence, normalizedLevel);
 
-            // Step 3: Build response
+            // Step 3: Analyze sentence breakdown
+            SentenceAnalysisResponse.SentenceBreakdown breakdown = analyzeSentenceBreakdown(sentence, normalizedLevel);
+
+            // Step 4: Get related sentences
+            List<String> relatedSentences = getRelatedSentences(sentence, normalizedLevel);
+
+            // Step 5: Build response
             SentenceAnalysisResponse response = new SentenceAnalysisResponse();
             response.setSentence(sentence);
             response.setLevel(normalizedLevel);
             response.setVocabulary(vocabulary);
             response.setGrammar(grammar);
+            response.setSentenceBreakdown(breakdown);
+            response.setRelatedSentences(relatedSentences);
 
             logger.debug("Sentence analysis completed: vocabularyCount={}, grammarCount={}",
                 vocabulary.size(), grammar.size());
@@ -114,7 +116,10 @@ public class SentenceAnalysisService {
      */
     private List<VocabularyItem> analyzeVocabulary(String sentence, String level) {
         String prompt = buildVocabularyPrompt(sentence, level);
-        String jsonResponse = callGeminiAPI(prompt);
+        String jsonResponse = geminiService.generateContent(prompt);
+        
+        // Extract JSON from response (remove markdown code blocks if present)
+        jsonResponse = extractJsonFromText(jsonResponse);
 
         try {
             // Parse JSON response
@@ -151,7 +156,10 @@ public class SentenceAnalysisService {
      */
     private List<GrammarItem> analyzeGrammar(String sentence, String level) {
         String prompt = buildGrammarPrompt(sentence, level);
-        String jsonResponse = callGeminiAPI(prompt);
+        String jsonResponse = geminiService.generateContent(prompt);
+        
+        // Extract JSON from response (remove markdown code blocks if present)
+        jsonResponse = extractJsonFromText(jsonResponse);
 
         try {
             // Parse JSON response
@@ -200,13 +208,15 @@ public class SentenceAnalysisService {
             "      \"meaning_vi\": \"Vietnamese meaning (MUST be in Vietnamese, not English)\",\n" +
             "      \"jlpt_level\": \"N5|N4|N3|N2|N1\",\n" +
             "      \"kanji_details\": {\n" +
-            "        \"radical\": \"radical (if kanji)\",\n" +
+            "        \"radical\": \"radical (if kanji, break down by components appropriate for level %s)\",\n" +
             "        \"stroke_count\": number,\n" +
             "        \"onyomi\": \"onyomi reading\",\n" +
             "        \"kunyomi\": \"kunyomi reading\",\n" +
             "        \"related_words\": [\"word1\", \"word2\"]\n" +
             "      },\n" +
-            "      \"importance\": \"high|medium|low\"\n" +
+            "      \"importance\": \"high|medium|low\",\n" +
+            "      \"examples\": [\"example sentence 1\", \"example sentence 2\"],\n" +
+            "      \"kanji_variants\": [\"kanji form\", \"hiragana form\"]\n" +
             "    }\n" +
             "  ]\n" +
             "}\n\n" +
@@ -216,9 +226,13 @@ public class SentenceAnalysisService {
             "- Mark words as \"high\" importance if they match user's level (%s) or are essential\n" +
             "- Mark words as \"medium\" if they are slightly above user's level\n" +
             "- Mark words as \"low\" if they are well below user's level\n" +
+            "- If word is hiragana (e.g., わたし), provide kanji_variants with kanji form (e.g., [\"私\", \"わたし\"])\n" +
+            "- If word is kanji, provide kanji_variants with hiragana reading and alternative kanji forms\n" +
+            "- Break down kanji radicals/components appropriate for user's level (%s)\n" +
+            "- Provide 2-3 example sentences using this vocabulary\n" +
             "- Only include kanji_details if the word contains kanji\n" +
             "- Return ONLY valid JSON, no additional text",
-            sentence, level, level);
+            sentence, level, level, level, level);
     }
 
     /**
@@ -237,7 +251,15 @@ public class SentenceAnalysisService {
             "      \"jlpt_level\": \"N5|N4|N3|N2|N1\",\n" +
             "      \"explanation_vi\": \"Vietnamese explanation (MUST be in Vietnamese, not English)\",\n" +
             "      \"example\": \"example sentence\",\n" +
-            "      \"notes\": \"common mistakes and notes (in Vietnamese)\"\n" +
+            "      \"notes\": \"common mistakes and notes (in Vietnamese)\",\n" +
+            "      \"examples\": [\"example sentence 1\", \"example sentence 2\"],\n" +
+            "      \"confusing_patterns\": [\n" +
+            "        {\n" +
+            "          \"pattern\": \"pattern name that might be confused\",\n" +
+            "          \"difference\": \"explanation of difference in Vietnamese\",\n" +
+            "          \"example\": \"example sentence showing the difference\"\n" +
+            "        }\n" +
+            "      ]\n" +
             "    }\n" +
             "  ]\n" +
             "}\n\n" +
@@ -246,89 +268,117 @@ public class SentenceAnalysisService {
             "- This is for Vietnamese users learning Japanese\n" +
             "- Focus on grammar patterns appropriate for level %s\n" +
             "- Provide clear explanations in Vietnamese\n" +
-            "- Include practical examples\n" +
+            "- Include 2-3 example sentences using this grammar pattern\n" +
+            "- Identify confusing patterns at the same JLPT level (%s) that might be mistaken\n" +
+            "- For confusing_patterns, focus on patterns that Vietnamese learners commonly confuse\n" +
+            "- Explain the difference clearly in Vietnamese\n" +
+            "- Return ONLY valid JSON, no additional text",
+            sentence, level, level, level);
+    }
+
+    /**
+     * Analyze sentence breakdown (structure analysis)
+     */
+    private SentenceAnalysisResponse.SentenceBreakdown analyzeSentenceBreakdown(String sentence, String level) {
+        String prompt = buildSentenceBreakdownPrompt(sentence, level);
+        String jsonResponse = geminiService.generateContent(prompt);
+        
+        // Extract JSON from response (remove markdown code blocks if present)
+        jsonResponse = extractJsonFromText(jsonResponse);
+
+        try {
+            Map<String, Object> responseMap = objectMapper.readValue(jsonResponse, new TypeReference<Map<String, Object>>() {});
+            @SuppressWarnings("unchecked")
+            Map<String, Object> breakdownMap = (Map<String, Object>) responseMap.get("breakdown");
+            
+            if (breakdownMap == null) {
+                logger.warn("No breakdown found in AI response");
+                return null;
+            }
+
+            SentenceAnalysisResponse.SentenceBreakdown breakdown = new SentenceAnalysisResponse.SentenceBreakdown();
+            breakdown.setSubject((String) breakdownMap.get("subject"));
+            breakdown.setPredicate((String) breakdownMap.get("predicate"));
+            breakdown.setObject((String) breakdownMap.get("object"));
+            breakdown.setExplanationVi((String) breakdownMap.get("explanation_vi"));
+            
+            @SuppressWarnings("unchecked")
+            List<String> particles = (List<String>) breakdownMap.get("particles");
+            breakdown.setParticles(particles);
+
+            return breakdown;
+        } catch (Exception e) {
+            logger.error("Failed to parse sentence breakdown", e);
+            return null; // Return null if parsing fails, don't break the whole response
+        }
+    }
+
+    /**
+     * Get related example sentences
+     */
+    private List<String> getRelatedSentences(String sentence, String level) {
+        String prompt = buildRelatedSentencesPrompt(sentence, level);
+        String jsonResponse = geminiService.generateContent(prompt);
+        
+        // Extract JSON from response (remove markdown code blocks if present)
+        jsonResponse = extractJsonFromText(jsonResponse);
+
+        try {
+            Map<String, Object> responseMap = objectMapper.readValue(jsonResponse, new TypeReference<Map<String, Object>>() {});
+            @SuppressWarnings("unchecked")
+            List<String> sentences = (List<String>) responseMap.get("related_sentences");
+            
+            return sentences != null ? sentences : new ArrayList<>();
+        } catch (Exception e) {
+            logger.error("Failed to parse related sentences", e);
+            return new ArrayList<>(); // Return empty list if parsing fails
+        }
+    }
+
+    /**
+     * Build prompt for sentence breakdown
+     */
+    private String buildSentenceBreakdownPrompt(String sentence, String level) {
+        return String.format(
+            "You are analyzing Japanese sentence structure for Vietnamese users learning Japanese.\n\n" +
+            "Analyze the structure of this Japanese sentence: \"%s\"\n\n" +
+            "User's JLPT level: %s\n\n" +
+            "Provide detailed breakdown in JSON format:\n" +
+            "{\n" +
+            "  \"breakdown\": {\n" +
+            "    \"subject\": \"subject (if any)\",\n" +
+            "    \"predicate\": \"predicate/verb\",\n" +
+            "    \"object\": \"object (if any)\",\n" +
+            "    \"particles\": [\"は\", \"を\", \"に\"],\n" +
+            "    \"explanation_vi\": \"Detailed explanation in Vietnamese of sentence structure\"\n" +
+            "  }\n" +
+            "}\n\n" +
+            "Important:\n" +
+            "- ALL explanations MUST be in Vietnamese (Tiếng Việt), NOT English\n" +
+            "- Explain the role of each particle clearly\n" +
+            "- Explain sentence structure appropriate for level %s\n" +
             "- Return ONLY valid JSON, no additional text",
             sentence, level, level);
     }
 
     /**
-     * Call Gemini API to get AI analysis
+     * Build prompt for related sentences
      */
-    private String callGeminiAPI(String prompt) {
-        try {
-            String apiUrl = String.format(
-                "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-                geminiModel, geminiApiKey);
-
-            Map<String, Object> requestBody = new HashMap<>();
-            List<Map<String, Object>> contents = new ArrayList<>();
-            Map<String, Object> content = new HashMap<>();
-            List<Map<String, Object>> parts = new ArrayList<>();
-            Map<String, Object> part = new HashMap<>();
-            part.put("text", prompt);
-            parts.add(part);
-            content.put("parts", parts);
-            contents.add(content);
-            requestBody.put("contents", contents);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-
-            logger.debug("Calling Gemini API: model={}", geminiModel);
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                apiUrl, HttpMethod.POST, request, 
-                new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {});
-
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                Map<String, Object> body = response.getBody();
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> candidates = (List<Map<String, Object>>) body.get("candidates");
-                
-                if (candidates != null && !candidates.isEmpty()) {
-                    Map<String, Object> candidate = candidates.get(0);
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> contentMap = (Map<String, Object>) candidate.get("content");
-                    
-                    if (contentMap != null) {
-                        @SuppressWarnings("unchecked")
-                        List<Map<String, Object>> partsList = (List<Map<String, Object>>) contentMap.get("parts");
-                        
-                        if (partsList != null && !partsList.isEmpty()) {
-                            String text = (String) partsList.get(0).get("text");
-                            // Extract JSON from response (remove markdown code blocks if present)
-                            return extractJsonFromText(text);
-                        }
-                    }
-                }
-            }
-
-            // Check for error in response
-            if (response.getBody() != null) {
-                Map<String, Object> body = response.getBody();
-                if (body.containsKey("error")) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> error = (Map<String, Object>) body.get("error");
-                    String errorMessage = error != null ? (String) error.get("message") : "Unknown error";
-                    throw new AIServiceException("Sentence Analysis",
-                        "Gemini API error: " + errorMessage, "GEMINI_API_ERROR");
-                }
-            }
-
-            throw new AIServiceException("Sentence Analysis",
-                "Invalid response from Gemini API", "AI_API_ERROR");
-        } catch (AIServiceException e) {
-            throw e;
-        } catch (org.springframework.web.client.HttpClientErrorException e) {
-            logger.error("Gemini API HTTP error: {}", e.getResponseBodyAsString());
-            throw new AIServiceException("Sentence Analysis",
-                "Gemini API HTTP error: " + e.getMessage(), "GEMINI_API_HTTP_ERROR");
-        } catch (Exception e) {
-            logger.error("Gemini API call failed", e);
-            throw new AIServiceException("Sentence Analysis",
-                "Failed to call Gemini API: " + e.getMessage(), e);
-        }
+    private String buildRelatedSentencesPrompt(String sentence, String level) {
+        return String.format(
+            "You are generating related example sentences for Vietnamese users learning Japanese.\n\n" +
+            "Original sentence: \"%s\"\n\n" +
+            "User's JLPT level: %s\n\n" +
+            "Generate 3-5 related example sentences that:\n" +
+            "- Use similar vocabulary and grammar patterns\n" +
+            "- Are appropriate for JLPT level %s\n" +
+            "- Help users understand the original sentence better\n\n" +
+            "Provide in JSON format:\n" +
+            "{\n" +
+            "  \"related_sentences\": [\"sentence 1\", \"sentence 2\", \"sentence 3\"]\n" +
+            "}\n\n" +
+            "Return ONLY valid JSON, no additional text",
+            sentence, level, level);
     }
 
     /**
@@ -383,6 +433,16 @@ public class SentenceAnalysisService {
                 item.setKanjiDetails(kanjiDetails);
             }
 
+            // Handle examples
+            @SuppressWarnings("unchecked")
+            List<String> examples = (List<String>) map.get("examples");
+            item.setExamples(examples);
+
+            // Handle kanji_variants
+            @SuppressWarnings("unchecked")
+            List<String> kanjiVariants = (List<String>) map.get("kanji_variants");
+            item.setKanjiVariants(kanjiVariants);
+
             return item;
         } catch (Exception e) {
             logger.warn("Failed to map vocabulary item: {}", e.getMessage());
@@ -401,6 +461,27 @@ public class SentenceAnalysisService {
             item.setExplanationVi((String) map.get("explanation_vi"));
             item.setExample((String) map.get("example"));
             item.setNotes((String) map.get("notes"));
+
+            // Handle examples
+            @SuppressWarnings("unchecked")
+            List<String> examples = (List<String>) map.get("examples");
+            item.setExamples(examples);
+
+            // Handle confusing_patterns
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> confusingPatternsList = (List<Map<String, Object>>) map.get("confusing_patterns");
+            if (confusingPatternsList != null) {
+                List<GrammarItem.ConfusingPattern> confusingPatterns = new ArrayList<>();
+                for (Map<String, Object> cpMap : confusingPatternsList) {
+                    GrammarItem.ConfusingPattern cp = new GrammarItem.ConfusingPattern();
+                    cp.setPattern((String) cpMap.get("pattern"));
+                    cp.setDifference((String) cpMap.get("difference"));
+                    cp.setExample((String) cpMap.get("example"));
+                    confusingPatterns.add(cp);
+                }
+                item.setConfusingPatterns(confusingPatterns);
+            }
+
             return item;
         } catch (Exception e) {
             logger.warn("Failed to map grammar item: {}", e.getMessage());

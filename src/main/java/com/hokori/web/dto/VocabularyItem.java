@@ -27,6 +27,14 @@ public class VocabularyItem {
             example = "high", 
             allowableValues = {"high", "medium", "low"})
     private String importance; // "high", "medium", "low" based on user's level
+    
+    @Schema(description = "Example sentences using this vocabulary (in Vietnamese)", 
+            example = "[\"私は学生です。\", \"私の本です。\"]")
+    private List<String> examples; // Example sentences using this vocabulary
+    
+    @Schema(description = "Kanji variants (if word is hiragana, suggest kanji; if kanji, show alternative writings)", 
+            example = "[\"私\", \"わたし\"]")
+    private List<String> kanjiVariants; // Kanji alternatives (hiragana → kanji suggestions)
 
     public VocabularyItem() {}
 
@@ -146,6 +154,22 @@ public class VocabularyItem {
         public void setRelatedWords(List<String> relatedWords) {
             this.relatedWords = relatedWords;
         }
+    }
+
+    public List<String> getExamples() {
+        return examples;
+    }
+
+    public void setExamples(List<String> examples) {
+        this.examples = examples;
+    }
+
+    public List<String> getKanjiVariants() {
+        return kanjiVariants;
+    }
+
+    public void setKanjiVariants(List<String> kanjiVariants) {
+        this.kanjiVariants = kanjiVariants;
     }
 }
 
