@@ -235,7 +235,7 @@ public class SentenceAnalysisService {
             "- Provide 2-3 example sentences using this vocabulary\n" +
             "- Only include kanji_details if the word contains kanji\n" +
             "- Return ONLY valid JSON, no additional text",
-            sentence, level, level, level, level);
+            sentence, level, level, level, level, level, level);
     }
 
     /**
@@ -280,7 +280,7 @@ public class SentenceAnalysisService {
             "- For confusing_patterns, focus on patterns that Vietnamese learners commonly confuse\n" +
             "- Explain the difference clearly in Vietnamese\n" +
             "- Return ONLY valid JSON, no additional text",
-            sentence, level, level, level);
+            sentence, level, level, level, level);
     }
 
     /**
