@@ -28,6 +28,38 @@ public interface FlashcardSetRepository extends JpaRepository<FlashcardSet, Long
            "WHERE s.sectionContent.id = :sectionContentId AND s.deletedFlag = false")
     Optional<FlashcardSet> findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(@Param("sectionContentId") Long sectionContentId);
 
+    /**
+     * Find flashcard set by ID with eager fetching of createdBy and role
+     * to avoid LazyInitializationException when serializing response.
+     */
+    @Query("SELECT s FROM FlashcardSet s " +
+           "LEFT JOIN FETCH s.createdBy u " +
+           "LEFT JOIN FETCH u.role " +
+           "WHERE s.id = :id AND s.deletedFlag = false")
+    Optional<FlashcardSet> findByIdWithCreatedBy(@Param("id") Long id);
+
+    /**
+     * Find flashcard sets by createdBy with eager fetching of createdBy and role
+     * to avoid LazyInitializationException when serializing response.
+     */
+    @Query("SELECT DISTINCT s FROM FlashcardSet s " +
+           "LEFT JOIN FETCH s.createdBy u " +
+           "LEFT JOIN FETCH u.role " +
+           "WHERE s.createdBy.id = :userId AND s.deletedFlag = false")
+    List<FlashcardSet> findByCreatedBy_IdAndDeletedFlagFalseWithCreatedBy(@Param("userId") Long userId);
+
+    /**
+     * Find flashcard sets by createdBy and type with eager fetching of createdBy and role
+     * to avoid LazyInitializationException when serializing response.
+     */
+    @Query("SELECT DISTINCT s FROM FlashcardSet s " +
+           "LEFT JOIN FETCH s.createdBy u " +
+           "LEFT JOIN FETCH u.role " +
+           "WHERE s.createdBy.id = :userId AND s.type = :type AND s.deletedFlag = false")
+    List<FlashcardSet> findByCreatedBy_IdAndTypeAndDeletedFlagFalseWithCreatedBy(
+            @Param("userId") Long userId, 
+            @Param("type") FlashcardSetType type);
+
     long countByCreatedBy_IdAndDeletedFlagFalse(Long userId);
 
     long countByCreatedBy_IdAndLevelAndDeletedFlagFalse(Long userId, String level);

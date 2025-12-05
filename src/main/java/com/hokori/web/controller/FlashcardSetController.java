@@ -85,6 +85,8 @@ public class FlashcardSetController {
                 req.getDescription(),
                 req.getLevel()
         );
+        // Reload with eager fetching to avoid LazyInitializationException
+        set = flashcardSetService.getSetOrThrowWithCreatedBy(set.getId());
         return FlashcardSetResponse.fromEntity(set);
     }
 
@@ -142,6 +144,8 @@ public class FlashcardSetController {
                 req.getDescription(),
                 req.getLevel()
         );
+        // Reload with eager fetching to avoid LazyInitializationException
+        set = flashcardSetService.getSetOrThrowWithCreatedBy(set.getId());
         return FlashcardSetResponse.fromEntity(set);
     }
 
@@ -180,9 +184,9 @@ public class FlashcardSetController {
         Long userId = currentUserService.getCurrentUserId();
         List<FlashcardSet> sets;
         if (type != null) {
-            sets = setRepo.findByCreatedBy_IdAndTypeAndDeletedFlagFalse(userId, type);
+            sets = setRepo.findByCreatedBy_IdAndTypeAndDeletedFlagFalseWithCreatedBy(userId, type);
         } else {
-            sets = setRepo.findByCreatedBy_IdAndDeletedFlagFalse(userId);
+            sets = setRepo.findByCreatedBy_IdAndDeletedFlagFalseWithCreatedBy(userId);
         }
         return sets.stream()
                 .map(FlashcardSetResponse::fromEntity)
@@ -202,7 +206,7 @@ public class FlashcardSetController {
     public FlashcardSetResponse getSetDetail(
             @PathVariable Long setId
     ) {
-        FlashcardSet set = flashcardSetService.getSetOrThrow(setId);
+        FlashcardSet set = flashcardSetService.getSetOrThrowWithCreatedBy(setId);
         return FlashcardSetResponse.fromEntity(set);
     }
 
@@ -276,6 +280,8 @@ public class FlashcardSetController {
                 req.description(),
                 req.level()
         );
+        // Reload with eager fetching to avoid LazyInitializationException
+        updated = flashcardSetService.getSetOrThrowWithCreatedBy(updated.getId());
         return FlashcardSetResponse.fromEntity(updated);
     }
 
@@ -389,7 +395,7 @@ public class FlashcardSetController {
     public FlashcardSetResponse getSetBySectionContent(
             @PathVariable Long sectionContentId
     ) {
-        User current = currentUserService.getCurrentUserOrThrow();
+        Long currentUserId = currentUserService.getUserIdOrThrow();
         
         // Get flashcard set with eager fetching to avoid LazyInitializationException
         FlashcardSet set = setRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId)
@@ -415,7 +421,7 @@ public class FlashcardSetController {
             
             // Nếu không phải course owner, có thể là learner đã enroll (nhưng nên dùng endpoint riêng)
             // Hoặc có thể là teacher khác → không cho phép
-            if (courseOwnerId != null && !courseOwnerId.equals(current.getId())) {
+            if (courseOwnerId != null && !courseOwnerId.equals(currentUserId)) {
                 // Không phải owner → có thể là learner, nhưng endpoint này không check enrollment
                 // Nên để FE dùng endpoint riêng cho learner
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -424,7 +430,7 @@ public class FlashcardSetController {
             }
         } else if (set.getType() == FlashcardSetType.PERSONAL) {
             // PERSONAL: chỉ cho phép người tạo
-            if (!set.getCreatedBy().getId().equals(current.getId())) {
+            if (!set.getCreatedBy().getId().equals(currentUserId)) {
                 throw new AccessDeniedException("You are not the owner of this flashcard set");
             }
         }

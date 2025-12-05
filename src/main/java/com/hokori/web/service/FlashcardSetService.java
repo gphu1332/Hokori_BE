@@ -72,6 +72,15 @@ public class FlashcardSetService {
                 .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found"));
     }
 
+    /**
+     * Get flashcard set with eager fetching of createdBy and role
+     * to avoid LazyInitializationException when serializing response.
+     */
+    public FlashcardSet getSetOrThrowWithCreatedBy(Long id) {
+        return setRepo.findByIdWithCreatedBy(id)
+                .orElseThrow(() -> new EntityNotFoundException("FlashcardSet not found"));
+    }
+
     // =======================
     // CARD CRUD
     // =======================
