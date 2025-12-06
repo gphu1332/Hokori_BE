@@ -44,6 +44,16 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     void deleteAllByCartId(@Param("cartId") Long cartId);
     
     /**
+     * Delete cart items by cart ID and course IDs (native query to avoid loading entities).
+     */
+    @Modifying
+    @Query(value = """
+        DELETE FROM cartitem 
+        WHERE cart_id = :cartId AND course_id IN :courseIds
+        """, nativeQuery = true)
+    void deleteByCart_IdAndCourse_IdIn(@Param("cartId") Long cartId, @Param("courseIds") List<Long> courseIds);
+    
+    /**
      * Get cart item metadata without loading Course entity (avoids LOB stream error).
      * Includes course status and deletedFlag for filtering invalid items.
      * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).

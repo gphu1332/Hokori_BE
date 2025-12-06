@@ -335,4 +335,14 @@ public class CartService {
         itemRepo.deleteAllByCartId(cart.getId());
         return view();
     }
+    
+    /**
+     * Remove cart items by course IDs (used after enrolling in free courses)
+     */
+    public void clearItems(List<Long> courseIds) {
+        Long userId = current.getCurrentUserId();
+        Cart cart = getOrCreateCart(userId);
+        // Delete items for these course IDs
+        itemRepo.deleteByCart_IdAndCourse_IdIn(cart.getId(), courseIds);
+    }
 }

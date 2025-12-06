@@ -3,13 +3,17 @@ package com.hokori.web.controller;
 import com.hokori.web.dto.ApiResponse;
 import com.hokori.web.dto.payment.CheckoutRequest;
 import com.hokori.web.dto.payment.CheckoutResponse;
+import com.hokori.web.dto.payment.PaymentResponse;
 import com.hokori.web.dto.payment.PayOSWebhookData;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -49,6 +53,45 @@ public class PaymentController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new WebhookResponse(-1, "Error: " + e.getMessage(), null));
         }
+    }
+    
+    @Operation(
+            summary = "Lịch sử thanh toán của tôi",
+            description = "Lấy danh sách các payment của user hiện tại, sắp xếp theo thời gian tạo mới nhất"
+    )
+    @GetMapping("/my-payments")
+    public ResponseEntity<ApiResponse<Page<PaymentResponse>>> listMyPayments(
+            @Parameter(description = "Phân trang: page, size, sort (ví dụ: sort=createdAt,desc)")
+            Pageable pageable) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        Page<PaymentResponse> payments = paymentService.listMyPayments(userId, pageable);
+        return ResponseEntity.ok(ApiResponse.success("Payment history retrieved", payments));
+    }
+    
+    @Operation(
+            summary = "Chi tiết payment",
+            description = "Lấy chi tiết một payment cụ thể của user hiện tại"
+    )
+    @GetMapping("/{paymentId}")
+    public ResponseEntity<ApiResponse<PaymentResponse>> getPaymentDetail(
+            @Parameter(description = "Payment ID")
+            @PathVariable Long paymentId) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        PaymentResponse payment = paymentService.getPaymentDetail(paymentId, userId);
+        return ResponseEntity.ok(ApiResponse.success("Payment detail retrieved", payment));
+    }
+    
+    @Operation(
+            summary = "Chi tiết payment theo orderCode",
+            description = "Lấy chi tiết payment theo orderCode (PayOS order code) của user hiện tại"
+    )
+    @GetMapping("/order/{orderCode}")
+    public ResponseEntity<ApiResponse<PaymentResponse>> getPaymentByOrderCode(
+            @Parameter(description = "PayOS Order Code")
+            @PathVariable Long orderCode) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        PaymentResponse payment = paymentService.getPaymentByOrderCode(orderCode, userId);
+        return ResponseEntity.ok(ApiResponse.success("Payment detail retrieved", payment));
     }
     
     // Response format expected by PayOS

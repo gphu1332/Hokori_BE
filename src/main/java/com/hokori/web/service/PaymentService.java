@@ -10,6 +10,8 @@ import com.hokori.web.entity.Payment;
 import com.hokori.web.repository.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -90,15 +93,52 @@ public class PaymentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No items selected for checkout");
         }
         
-        // Calculate total amount
+        // Calculate total amount (in VND)
         long totalAmount = itemsToCheckout.stream()
                 .mapToLong(CartItemResponse::totalPrice)
                 .sum();
         
-        if (totalAmount <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Total amount must be greater than 0");
+        // Collect course IDs
+        List<Long> courseIds = itemsToCheckout.stream()
+                .map(CartItemResponse::courseId)
+                .collect(Collectors.toList());
+        
+        // If total amount is 0 (all courses are free), enroll directly without payment
+        if (totalAmount == 0) {
+            // Enroll user into all free courses
+            for (Long courseId : courseIds) {
+                try {
+                    if (!enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+                        learnerProgressService.enrollCourse(userId, courseId);
+                        log.info("Enrolled user {} into free course {}", userId, courseId);
+                    }
+                } catch (Exception e) {
+                    log.error("Error enrolling user {} into free course {}", userId, courseId, e);
+                    // Continue with other courses even if one fails
+                }
+            }
+            
+            // Clear cart items that were enrolled
+            try {
+                cartService.clearItems(courseIds);
+                log.info("Cleared cart items for free courses after enrollment");
+            } catch (Exception e) {
+                log.error("Error clearing cart items", e);
+            }
+            
+            // Return response indicating direct enrollment (no payment needed)
+            return CheckoutResponse.builder()
+                    .paymentId(null)
+                    .orderCode(null)
+                    .paymentLink(null)
+                    .qrCode(null)
+                    .amountCents(0L)
+                    .description(String.format("Đã đăng ký %d khóa học miễn phí", courseIds.size()))
+                    .expiredAt(null)
+                    .build();
         }
         
+        // Total amount > 0, proceed with payment flow
         // Generate order code
         Long orderCode = payOSService.generateOrderCode();
         
@@ -109,7 +149,6 @@ public class PaymentService {
         
         // Prepare items for PayOS
         List<PayOSCreatePaymentRequest.PayOSItem> payOSItems = new ArrayList<>();
-        List<Long> courseIds = new ArrayList<>();
         
         for (CartItemResponse item : itemsToCheckout) {
             // Get course title for description
@@ -125,10 +164,8 @@ public class PaymentService {
             payOSItems.add(PayOSCreatePaymentRequest.PayOSItem.builder()
                     .name(courseTitle)
                     .quantity(item.quantity())
-                    .price(item.totalPrice() / item.quantity()) // Price per unit
+                    .price(item.totalPrice() / item.quantity()) // Price per unit in VND
                     .build());
-            
-            courseIds.add(item.courseId());
         }
         
         // Create description
@@ -138,14 +175,11 @@ public class PaymentService {
         Long expiredAt = Instant.now().plusSeconds(30 * 60).getEpochSecond();
         
         // Create payment link via PayOS
-        // Note: PayOS API expects amount in VND (not cents), so we convert from cents to VND
-        // But in our system, we store everything in cents, so totalAmount is already in cents
-        // PayOS API documentation says amount should be in VND, so we need to divide by 100 if we're storing cents
-        // However, if our priceCents is already in VND (not cents), then we use it directly
-        // Assuming priceCents is in VND (not cents) based on the codebase
+        // Note: PayOS API expects amount in VND
+        // Our priceCents field stores amount in VND (not cents), so we send it directly
         PayOSCreatePaymentResponse payOSResponse = payOSService.createPaymentLink(
                 orderCode,
-                totalAmount, // Amount in VND (assuming priceCents is already in VND)
+                totalAmount, // Amount in VND
                 description,
                 payOSItems,
                 expiredAt
@@ -165,7 +199,7 @@ public class PaymentService {
         
         Payment payment = Payment.builder()
                 .orderCode(orderCode)
-                .amountCents(totalAmount)
+                .amountCents(totalAmount) // Amount in VND
                 .description(description)
                 .status(PaymentStatus.PENDING)
                 .userId(userId)
@@ -282,6 +316,58 @@ public class PaymentService {
             } catch (Exception e) {
                 log.error("Error clearing cart items", e);
             }
+        }
+    }
+    
+    /**
+     * Lấy danh sách payments của user (phân trang)
+     */
+    @Transactional(readOnly = true)
+    public Page<PaymentResponse> listMyPayments(Long userId, Pageable pageable) {
+        Page<Payment> payments = paymentRepo.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+        return payments.map(payment -> {
+            List<Long> courseIds = parseCourseIds(payment.getCourseIds());
+            return PaymentResponse.fromEntity(payment, courseIds);
+        });
+    }
+    
+    /**
+     * Lấy chi tiết một payment của user
+     */
+    @Transactional(readOnly = true)
+    public PaymentResponse getPaymentDetail(Long paymentId, Long userId) {
+        Payment payment = paymentRepo.findByIdAndUserId(paymentId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
+        List<Long> courseIds = parseCourseIds(payment.getCourseIds());
+        return PaymentResponse.fromEntity(payment, courseIds);
+    }
+    
+    /**
+     * Lấy payment theo orderCode của user
+     */
+    @Transactional(readOnly = true)
+    public PaymentResponse getPaymentByOrderCode(Long orderCode, Long userId) {
+        Payment payment = paymentRepo.findByOrderCodeAndUserId(orderCode, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
+        List<Long> courseIds = parseCourseIds(payment.getCourseIds());
+        return PaymentResponse.fromEntity(payment, courseIds);
+    }
+    
+    /**
+     * Parse courseIds từ JSON string
+     */
+    private List<Long> parseCourseIds(String courseIdsJson) {
+        if (courseIdsJson == null || courseIdsJson.isEmpty()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(
+                    courseIdsJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, Long.class)
+            );
+        } catch (Exception e) {
+            log.error("Error parsing courseIds", e);
+            return Collections.emptyList();
         }
     }
 }
