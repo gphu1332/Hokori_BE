@@ -101,7 +101,7 @@ public class PayOSService {
                         entity,
                         PayOSCreatePaymentResponse.class
                 );
-            
+                
                 log.info("PayOS API response status: {}", response.getStatusCode());
                 
                 if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -141,22 +141,22 @@ public class PayOSService {
                                     payOSConfig.getApiUrl(), maxRetries, rootCause), e);
                 }
             } catch (org.springframework.web.client.HttpClientErrorException e) {
-            String rootCause = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
-            log.error("Network error calling PayOS API. URL: {}, Error: {}, Root cause: {}", 
-                    payOSConfig.getApiUrl() + "/payment-requests", e.getMessage(), rootCause, e);
-            throw new RuntimeException(
-                    String.format("Failed to connect to PayOS API at %s. Error: %s. Please check: 1) Network connectivity from Railway, 2) PayOS API status, 3) Environment variables (PAYOS_CLIENT_ID, PAYOS_API_KEY, PAYOS_API_URL)", 
-                            payOSConfig.getApiUrl(), rootCause), e);
-        } catch (org.springframework.web.client.HttpClientErrorException e) {
-            log.error("HTTP error calling PayOS API: {} - {}", e.getStatusCode(), e.getResponseBodyAsString(), e);
-            throw new RuntimeException("PayOS API returned error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
-        } catch (org.springframework.web.client.HttpServerErrorException e) {
-            log.error("PayOS server error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString(), e);
-            throw new RuntimeException("PayOS server error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
-        } catch (Exception e) {
-            log.error("Unexpected error calling PayOS API", e);
-            throw new RuntimeException("Failed to create payment link: " + e.getMessage(), e);
+                // HTTP 4xx errors - don't retry
+                log.error("HTTP error calling PayOS API: {} - {}", e.getStatusCode(), e.getResponseBodyAsString(), e);
+                throw new RuntimeException("PayOS API returned error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
+            } catch (org.springframework.web.client.HttpServerErrorException e) {
+                // HTTP 5xx errors - don't retry
+                log.error("PayOS server error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString(), e);
+                throw new RuntimeException("PayOS server error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
+            } catch (Exception e) {
+                // Other errors - don't retry
+                log.error("Unexpected error calling PayOS API", e);
+                throw new RuntimeException("Failed to create payment link: " + e.getMessage(), e);
+            }
         }
+        
+        // Should never reach here, but compiler needs it
+        throw new RuntimeException("Failed to create payment link after " + maxRetries + " attempts");
     }
     
     /**
