@@ -167,34 +167,72 @@ public class AIPackageService {
         
         // Check if user has active package purchase
         Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
-        if (purchaseOpt.isEmpty()) {
-            return false; // No active package
+        
+        if (purchaseOpt.isPresent()) {
+            // User has active package - check package quota
+            AIPackagePurchase purchase = purchaseOpt.get();
+            Instant now = Instant.now();
+            
+            // Check if purchase is expired
+            if (purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now)) {
+                // Package expired - fall back to free tier
+                return checkFreeTierQuota(userId, serviceType);
+            }
+            
+            // Check if payment is successful
+            if (purchase.getPaymentStatus() != PaymentStatus.PAID) {
+                // Payment not completed - fall back to free tier
+                return checkFreeTierQuota(userId, serviceType);
+            }
+            
+            // Check quota for specific service type
+            Optional<AIQuota> quotaOpt = quotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+            if (quotaOpt.isEmpty()) {
+                // No quota record means unlimited (if package allows)
+                AIPackage aiPackage = purchase.getAiPackage();
+                Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
+                return packageQuota == null; // null = unlimited
+            }
+            
+            AIQuota quota = quotaOpt.get();
+            return quota.hasQuota(); // Check if remaining quota > 0
+        } else {
+            // No active package - check free tier quota
+            return checkFreeTierQuota(userId, serviceType);
         }
+    }
+    
+    /**
+     * Check free tier quota for user (10 uses per month per service type)
+     * Free tier: 10 Kaiwa, 10 Grammar, 10 Pronunciation per month
+     */
+    private boolean checkFreeTierQuota(Long userId, AIServiceType serviceType) {
+        // Free tier limits per service type
+        int freeTierLimit = 10; // 10 uses per month per service type
         
-        AIPackagePurchase purchase = purchaseOpt.get();
-        Instant now = Instant.now();
-        
-        // Check if purchase is expired
-        if (purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now)) {
-            return false; // Package expired
-        }
-        
-        // Check if payment is successful
-        if (purchase.getPaymentStatus() != PaymentStatus.PAID) {
-            return false; // Payment not completed
-        }
-        
-        // Check quota for specific service type
         Optional<AIQuota> quotaOpt = quotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+        
         if (quotaOpt.isEmpty()) {
-            // No quota record means unlimited (if package allows)
-            AIPackage aiPackage = purchase.getAiPackage();
-            Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
-            return packageQuota == null; // null = unlimited
+            // No quota record - initialize free tier quota
+            return true; // Allow first use, quota will be created when used
         }
         
         AIQuota quota = quotaOpt.get();
-        return quota.hasQuota(); // Check if remaining quota > 0
+        
+        // Check if quota needs monthly reset (free tier resets monthly)
+        Instant now = Instant.now();
+        if (quota.getLastResetAt() == null || 
+            quota.getLastResetAt().isBefore(now.minusSeconds(30L * 24 * 60 * 60))) { // 30 days ago
+            // Reset free tier quota monthly
+            quota.setTotalQuota(freeTierLimit);
+            quota.setRemainingQuota(freeTierLimit);
+            quota.setLastResetAt(now);
+            quotaRepo.save(quota);
+            return true;
+        }
+        
+        // Check if user has free tier quota remaining
+        return quota.hasQuota();
     }
     
     /**
@@ -213,26 +251,80 @@ public class AIPackageService {
     // =========================
     
     public void useAIService(Long userId, AIServiceType serviceType, int amount) {
-        AIQuota quota = quotaRepo.findByUser_IdAndServiceType(userId, serviceType)
-                .orElse(null);
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
-        if (quota == null) {
-            // User doesn't have quota for this service
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                    "No quota available for service: " + serviceType.name());
+        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+        AIQuota quota;
+        
+        if (quotaOpt.isEmpty()) {
+            // No quota record - check if user has active package or use free tier
+            Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+            
+            if (purchaseOpt.isPresent() && purchaseOpt.get().getPaymentStatus() == PaymentStatus.PAID) {
+                // User has paid package - allocate quota from package
+                AIPackagePurchase purchase = purchaseOpt.get();
+                AIPackage aiPackage = purchase.getAiPackage();
+                Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
+                
+                if (packageQuota == null) {
+                    // Unlimited quota - no need to track
+                    log.info("Used AI service (unlimited): userId={}, serviceType={}, amount={}", 
+                            userId, serviceType, amount);
+                    return;
+                }
+                
+                // Create quota from package
+                quota = new AIQuota();
+                quota.setUser(user);
+                quota.setServiceType(serviceType);
+                quota.setTotalQuota(packageQuota);
+                quota.setRemainingQuota(packageQuota);
+                quota.setLastResetAt(Instant.now());
+                quota.setDeletedFlag(false); // Set deleted_flag explicitly
+            } else {
+                // Use free tier - initialize with 10 uses/month
+                int freeTierLimit = 10;
+                quota = new AIQuota();
+                quota.setUser(user);
+                quota.setServiceType(serviceType);
+                quota.setTotalQuota(freeTierLimit);
+                quota.setRemainingQuota(freeTierLimit);
+                quota.setLastResetAt(Instant.now());
+                quota.setDeletedFlag(false); // Set deleted_flag explicitly
+            }
+        } else {
+            quota = quotaOpt.get();
+            
+            // Check if free tier quota needs monthly reset
+            Instant now = Instant.now();
+            if (quota.getTotalQuota() != null && quota.getTotalQuota() == 10 && 
+                quota.getLastResetAt() != null &&
+                quota.getLastResetAt().isBefore(now.minusSeconds(30L * 24 * 60 * 60))) {
+                // Reset free tier quota monthly
+                quota.setRemainingQuota(10);
+                quota.setLastResetAt(now);
+            }
         }
         
         if (!quota.hasQuota()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                    "Quota exhausted for service: " + serviceType.name());
+            // Check if user has active package
+            Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+            if (purchaseOpt.isEmpty() || purchaseOpt.get().getPaymentStatus() != PaymentStatus.PAID) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                        "Free tier quota exhausted. Please purchase an AI package to continue using this feature.");
+            } else {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                        "Quota exhausted for service: " + serviceType.name() + ". Please upgrade your package.");
+            }
         }
         
         // Deduct quota
         quota.useQuota(amount);
         quotaRepo.save(quota);
         
-        log.info("Used AI service quota: userId={}, serviceType={}, amount={}, remaining={}", 
-                userId, serviceType, amount, quota.getRemainingQuota());
+        log.info("Used AI service quota: userId={}, serviceType={}, amount={}, remaining={}, total={}", 
+                userId, serviceType, amount, quota.getRemainingQuota(), quota.getTotalQuota());
     }
 
     // =========================

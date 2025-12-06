@@ -453,12 +453,14 @@ public class AIController {
             request.getLevel());
         
         try {
-            // Check if user has permission to use AI features (MODERATOR has unlimited access)
+            // Check if user has permission to use AI features
+            // MODERATOR: unlimited access
+            // Other users: free tier (10 uses/month) or purchased package
             if (currentUserService != null && aiPackageService != null) {
                 Long userId = currentUserService.getUserIdOrThrow();
                 if (!aiPackageService.canUseAIService(userId, com.hokori.web.Enum.AIServiceType.KAIWA)) {
                     return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
-                            .body(ApiResponse.error("You need to purchase an AI package to use this feature. Please visit the AI Packages page to purchase Plus or Pro package."));
+                            .body(ApiResponse.error("You have used all free tier quota (10 uses/month). Please purchase an AI package (Plus or Pro) to continue using this feature."));
                 }
             }
             

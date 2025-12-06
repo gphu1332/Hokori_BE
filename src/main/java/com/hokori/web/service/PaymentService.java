@@ -586,6 +586,7 @@ public class PaymentService {
             quotaEntity.setTotalQuota(quota);
             quotaEntity.setRemainingQuota(quota);
             quotaEntity.setLastResetAt(Instant.now());
+            quotaEntity.setDeletedFlag(false); // Set deleted_flag explicitly
             aiQuotaRepo.save(quotaEntity);
         }
     }
