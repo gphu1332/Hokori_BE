@@ -20,7 +20,7 @@ public class PayOSConfig {
     private String clientId;
     private String apiKey;
     private String checksumKey;
-    private String apiUrl = "https://api.payos.vn/v2";
+    private String apiUrl = "https://api-merchant.payos.vn";
     private String webhookUrl;
     private String returnUrl;
     private String cancelUrl;
