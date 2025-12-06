@@ -173,7 +173,7 @@ public class PayOSService {
     /**
      * Generate signature for PayOS payment request
      * Format: amount=$amount&cancelUrl=$cancelUrl&description=$description&orderCode=$orderCode&returnUrl=$returnUrl
-     * Sorted alphabetically, then HMAC SHA256 with checksum key, then Base64 encode
+     * Sorted alphabetically, then HMAC SHA256 with checksum key, then hex string (not Base64)
      */
     private String generateRequestSignature(Long orderCode, Long amount, String description, 
                                            String cancelUrl, String returnUrl) {
@@ -203,7 +203,12 @@ public class PayOSService {
             );
             hmacSha256.init(secretKey);
             byte[] hash = hmacSha256.doFinal(dataString.getBytes(StandardCharsets.UTF_8));
-            String signature = Base64.getEncoder().encodeToString(hash);
+            // PayOS expects hex string, not Base64
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                hexString.append(String.format("%02x", b));
+            }
+            String signature = hexString.toString();
             
             log.debug("Generated request signature: {}", signature);
             return signature;
@@ -257,7 +262,12 @@ public class PayOSService {
             );
             hmacSha256.init(secretKey);
             byte[] hash = hmacSha256.doFinal(dataString.getBytes(StandardCharsets.UTF_8));
-            String calculatedSignature = Base64.getEncoder().encodeToString(hash);
+            // PayOS uses hex string for signatures (both request and webhook)
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                hexString.append(String.format("%02x", b));
+            }
+            String calculatedSignature = hexString.toString();
             
             log.debug("Webhook signature verification - calculated signature: {}", calculatedSignature);
             log.debug("Webhook signature verification - signatures match: {}", calculatedSignature.equals(webhookData.getSignature()));
