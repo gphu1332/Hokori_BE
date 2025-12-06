@@ -84,6 +84,9 @@ public class PayOSService {
         try {
             String url = payOSConfig.getApiUrl() + "/payment-requests";
             log.info("Calling PayOS API: {}", url);
+            log.info("PayOS Config - Client ID: {}, API URL: {}", 
+                    payOSConfig.getClientId() != null ? payOSConfig.getClientId().substring(0, 8) + "..." : "NULL",
+                    payOSConfig.getApiUrl());
             log.debug("PayOS request: orderCode={}, amount={}, description={}", orderCode, amount, description);
             
             ResponseEntity<PayOSCreatePaymentResponse> response = restTemplate.exchange(
@@ -108,8 +111,12 @@ public class PayOSService {
                 throw new RuntimeException("Failed to create payment link: HTTP " + response.getStatusCode());
             }
         } catch (org.springframework.web.client.ResourceAccessException e) {
-            log.error("Network error calling PayOS API: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to connect to PayOS API. Please check network connectivity and PayOS service status.", e);
+            String rootCause = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+            log.error("Network error calling PayOS API. URL: {}, Error: {}, Root cause: {}", 
+                    payOSConfig.getApiUrl() + "/payment-requests", e.getMessage(), rootCause, e);
+            throw new RuntimeException(
+                    String.format("Failed to connect to PayOS API at %s. Error: %s. Please check: 1) Network connectivity from Railway, 2) PayOS API status, 3) Environment variables (PAYOS_CLIENT_ID, PAYOS_API_KEY, PAYOS_API_URL)", 
+                            payOSConfig.getApiUrl(), rootCause), e);
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             log.error("HTTP error calling PayOS API: {} - {}", e.getStatusCode(), e.getResponseBodyAsString(), e);
             throw new RuntimeException("PayOS API returned error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
