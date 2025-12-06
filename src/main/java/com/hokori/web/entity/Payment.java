@@ -47,6 +47,12 @@ public class Payment {
     @Column(name = "course_ids", columnDefinition = "TEXT")
     private String courseIds; // JSON array of course IDs: [1, 2, 3]
     
+    @Column(name = "ai_package_id")
+    private Long aiPackageId; // AI Package ID (if this payment is for AI package)
+    
+    @Column(name = "ai_package_purchase_id")
+    private Long aiPackagePurchaseId; // AIPackagePurchase ID (if this payment is for AI package)
+    
     @Column(name = "payment_link", length = 1000)
     private String paymentLink; // Link thanh toán từ PayOS
     

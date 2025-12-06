@@ -34,5 +34,10 @@ public interface AIPackagePurchaseRepository extends JpaRepository<AIPackagePurc
      */
     @Query("SELECT p FROM AIPackagePurchase p WHERE p.isActive = true AND p.expiresAt < :now")
     List<AIPackagePurchase> findExpiredActivePurchases(@Param("now") Instant now);
+    
+    /**
+     * Count active purchases for a package
+     */
+    long countByAiPackage_IdAndIsActiveTrue(Long packageId);
 }
 

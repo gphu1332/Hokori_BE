@@ -1,6 +1,7 @@
 package com.hokori.web.controller;
 
 import com.hokori.web.dto.ApiResponse;
+import com.hokori.web.dto.payment.AIPackageCheckoutRequest;
 import com.hokori.web.dto.payment.CheckoutRequest;
 import com.hokori.web.dto.payment.CheckoutResponse;
 import com.hokori.web.dto.payment.PaymentResponse;
@@ -37,6 +38,18 @@ public class PaymentController {
             @Valid @RequestBody CheckoutRequest request) {
         Long userId = currentUserService.getUserIdOrThrow();
         CheckoutResponse response = paymentService.checkout(userId, request);
+        return ResponseEntity.ok(ApiResponse.success("Payment link created", response));
+    }
+    
+    @Operation(
+            summary = "Checkout AI Package",
+            description = "Tạo payment link để thanh toán gói AI (Plus, Pro, etc.)"
+    )
+    @PostMapping("/ai-package/checkout")
+    public ResponseEntity<ApiResponse<CheckoutResponse>> checkoutAIPackage(
+            @Valid @RequestBody AIPackageCheckoutRequest request) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        CheckoutResponse response = paymentService.checkoutAIPackage(userId, request.getPackageId());
         return ResponseEntity.ok(ApiResponse.success("Payment link created", response));
     }
     

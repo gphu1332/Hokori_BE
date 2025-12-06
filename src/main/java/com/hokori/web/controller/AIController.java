@@ -13,6 +13,8 @@ import com.hokori.web.service.AIService;
 import com.hokori.web.service.SpeakingPracticeService;
 import com.hokori.web.service.KaiwaSentenceService;
 import com.hokori.web.service.SentenceAnalysisService;
+import com.hokori.web.service.AIPackageService;
+import com.hokori.web.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -50,6 +52,12 @@ public class AIController {
     
     @Autowired(required = false)
     private SentenceAnalysisService sentenceAnalysisService;
+    
+    @Autowired(required = false)
+    private AIPackageService aiPackageService;
+    
+    @Autowired(required = false)
+    private CurrentUserService currentUserService;
 
     @PostMapping("/translate")
     @Operation(
@@ -445,6 +453,15 @@ public class AIController {
             request.getLevel());
         
         try {
+            // Check if user has permission to use AI features (MODERATOR has unlimited access)
+            if (currentUserService != null && aiPackageService != null) {
+                Long userId = currentUserService.getUserIdOrThrow();
+                if (!aiPackageService.canUseAIService(userId, com.hokori.web.Enum.AIServiceType.KAIWA)) {
+                    return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                            .body(ApiResponse.error("You need to purchase an AI package to use this feature. Please visit the AI Packages page to purchase Plus or Pro package."));
+                }
+            }
+            
             if (!request.isValidAudioFormat()) {
                 return ResponseEntity.ok(ApiResponse.error("Invalid audio format. Valid formats: wav, mp3, flac, ogg, webm"));
             }

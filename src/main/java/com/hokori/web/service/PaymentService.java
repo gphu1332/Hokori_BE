@@ -6,8 +6,9 @@ import com.hokori.web.Enum.PaymentStatus;
 import com.hokori.web.dto.cart.CartItemResponse;
 import com.hokori.web.dto.cart.CartResponse;
 import com.hokori.web.dto.payment.*;
-import com.hokori.web.entity.Payment;
+import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
+import com.hokori.web.Enum.AIServiceType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
@@ -35,6 +36,11 @@ public class PaymentService {
     private final CartRepository cartRepo;
     private final CourseRepository courseRepo;
     private final EnrollmentRepository enrollmentRepo;
+    private final AIPackageService aiPackageService;
+    private final AIPackageRepository aiPackageRepo;
+    private final AIPackagePurchaseRepository aiPackagePurchaseRepo;
+    private final AIQuotaRepository aiQuotaRepo;
+    private final UserRepository userRepo;
     private final ObjectMapper objectMapper;
     
     public PaymentService(
@@ -45,6 +51,11 @@ public class PaymentService {
             CartRepository cartRepo,
             CourseRepository courseRepo,
             EnrollmentRepository enrollmentRepo,
+            AIPackageService aiPackageService,
+            AIPackageRepository aiPackageRepo,
+            AIPackagePurchaseRepository aiPackagePurchaseRepo,
+            AIQuotaRepository aiQuotaRepo,
+            UserRepository userRepo,
             @Qualifier("payOSObjectMapper") ObjectMapper objectMapper) {
         this.payOSService = payOSService;
         this.cartService = cartService;
@@ -53,6 +64,11 @@ public class PaymentService {
         this.cartRepo = cartRepo;
         this.courseRepo = courseRepo;
         this.enrollmentRepo = enrollmentRepo;
+        this.aiPackageService = aiPackageService;
+        this.aiPackageRepo = aiPackageRepo;
+        this.aiPackagePurchaseRepo = aiPackagePurchaseRepo;
+        this.aiQuotaRepo = aiQuotaRepo;
+        this.userRepo = userRepo;
         this.objectMapper = objectMapper;
     }
     
@@ -224,6 +240,115 @@ public class PaymentService {
     }
     
     /**
+     * Checkout AI Package - tạo payment link cho AI Package
+     */
+    public CheckoutResponse checkoutAIPackage(Long userId, Long packageId) {
+        // Get AI Package
+        var aiPackage = aiPackageRepo.findById(packageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "AI Package not found"));
+        
+        if (!aiPackage.getIsActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AI Package is not active");
+        }
+        
+        // Check if user already has an active purchase
+        var existingPurchase = aiPackagePurchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        if (existingPurchase.isPresent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "User already has an active AI package. Please wait for it to expire or cancel it first.");
+        }
+        
+        // Create purchase with PENDING status
+        var purchase = new com.hokori.web.entity.AIPackagePurchase();
+        purchase.setUser(userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found")));
+        purchase.setAiPackage(aiPackage);
+        purchase.setPurchasePriceCents(aiPackage.getPriceCents());
+        purchase.setPaymentStatus(com.hokori.web.Enum.PaymentStatus.PENDING);
+        purchase.setPurchasedAt(Instant.now());
+        
+        // Calculate expiry date
+        Instant expiresAt = Instant.now().plusSeconds(aiPackage.getDurationDays() * 24L * 60L * 60L);
+        purchase.setExpiresAt(expiresAt);
+        purchase.setIsActive(false);  // Will be activated after payment
+        
+        purchase = aiPackagePurchaseRepo.save(purchase);
+        
+        // If price is 0 (free package), activate immediately
+        if (aiPackage.getPriceCents() == 0) {
+            activateAIPackagePurchase(purchase);
+            return CheckoutResponse.builder()
+                    .paymentId(null)
+                    .orderCode(null)
+                    .paymentLink(null)
+                    .qrCode(null)
+                    .amountCents(0L)
+                    .description(String.format("Đã kích hoạt gói AI: %s", aiPackage.getName()))
+                    .expiredAt(null)
+                    .build();
+        }
+        
+        // Generate order code
+        Long orderCode = payOSService.generateOrderCode();
+        while (paymentRepo.existsByOrderCode(orderCode)) {
+            orderCode = payOSService.generateOrderCode();
+        }
+        
+        // Prepare PayOS items
+        List<PayOSCreatePaymentRequest.PayOSItem> payOSItems = new ArrayList<>();
+        payOSItems.add(PayOSCreatePaymentRequest.PayOSItem.builder()
+                .name(aiPackage.getName())
+                .quantity(1)
+                .price(aiPackage.getPriceCents())
+                .build());
+        
+        String description = String.format("Thanh toán gói AI: %s", aiPackage.getName());
+        Long expiredAt = Instant.now().plusSeconds(30 * 60).getEpochSecond();
+        
+        // Create payment link via PayOS
+        PayOSCreatePaymentResponse payOSResponse = payOSService.createPaymentLink(
+                orderCode,
+                aiPackage.getPriceCents(),
+                description,
+                payOSItems,
+                expiredAt
+        );
+        
+        if (payOSResponse.getData() == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create payment link");
+        }
+        
+        // Save payment record
+        Payment payment = Payment.builder()
+                .orderCode(orderCode)
+                .amountCents(aiPackage.getPriceCents())
+                .description(description)
+                .status(PaymentStatus.PENDING)
+                .userId(userId)
+                .aiPackageId(packageId)
+                .aiPackagePurchaseId(purchase.getId())
+                .paymentLink(payOSResponse.getData().getCheckoutUrl())
+                .payosQrCode(payOSResponse.getData().getQrCode())
+                .expiredAt(Instant.ofEpochSecond(expiredAt))
+                .build();
+        
+        Payment savedPayment = paymentRepo.save(payment);
+        
+        log.info("Created AI package payment: userId={}, packageId={}, purchaseId={}, paymentId={}, orderCode={}", 
+                userId, packageId, purchase.getId(), savedPayment.getId(), orderCode);
+        
+        return CheckoutResponse.builder()
+                .paymentId(savedPayment.getId())
+                .orderCode(orderCode)
+                .paymentLink(payOSResponse.getData().getCheckoutUrl())
+                .qrCode(payOSResponse.getData().getQrCode())
+                .amountCents(aiPackage.getPriceCents())
+                .description(description)
+                .expiredAt(expiredAt)
+                .build();
+    }
+    
+    /**
      * Xử lý webhook từ PayOS
      */
     public void handleWebhook(PayOSWebhookData webhookData) {
@@ -289,11 +414,15 @@ public class PaymentService {
                 payment.setStatus(PaymentStatus.PAID);
                 payment.setPaidAt(Instant.now());
                 
-                // Enroll user into courses
-                enrollCoursesFromPayment(payment);
-                
-                // Clear cart items that were paid
-                clearPaidCartItems(payment);
+                // Handle AI Package purchase or course enrollment
+                if (payment.getAiPackageId() != null) {
+                    // This is an AI Package payment
+                    activateAIPackagePurchaseFromPayment(payment);
+                } else {
+                    // This is a course payment
+                    enrollCoursesFromPayment(payment);
+                    clearPaidCartItems(payment);
+                }
             } else {
                 // Payment failed or cancelled
                 payment.setStatus(PaymentStatus.FAILED);
@@ -381,6 +510,84 @@ public class PaymentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
         List<Long> courseIds = parseCourseIds(payment.getCourseIds());
         return PaymentResponse.fromEntity(payment, courseIds);
+    }
+    
+    /**
+     * Activate AI Package purchase after successful payment
+     */
+    private void activateAIPackagePurchaseFromPayment(Payment payment) {
+        if (payment.getAiPackagePurchaseId() == null) {
+            log.warn("Payment {} has aiPackageId but no aiPackagePurchaseId", payment.getId());
+            return;
+        }
+        
+        var purchase = aiPackagePurchaseRepo.findById(payment.getAiPackagePurchaseId())
+                .orElseThrow(() -> {
+                    log.error("AIPackagePurchase not found for payment {}", payment.getId());
+                    return new RuntimeException("AIPackagePurchase not found");
+                });
+        
+        activateAIPackagePurchase(purchase);
+    }
+    
+    /**
+     * Activate AI Package purchase and allocate quotas
+     */
+    private void activateAIPackagePurchase(com.hokori.web.entity.AIPackagePurchase purchase) {
+        // Activate purchase
+        purchase.setIsActive(true);
+        purchase.setPaymentStatus(com.hokori.web.Enum.PaymentStatus.PAID);
+        purchase.setPurchasedAt(Instant.now());
+        purchase.setTransactionId(String.valueOf(purchase.getId()));
+        aiPackagePurchaseRepo.save(purchase);
+        
+        // Allocate quotas to user
+        var aiPackage = purchase.getAiPackage();
+        var user = purchase.getUser();
+        
+        // Allocate grammar quota
+        if (aiPackage.getGrammarQuota() != null) {
+            allocateQuota(user.getId(), AIServiceType.GRAMMAR, aiPackage.getGrammarQuota());
+        }
+        
+        // Allocate kaiwa quota
+        if (aiPackage.getKaiwaQuota() != null) {
+            allocateQuota(user.getId(), AIServiceType.KAIWA, aiPackage.getKaiwaQuota());
+        }
+        
+        // Allocate pronunciation quota
+        if (aiPackage.getPronunQuota() != null) {
+            allocateQuota(user.getId(), AIServiceType.PRONUN, aiPackage.getPronunQuota());
+        }
+        
+        log.info("Activated AI package purchase: userId={}, packageId={}, purchaseId={}", 
+                user.getId(), aiPackage.getId(), purchase.getId());
+    }
+    
+    /**
+     * Allocate quota for a service type
+     */
+    private void allocateQuota(Long userId, AIServiceType serviceType, Integer quota) {
+        var existingQuota = aiQuotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+        
+        if (existingQuota.isPresent()) {
+            // Update existing quota
+            var quotaEntity = existingQuota.get();
+            quotaEntity.setTotalQuota(quota);
+            quotaEntity.setRemainingQuota(quota);
+            quotaEntity.setLastResetAt(Instant.now());
+            aiQuotaRepo.save(quotaEntity);
+        } else {
+            // Create new quota
+            var quotaEntity = new AIQuota();
+            quotaEntity.setUser(userRepo.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found")));
+            quotaEntity.setServiceType(serviceType);
+            quotaEntity.setTotalQuota(quota);
+            quotaEntity.setRemainingQuota(quota);
+            quotaEntity.setLastResetAt(Instant.now());
+            aiQuotaRepo.save(quotaEntity);
+        }
     }
     
     /**

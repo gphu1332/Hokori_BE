@@ -152,7 +152,64 @@ public class AIPackageService {
     }
 
     // =========================
-    // 5. Use AI service (deduct quota)
+    // 5. Check if user can use AI service (has quota or is MODERATOR)
+    // =========================
+    
+    @Transactional(readOnly = true)
+    public boolean canUseAIService(Long userId, AIServiceType serviceType) {
+        // Check if user is MODERATOR (MODERATOR has unlimited access)
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        
+        if (user.getRole() != null && "MODERATOR".equalsIgnoreCase(user.getRole().getRoleName())) {
+            return true; // MODERATOR has unlimited access
+        }
+        
+        // Check if user has active package purchase
+        Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        if (purchaseOpt.isEmpty()) {
+            return false; // No active package
+        }
+        
+        AIPackagePurchase purchase = purchaseOpt.get();
+        Instant now = Instant.now();
+        
+        // Check if purchase is expired
+        if (purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now)) {
+            return false; // Package expired
+        }
+        
+        // Check if payment is successful
+        if (purchase.getPaymentStatus() != PaymentStatus.PAID) {
+            return false; // Payment not completed
+        }
+        
+        // Check quota for specific service type
+        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+        if (quotaOpt.isEmpty()) {
+            // No quota record means unlimited (if package allows)
+            AIPackage aiPackage = purchase.getAiPackage();
+            Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
+            return packageQuota == null; // null = unlimited
+        }
+        
+        AIQuota quota = quotaOpt.get();
+        return quota.hasQuota(); // Check if remaining quota > 0
+    }
+    
+    /**
+     * Get quota for a service type from AI Package
+     */
+    private Integer getQuotaForServiceType(AIPackage aiPackage, AIServiceType serviceType) {
+        return switch (serviceType) {
+            case GRAMMAR -> aiPackage.getGrammarQuota();
+            case KAIWA -> aiPackage.getKaiwaQuota();
+            case PRONUN -> aiPackage.getPronunQuota();
+        };
+    }
+    
+    // =========================
+    // 6. Use AI service (deduct quota)
     // =========================
     
     public void useAIService(Long userId, AIServiceType serviceType, int amount) {
@@ -176,6 +233,120 @@ public class AIPackageService {
         
         log.info("Used AI service quota: userId={}, serviceType={}, amount={}, remaining={}", 
                 userId, serviceType, amount, quota.getRemainingQuota());
+    }
+
+    // =========================
+    // 6. Admin: Create AI Package
+    // =========================
+    
+    public AIPackageResponse createPackage(AIPackageCreateReq req) {
+        AIPackage aiPackage = new AIPackage();
+        aiPackage.setName(req.getName());
+        aiPackage.setDescription(req.getDescription());
+        aiPackage.setPriceCents(req.getPriceCents());
+        aiPackage.setCurrency(req.getCurrency() != null ? req.getCurrency() : "VND");
+        aiPackage.setDurationDays(req.getDurationDays());
+        aiPackage.setGrammarQuota(req.getGrammarQuota());
+        aiPackage.setKaiwaQuota(req.getKaiwaQuota());
+        aiPackage.setPronunQuota(req.getPronunQuota());
+        aiPackage.setIsActive(req.getIsActive() != null ? req.getIsActive() : true);
+        aiPackage.setDisplayOrder(req.getDisplayOrder() != null ? req.getDisplayOrder() : 0);
+        
+        aiPackage = packageRepo.save(aiPackage);
+        
+        log.info("Created AI package: id={}, name={}", aiPackage.getId(), aiPackage.getName());
+        
+        return toPackageResponse(aiPackage);
+    }
+
+    // =========================
+    // 7. Admin: Update AI Package
+    // =========================
+    
+    public AIPackageResponse updatePackage(Long packageId, AIPackageUpdateReq req) {
+        AIPackage aiPackage = packageRepo.findById(packageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "AI Package not found"));
+        
+        if (req.getName() != null) {
+            aiPackage.setName(req.getName());
+        }
+        if (req.getDescription() != null) {
+            aiPackage.setDescription(req.getDescription());
+        }
+        if (req.getPriceCents() != null) {
+            aiPackage.setPriceCents(req.getPriceCents());
+        }
+        if (req.getCurrency() != null) {
+            aiPackage.setCurrency(req.getCurrency());
+        }
+        if (req.getDurationDays() != null) {
+            aiPackage.setDurationDays(req.getDurationDays());
+        }
+        if (req.getGrammarQuota() != null) {
+            aiPackage.setGrammarQuota(req.getGrammarQuota());
+        }
+        if (req.getKaiwaQuota() != null) {
+            aiPackage.setKaiwaQuota(req.getKaiwaQuota());
+        }
+        if (req.getPronunQuota() != null) {
+            aiPackage.setPronunQuota(req.getPronunQuota());
+        }
+        if (req.getIsActive() != null) {
+            aiPackage.setIsActive(req.getIsActive());
+        }
+        if (req.getDisplayOrder() != null) {
+            aiPackage.setDisplayOrder(req.getDisplayOrder());
+        }
+        
+        aiPackage = packageRepo.save(aiPackage);
+        
+        log.info("Updated AI package: id={}, name={}", aiPackage.getId(), aiPackage.getName());
+        
+        return toPackageResponse(aiPackage);
+    }
+
+    // =========================
+    // 8. Admin: Delete AI Package
+    // =========================
+    
+    public void deletePackage(Long packageId) {
+        AIPackage aiPackage = packageRepo.findById(packageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "AI Package not found"));
+        
+        // Check if there are active purchases
+        long activePurchases = purchaseRepo.countByAiPackage_IdAndIsActiveTrue(packageId);
+        if (activePurchases > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Cannot delete package with active purchases. Please deactivate it instead.");
+        }
+        
+        packageRepo.delete(aiPackage);
+        
+        log.info("Deleted AI package: id={}, name={}", packageId, aiPackage.getName());
+    }
+
+    // =========================
+    // 9. Admin: Get all packages (including inactive)
+    // =========================
+    
+    @Transactional(readOnly = true)
+    public List<AIPackageResponse> getAllPackages() {
+        List<AIPackage> packages = packageRepo.findAllByOrderByDisplayOrderAsc();
+        return packages.stream()
+                .map(this::toPackageResponse)
+                .collect(Collectors.toList());
+    }
+
+    // =========================
+    // 10. Admin: Get package by ID
+    // =========================
+    
+    @Transactional(readOnly = true)
+    public AIPackageResponse getPackageById(Long packageId) {
+        AIPackage aiPackage = packageRepo.findById(packageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "AI Package not found"));
+        
+        return toPackageResponse(aiPackage);
     }
 
     // =========================
