@@ -94,8 +94,9 @@ public class PolicyService {
     /**
      * Lấy tất cả policies
      */
+    @Transactional(readOnly = true)
     public List<PolicyRes> getAllPolicies() {
-        return policyRepository.findAll().stream()
+        return policyRepository.findAllWithRelations().stream()
                 .map(this::toPolicyRes)
                 .collect(Collectors.toList());
     }
@@ -103,6 +104,7 @@ public class PolicyService {
     /**
      * Lấy policies theo role
      */
+    @Transactional(readOnly = true)
     public List<PolicyRes> getPoliciesByRole(String roleName) {
         return policyRepository.findByRoleName(roleName).stream()
                 .map(this::toPolicyRes)
@@ -112,6 +114,7 @@ public class PolicyService {
     /**
      * Lấy policy theo ID
      */
+    @Transactional(readOnly = true)
     public PolicyRes getPolicyById(Long policyId) {
         Policy policy = policyRepository.findById(policyId)
                 .orElseThrow(() -> new ResponseStatusException(

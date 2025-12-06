@@ -14,20 +14,38 @@ import java.util.Optional;
 public interface PolicyRepository extends JpaRepository<Policy, Long> {
 
     /**
+     * Tìm tất cả policies với JOIN FETCH để eager load role và createdBy
+     */
+    @Query("SELECT DISTINCT p FROM Policy p " +
+           "LEFT JOIN FETCH p.role " +
+           "LEFT JOIN FETCH p.createdBy " +
+           "ORDER BY p.createdAt DESC")
+    List<Policy> findAllWithRelations();
+
+    /**
      * Tìm tất cả policies theo role
      */
     List<Policy> findByRole(Role role);
 
     /**
      * Tìm tất cả policies theo roleName (case-insensitive)
+     * JOIN FETCH để eager load role và createdBy
      */
-    @Query("SELECT p FROM Policy p WHERE UPPER(p.role.roleName) = UPPER(:roleName) ORDER BY p.createdAt DESC")
+    @Query("SELECT p FROM Policy p " +
+           "LEFT JOIN FETCH p.role " +
+           "LEFT JOIN FETCH p.createdBy " +
+           "WHERE UPPER(p.role.roleName) = UPPER(:roleName) " +
+           "ORDER BY p.createdAt DESC")
     List<Policy> findByRoleName(@Param("roleName") String roleName);
 
     /**
      * Tìm policy theo ID và roleName (để verify ownership)
+     * JOIN FETCH để eager load role và createdBy
      */
-    @Query("SELECT p FROM Policy p WHERE p.id = :id AND UPPER(p.role.roleName) = UPPER(:roleName)")
+    @Query("SELECT p FROM Policy p " +
+           "LEFT JOIN FETCH p.role " +
+           "LEFT JOIN FETCH p.createdBy " +
+           "WHERE p.id = :id AND UPPER(p.role.roleName) = UPPER(:roleName)")
     Optional<Policy> findByIdAndRoleName(@Param("id") Long id, @Param("roleName") String roleName);
 
     /**
@@ -38,7 +56,12 @@ public interface PolicyRepository extends JpaRepository<Policy, Long> {
 
     /**
      * Tìm policies theo createdBy user
+     * JOIN FETCH để eager load role và createdBy
      */
-    List<Policy> findByCreatedBy_Id(Long userId);
+    @Query("SELECT p FROM Policy p " +
+           "LEFT JOIN FETCH p.role " +
+           "LEFT JOIN FETCH p.createdBy " +
+           "WHERE p.createdBy.id = :userId")
+    List<Policy> findByCreatedBy_Id(@Param("userId") Long userId);
 }
 
