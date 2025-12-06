@@ -63,6 +63,9 @@ public class SecurityConfig {
                     "/api/courses/*/tree"
                 ).permitAll()
 
+                // 👇 Public policies (chỉ đọc)
+                .requestMatchers("/api/public/policies/**").permitAll()
+
                 // ============================================
                 // ROLE-BASED ENDPOINTS
                 // ============================================
