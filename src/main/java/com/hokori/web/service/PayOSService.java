@@ -193,7 +193,9 @@ public class PayOSService {
                     returnUrl != null ? returnUrl : ""
             );
             
-            log.debug("Generating request signature - dataString: {}", dataString);
+            log.info("Generating request signature - dataString: {}", dataString);
+            log.info("Generating request signature - amount: {}, orderCode: {}, description: {}, cancelUrl: {}, returnUrl: {}", 
+                    amount, orderCode, description, cancelUrl, returnUrl);
             
             // Create HMAC SHA256 signature
             Mac hmacSha256 = Mac.getInstance("HmacSHA256");
@@ -210,7 +212,8 @@ public class PayOSService {
             }
             String signature = hexString.toString();
             
-            log.debug("Generated request signature: {}", signature);
+            log.info("Generated request signature: {}", signature);
+            log.info("Checksum key length: {}", payOSConfig.getChecksumKey() != null ? payOSConfig.getChecksumKey().length() : 0);
             return signature;
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             log.error("Error generating request signature", e);
