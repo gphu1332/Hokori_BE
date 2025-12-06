@@ -551,7 +551,7 @@ public class LearnerProgressService {
                                 .contentId(content.getId())
                                 .orderIndex(content.getOrderIndex())
                                 .contentFormat(content.getContentFormat())
-                                .isPrimaryContent(Boolean.TRUE.equals(content.getIsPrimaryContent()))
+                                .isPrimaryContent(content.isPrimaryContent())
                                 .filePath(content.getFilePath())
                                 .richText(content.getRichText())
                                 .flashcardSetId(content.getFlashcardSetId())

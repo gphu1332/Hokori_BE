@@ -35,7 +35,9 @@ public class PayOSConfig {
         try {
             // Use Apache HttpClient with better DNS handling and connection pooling
             CloseableHttpClient httpClient = createHttpClient();
-            HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
+            // HttpComponentsClientHttpRequestFactory expects org.apache.http.client.HttpClient interface
+            org.apache.http.client.HttpClient httpClientInterface = httpClient;
+            HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClientInterface);
             
             RestTemplate restTemplate = new RestTemplate(factory);
             log.info("PayOS RestTemplate configured with Apache HttpClient for better DNS handling");
