@@ -81,36 +81,66 @@ public class PayOSService {
         
         HttpEntity<PayOSCreatePaymentRequest> entity = new HttpEntity<>(request, headers);
         
-        try {
-            String url = payOSConfig.getApiUrl() + "/payment-requests";
-            log.info("Calling PayOS API: {}", url);
-            log.info("PayOS Config - Client ID: {}, API URL: {}", 
-                    payOSConfig.getClientId() != null ? payOSConfig.getClientId().substring(0, 8) + "..." : "NULL",
-                    payOSConfig.getApiUrl());
-            log.debug("PayOS request: orderCode={}, amount={}, description={}", orderCode, amount, description);
+        // Retry mechanism for DNS resolution issues
+        int maxRetries = 3;
+        int retryCount = 0;
+        long retryDelayMs = 1000; // Start with 1 second delay
+        
+        while (retryCount < maxRetries) {
+            try {
+                String url = payOSConfig.getApiUrl() + "/payment-requests";
+                log.info("Calling PayOS API (attempt {}/{}): {}", retryCount + 1, maxRetries, url);
+                log.info("PayOS Config - Client ID: {}, API URL: {}", 
+                        payOSConfig.getClientId() != null ? payOSConfig.getClientId().substring(0, 8) + "..." : "NULL",
+                        payOSConfig.getApiUrl());
+                log.debug("PayOS request: orderCode={}, amount={}, description={}", orderCode, amount, description);
+                
+                ResponseEntity<PayOSCreatePaymentResponse> response = restTemplate.exchange(
+                        url,
+                        HttpMethod.POST,
+                        entity,
+                        PayOSCreatePaymentResponse.class
+                );
             
-            ResponseEntity<PayOSCreatePaymentResponse> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    entity,
-                    PayOSCreatePaymentResponse.class
-            );
-            
-            log.info("PayOS API response status: {}", response.getStatusCode());
-            
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                PayOSCreatePaymentResponse body = response.getBody();
-                if (body.getError() != null && body.getError() != 0) {
-                    log.error("PayOS API error: {} - {}", body.getError(), body.getMessage());
-                    throw new RuntimeException("PayOS API error: " + body.getMessage());
+                log.info("PayOS API response status: {}", response.getStatusCode());
+                
+                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                    PayOSCreatePaymentResponse body = response.getBody();
+                    if (body.getError() != null && body.getError() != 0) {
+                        log.error("PayOS API error: {} - {}", body.getError(), body.getMessage());
+                        throw new RuntimeException("PayOS API error: " + body.getMessage());
+                    }
+                    log.info("PayOS payment link created successfully for orderCode: {}", orderCode);
+                    return body;
+                } else {
+                    log.error("PayOS API returned non-2xx status: {}", response.getStatusCode());
+                    throw new RuntimeException("Failed to create payment link: HTTP " + response.getStatusCode());
                 }
-                log.info("PayOS payment link created successfully for orderCode: {}", orderCode);
-                return body;
-            } else {
-                log.error("PayOS API returned non-2xx status: {}", response.getStatusCode());
-                throw new RuntimeException("Failed to create payment link: HTTP " + response.getStatusCode());
-            }
-        } catch (org.springframework.web.client.ResourceAccessException e) {
+            } catch (org.springframework.web.client.ResourceAccessException e) {
+                // DNS resolution or connection issues - retry with exponential backoff
+                retryCount++;
+                String rootCause = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                
+                if (retryCount < maxRetries) {
+                    log.warn("Network error calling PayOS API (attempt {}/{}). Retrying in {}ms. Error: {}", 
+                            retryCount, maxRetries, retryDelayMs, rootCause);
+                    try {
+                        Thread.sleep(retryDelayMs);
+                        retryDelayMs *= 2; // Exponential backoff: 1s, 2s, 4s
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Retry interrupted", ie);
+                    }
+                    continue; // Retry
+                } else {
+                    // Max retries reached
+                    log.error("Network error calling PayOS API after {} attempts. URL: {}, Error: {}, Root cause: {}", 
+                            maxRetries, payOSConfig.getApiUrl() + "/payment-requests", e.getMessage(), rootCause, e);
+                    throw new RuntimeException(
+                            String.format("Failed to connect to PayOS API at %s after %d attempts. Error: %s. Please check: 1) Network connectivity from Railway, 2) PayOS API status, 3) DNS resolution", 
+                                    payOSConfig.getApiUrl(), maxRetries, rootCause), e);
+                }
+            } catch (org.springframework.web.client.HttpClientErrorException e) {
             String rootCause = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
             log.error("Network error calling PayOS API. URL: {}, Error: {}, Root cause: {}", 
                     payOSConfig.getApiUrl() + "/payment-requests", e.getMessage(), rootCause, e);
