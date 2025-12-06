@@ -30,10 +30,10 @@ public class SwaggerConfig {
                     .url("https://" + railwayUrl)
                     .description("Railway Production"));
             } else {
-                // Fallback: Use default Railway pattern
+                // Fallback: Use custom domain
                 servers.add(new Server()
-                    .url("https://hokori-web-production.up.railway.app")
-                    .description("Railway Production (default)"));
+                    .url("https://api.hokori-backend.org")
+                    .description("Railway Production (custom domain)"));
             }
         } else {
             // Development: Use ngrok or localhost
