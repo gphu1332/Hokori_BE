@@ -31,6 +31,9 @@ public class PayOSCreatePaymentRequest {
     @JsonProperty("expiredAt")
     Long expiredAt; // Unix timestamp (seconds)
     
+    @JsonProperty("signature")
+    String signature; // HMAC SHA256 signature (required by PayOS)
+    
     @Value
     @Builder
     public static class PayOSItem {

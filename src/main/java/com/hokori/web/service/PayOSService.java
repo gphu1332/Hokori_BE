@@ -64,6 +64,10 @@ public class PayOSService {
             throw new IllegalStateException("PayOS Return URL is not configured. Please set PAYOS_RETURN_URL environment variable.");
         }
         
+        // Generate signature for request (required by PayOS)
+        String signature = generateRequestSignature(orderCode, amount, description, 
+                payOSConfig.getCancelUrl(), payOSConfig.getReturnUrl());
+        
         PayOSCreatePaymentRequest request = PayOSCreatePaymentRequest.builder()
                 .orderCode(orderCode)
                 .amount(amount)
@@ -72,6 +76,7 @@ public class PayOSService {
                 .cancelUrl(payOSConfig.getCancelUrl())
                 .returnUrl(payOSConfig.getReturnUrl())
                 .expiredAt(expiredAtSeconds)
+                .signature(signature)
                 .build();
         
         HttpHeaders headers = new HttpHeaders();
@@ -163,6 +168,52 @@ public class PayOSService {
         
         // Should never reach here, but compiler needs it
         throw new RuntimeException("Failed to create payment link after " + maxRetries + " attempts");
+    }
+    
+    /**
+     * Generate signature for PayOS payment request
+     * Format: amount=$amount&cancelUrl=$cancelUrl&description=$description&orderCode=$orderCode&returnUrl=$returnUrl
+     * Sorted alphabetically, then HMAC SHA256 with checksum key, then Base64 encode
+     */
+    private String generateRequestSignature(Long orderCode, Long amount, String description, 
+                                           String cancelUrl, String returnUrl) {
+        try {
+            // Validate checksum key is configured
+            if (payOSConfig.getChecksumKey() == null || payOSConfig.getChecksumKey().isEmpty()) {
+                throw new IllegalStateException("PayOS Checksum Key is not configured. Please set PAYOS_CHECKSUM_KEY environment variable.");
+            }
+            
+            // Create data string sorted alphabetically: amount, cancelUrl, description, orderCode, returnUrl
+            String dataString = String.format(
+                    "amount=%d&cancelUrl=%s&description=%s&orderCode=%d&returnUrl=%s",
+                    amount,
+                    cancelUrl != null ? cancelUrl : "",
+                    description != null ? description : "",
+                    orderCode,
+                    returnUrl != null ? returnUrl : ""
+            );
+            
+            log.debug("Generating request signature - dataString: {}", dataString);
+            
+            // Create HMAC SHA256 signature
+            Mac hmacSha256 = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(
+                    payOSConfig.getChecksumKey().getBytes(StandardCharsets.UTF_8),
+                    "HmacSHA256"
+            );
+            hmacSha256.init(secretKey);
+            byte[] hash = hmacSha256.doFinal(dataString.getBytes(StandardCharsets.UTF_8));
+            String signature = Base64.getEncoder().encodeToString(hash);
+            
+            log.debug("Generated request signature: {}", signature);
+            return signature;
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            log.error("Error generating request signature", e);
+            throw new RuntimeException("Failed to generate request signature: " + e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Unexpected error generating request signature", e);
+            throw new RuntimeException("Failed to generate request signature: " + e.getMessage(), e);
+        }
     }
     
     /**
