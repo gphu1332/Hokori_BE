@@ -21,6 +21,11 @@ public class PayOSConfig {
     private String apiKey;
     private String checksumKey;
     private String apiUrl = "https://api-merchant.payos.vn";
+    
+    // Trim whitespace from environment variables
+    public void setApiUrl(String apiUrl) {
+        this.apiUrl = apiUrl != null ? apiUrl.trim() : null;
+    }
     private String webhookUrl;
     private String returnUrl;
     private String cancelUrl;

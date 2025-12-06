@@ -88,11 +88,13 @@ public class PayOSService {
         
         while (retryCount < maxRetries) {
             try {
-                String url = payOSConfig.getApiUrl() + "/payment-requests";
+                String apiUrl = payOSConfig.getApiUrl() != null ? payOSConfig.getApiUrl().trim() : "";
+                String url = apiUrl + "/payment-requests";
                 log.info("Calling PayOS API (attempt {}/{}): {}", retryCount + 1, maxRetries, url);
+                String apiUrlForLog = payOSConfig.getApiUrl() != null ? payOSConfig.getApiUrl().trim() : "NULL";
                 log.info("PayOS Config - Client ID: {}, API URL: {}", 
                         payOSConfig.getClientId() != null ? payOSConfig.getClientId().substring(0, 8) + "..." : "NULL",
-                        payOSConfig.getApiUrl());
+                        apiUrlForLog);
                 log.debug("PayOS request: orderCode={}, amount={}, description={}", orderCode, amount, description);
                 
                 ResponseEntity<PayOSCreatePaymentResponse> response = restTemplate.exchange(
@@ -134,11 +136,12 @@ public class PayOSService {
                     continue; // Retry
                 } else {
                     // Max retries reached
+                    String apiUrl = payOSConfig.getApiUrl() != null ? payOSConfig.getApiUrl().trim() : "";
                     log.error("Network error calling PayOS API after {} attempts. URL: {}, Error: {}, Root cause: {}", 
-                            maxRetries, payOSConfig.getApiUrl() + "/payment-requests", e.getMessage(), rootCause, e);
+                            maxRetries, apiUrl + "/payment-requests", e.getMessage(), rootCause, e);
                     throw new RuntimeException(
                             String.format("Failed to connect to PayOS API at %s after %d attempts. Error: %s. Please check: 1) Network connectivity from Railway, 2) PayOS API status, 3) DNS resolution", 
-                                    payOSConfig.getApiUrl(), maxRetries, rootCause), e);
+                                    apiUrl, maxRetries, rootCause), e);
                 }
             } catch (org.springframework.web.client.HttpClientErrorException e) {
                 // HTTP 4xx errors - don't retry
