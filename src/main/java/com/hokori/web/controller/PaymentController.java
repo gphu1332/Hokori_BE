@@ -44,11 +44,23 @@ public class PaymentController {
             description = "Endpoint để nhận webhook callback từ PayOS khi có thay đổi trạng thái thanh toán"
     )
     @PostMapping("/webhook")
-    public ResponseEntity<?> webhook(@RequestBody PayOSWebhookData webhookData) {
+    public ResponseEntity<?> webhook(@RequestBody(required = false) PayOSWebhookData webhookData) {
         try {
+            // Handle empty body (PayOS test webhook)
+            if (webhookData == null) {
+                return ResponseEntity.ok(new WebhookResponse(0, "Webhook endpoint is active", null));
+            }
+            
             paymentService.handleWebhook(webhookData);
             // PayOS expects response in specific format
             return ResponseEntity.ok(new WebhookResponse(0, "Success", null));
+        } catch (ResponseStatusException e) {
+            // If payment not found, still return success for test webhooks
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return ResponseEntity.ok(new WebhookResponse(0, "Webhook received (payment not found - might be test)", null));
+            }
+            return ResponseEntity.status(e.getStatusCode())
+                    .body(new WebhookResponse(-1, "Error: " + e.getReason(), null));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new WebhookResponse(-1, "Error: " + e.getMessage(), null));

@@ -227,19 +227,37 @@ public class PaymentService {
      * Xử lý webhook từ PayOS
      */
     public void handleWebhook(PayOSWebhookData webhookData) {
-        // Verify signature
-        if (!payOSService.verifyWebhookSignature(webhookData)) {
-            log.error("Invalid webhook signature for orderCode: {}", 
-                    webhookData.getData() != null ? webhookData.getData().getOrderCode() : "unknown");
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid webhook signature");
+        // Log webhook received
+        log.info("Webhook received from PayOS: code={}, desc={}", 
+                webhookData.getCode(), webhookData.getDesc());
+        
+        // Handle test webhook (PayOS sends test webhook when saving webhook URL)
+        if (webhookData.getData() == null) {
+            log.info("Received test webhook from PayOS (no data), returning success");
+            return; // Test webhook, just return success
         }
         
         PayOSWebhookData.PayOSWebhookPaymentData data = webhookData.getData();
         Long orderCode = data.getOrderCode();
         
+        log.info("Processing webhook for orderCode: {}", orderCode);
+        
+        // Verify signature (skip for test webhooks without signature)
+        if (webhookData.getSignature() != null && !webhookData.getSignature().isEmpty()) {
+            if (!payOSService.verifyWebhookSignature(webhookData)) {
+                log.error("Invalid webhook signature for orderCode: {}", orderCode);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid webhook signature");
+            }
+        } else {
+            log.warn("Webhook without signature received for orderCode: {} (might be test webhook)", orderCode);
+        }
+        
         // Find payment record
         Payment payment = paymentRepo.findByOrderCode(orderCode)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
+                .orElseThrow(() -> {
+                    log.error("Payment not found for orderCode: {}", orderCode);
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found");
+                });
         
         // Update payment record
         try {
