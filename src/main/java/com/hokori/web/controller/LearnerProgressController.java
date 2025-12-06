@@ -85,4 +85,14 @@ public class LearnerProgressController {
             @PathVariable Long sectionContentId) {
         return progressService.getFlashcardSetForContent(uid(), sectionContentId);
     }
+
+    @Operation(
+            summary = "Course Learning Tree với Progress (Coursera-style)",
+            description = "Lấy full course tree structure (chapters -> lessons -> sections -> contents) kèm progress. " +
+                    "Giống Coursera khi bấm vào học tiếp - hiển thị toàn bộ cấu trúc khóa học với progress % và trạng thái hoàn thành."
+    )
+    @GetMapping("/courses/{courseId}/learning-tree")
+    public CourseLearningTreeRes getCourseLearningTree(@PathVariable Long courseId) {
+        return progressService.getCourseLearningTree(uid(), courseId);
+    }
 }

@@ -470,4 +470,139 @@ public class LearnerProgressService {
         return streak;
     }
 
+    // ============== Get Course Learning Tree with Progress (Coursera-style) ==============
+    /**
+     * Get full course learning tree with progress for enrolled learner.
+     * Returns course structure (chapters -> lessons -> sections -> contents) with progress info.
+     * Similar to Coursera's course structure view.
+     */
+    @Transactional(readOnly = true)
+    public CourseLearningTreeRes getCourseLearningTree(Long userId, Long courseId) {
+        // Check enrollment
+        Enrollment enrollment = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled in this course"));
+
+        // Get course metadata
+        Object[] metadata = courseRepo.findCourseMetadataById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+
+        // Extract course info
+        Long courseIdFromMeta = ((Number) actualMetadata[0]).longValue();
+        String courseTitle = actualMetadata[1] != null ? actualMetadata[1].toString() : "";
+        String courseSubtitle = actualMetadata[3] != null ? actualMetadata[3].toString() : null;
+        String coverImagePath = actualMetadata[8] != null ? actualMetadata[8].toString() : null;
+
+        // Get chapters with lessons, sections, contents
+        List<Chapter> chapters = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
+        List<ChapterLearningTreeRes> chapterTrees = new ArrayList<>(chapters.size());
+
+        // Get all progress data upfront for efficiency
+        List<ChapterProgressRes> chapterProgressList = getChaptersProgress(userId, courseId);
+        Map<Long, ChapterProgressRes> chapterProgressMap = chapterProgressList.stream()
+                .collect(Collectors.toMap(ChapterProgressRes::getChapterId, cp -> cp));
+
+        List<LessonProgressRes> lessonProgressList = getLessonsProgress(userId, courseId);
+        Map<Long, LessonProgressRes> lessonProgressMap = lessonProgressList.stream()
+                .collect(Collectors.toMap(LessonProgressRes::getLessonId, lp -> lp));
+
+        // Get all content progress for all lessons
+        Map<Long, ContentProgressRes> contentProgressMap = new HashMap<>();
+        for (LessonProgressRes lp : lessonProgressList) {
+            List<ContentProgressRes> contents = getLessonContentsProgress(userId, lp.getLessonId());
+            for (ContentProgressRes cp : contents) {
+                contentProgressMap.put(cp.getContentId(), cp);
+            }
+        }
+
+        // Build tree structure
+        for (Chapter chapter : chapters) {
+            ChapterProgressRes chapterProgress = chapterProgressMap.get(chapter.getId());
+            int chapterPercent = chapterProgress != null ? chapterProgress.getPercent() : 0;
+
+            List<Lesson> lessons = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(chapter.getId());
+            List<LessonLearningTreeRes> lessonTrees = new ArrayList<>(lessons.size());
+
+            for (Lesson lesson : lessons) {
+                LessonProgressRes lessonProgress = lessonProgressMap.get(lesson.getId());
+                boolean isCompleted = lessonProgress != null && Boolean.TRUE.equals(lessonProgress.getIsCompleted());
+
+                // Get quiz ID if exists
+                Long quizId = quizRepo.findByLesson_Id(lesson.getId())
+                        .map(Quiz::getId)
+                        .orElse(null);
+
+                List<Section> sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lesson.getId());
+                List<SectionLearningTreeRes> sectionTrees = new ArrayList<>(sections.size());
+
+                for (Section section : sections) {
+                    List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(section.getId());
+                    List<ContentLearningTreeRes> contentTrees = new ArrayList<>(contents.size());
+
+                    for (SectionsContent content : contents) {
+                        ContentProgressRes contentProgress = contentProgressMap.get(content.getId());
+                        
+                        contentTrees.add(ContentLearningTreeRes.builder()
+                                .contentId(content.getId())
+                                .orderIndex(content.getOrderIndex())
+                                .contentFormat(content.getContentFormat())
+                                .isPrimaryContent(Boolean.TRUE.equals(content.getIsPrimaryContent()))
+                                .filePath(content.getFilePath())
+                                .richText(content.getRichText())
+                                .flashcardSetId(content.getFlashcardSetId())
+                                .isTrackable(Boolean.TRUE.equals(content.getIsTrackable()))
+                                .lastPositionSec(contentProgress != null ? contentProgress.getLastPositionSec() : null)
+                                .isCompleted(contentProgress != null && Boolean.TRUE.equals(contentProgress.getIsCompleted()))
+                                .durationSec(contentProgress != null ? contentProgress.getDurationSec() : null)
+                                .build());
+                    }
+
+                    sectionTrees.add(SectionLearningTreeRes.builder()
+                            .sectionId(section.getId())
+                            .title(section.getTitle())
+                            .orderIndex(section.getOrderIndex())
+                            .studyType(section.getStudyType())
+                            .flashcardSetId(section.getFlashcardSetId())
+                            .contents(contentTrees)
+                            .build());
+                }
+
+                lessonTrees.add(LessonLearningTreeRes.builder()
+                        .lessonId(lesson.getId())
+                        .title(lesson.getTitle())
+                        .orderIndex(lesson.getOrderIndex())
+                        .totalDurationSec(lesson.getTotalDurationSec())
+                        .isCompleted(isCompleted)
+                        .quizId(quizId)
+                        .sections(sectionTrees)
+                        .build());
+            }
+
+            chapterTrees.add(ChapterLearningTreeRes.builder()
+                    .chapterId(chapter.getId())
+                    .title(chapter.getTitle())
+                    .orderIndex(chapter.getOrderIndex())
+                    .summary(chapter.getSummary())
+                    .progressPercent(chapterPercent)
+                    .lessons(lessonTrees)
+                    .build());
+        }
+
+        return CourseLearningTreeRes.builder()
+                .courseId(courseId)
+                .courseTitle(courseTitle)
+                .courseSubtitle(courseSubtitle)
+                .coverImagePath(coverImagePath)
+                .enrollmentId(enrollment.getId())
+                .progressPercent(enrollment.getProgressPercent())
+                .lastAccessAt(enrollment.getLastAccessAt())
+                .chapters(chapterTrees)
+                .build();
+    }
+
 }
