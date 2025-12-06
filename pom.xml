@@ -93,13 +93,6 @@
         <!-- Vertex AI for Gemini (optional, using REST API instead) -->
         <!-- Using REST API via RestTemplate instead of SDK for simplicity -->
         
-        <!-- Apache HttpClient for better DNS handling -->
-        <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpclient</artifactId>
-            <version>4.5.14</version>
-        </dependency>
-        
         <!-- JWT for token generation -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
