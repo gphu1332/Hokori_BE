@@ -6,11 +6,11 @@ import lombok.Value;
 @Value
 public class PayOSCreatePaymentResponse {
     
-    @JsonProperty("error")
-    Integer error;
+    @JsonProperty("code")
+    String code;
     
-    @JsonProperty("message")
-    String message;
+    @JsonProperty("desc")
+    String desc;
     
     @JsonProperty("data")
     PayOSPaymentData data;

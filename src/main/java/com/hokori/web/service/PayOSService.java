@@ -109,11 +109,13 @@ public class PayOSService {
                 
                 if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                     PayOSCreatePaymentResponse body = response.getBody();
-                    if (body.getError() != null && body.getError() != 0) {
-                        log.error("PayOS API error: {} - {}", body.getError(), body.getMessage());
-                        throw new RuntimeException("PayOS API error: " + body.getMessage());
+                    // PayOS returns code "00" for success, other codes indicate errors
+                    if (body.getCode() != null && !"00".equals(body.getCode())) {
+                        log.error("PayOS API error: code={}, desc={}", body.getCode(), body.getDesc());
+                        throw new RuntimeException("PayOS API error: " + body.getDesc());
                     }
-                    log.info("PayOS payment link created successfully for orderCode: {}", orderCode);
+                    log.info("PayOS payment link created successfully for orderCode: {}, code={}, desc={}", 
+                            orderCode, body.getCode(), body.getDesc());
                     return body;
                 } else {
                     log.error("PayOS API returned non-2xx status: {}", response.getStatusCode());
