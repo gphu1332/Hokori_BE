@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -47,6 +48,44 @@ public class GlobalExceptionHandler {
         response.put("errors", errors);
         
         logger.warn("Validation failed: {}", errors);
+        
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadableException(
+            HttpMessageNotReadableException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        
+        String message = ex.getMessage();
+        String detailedMessage = "Invalid JSON format in request body";
+        
+        // Extract more specific error message
+        if (message != null) {
+            if (message.contains("JSON parse error")) {
+                detailedMessage = "JSON parse error: Invalid JSON format. Please check your request body.";
+            } else if (message.contains("Unexpected character")) {
+                detailedMessage = "JSON parse error: Invalid character in JSON. " +
+                        "Make sure your request body is valid JSON and Content-Type header is 'application/json'.";
+            } else if (message.contains("Expected")) {
+                detailedMessage = "JSON parse error: " + message;
+            }
+        }
+        
+        response.put("message", detailedMessage);
+        response.put("status", "error");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false).replace("uri=", ""));
+        
+        // Add helpful suggestions
+        Map<String, String> suggestions = new HashMap<>();
+        suggestions.put("checkContentType", "Ensure Content-Type header is 'application/json'");
+        suggestions.put("checkJsonFormat", "Verify request body is valid JSON format");
+        suggestions.put("checkSpecialChars", "Check for unescaped special characters in strings");
+        suggestions.put("checkTrailingComma", "Remove trailing commas in JSON objects/arrays");
+        response.put("suggestions", suggestions);
+        
+        logger.warn("JSON parse error: {}", message);
         
         return ResponseEntity.badRequest().body(response);
     }
