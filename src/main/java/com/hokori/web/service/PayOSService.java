@@ -189,6 +189,9 @@ public class PayOSService {
                     returnUrl
             );
             
+            log.debug("Webhook signature verification - dataString: {}", dataString);
+            log.debug("Webhook signature verification - received signature: {}", webhookData.getSignature());
+            
             // Tạo HMAC SHA256 signature
             Mac hmacSha256 = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey = new SecretKeySpec(
@@ -199,8 +202,16 @@ public class PayOSService {
             byte[] hash = hmacSha256.doFinal(dataString.getBytes(StandardCharsets.UTF_8));
             String calculatedSignature = Base64.getEncoder().encodeToString(hash);
             
+            log.debug("Webhook signature verification - calculated signature: {}", calculatedSignature);
+            log.debug("Webhook signature verification - signatures match: {}", calculatedSignature.equals(webhookData.getSignature()));
+            
             // So sánh signature
-            return calculatedSignature.equals(webhookData.getSignature());
+            boolean isValid = calculatedSignature.equals(webhookData.getSignature());
+            if (!isValid) {
+                log.warn("Webhook signature mismatch for orderCode: {}. Received: {}, Calculated: {}", 
+                        data.getOrderCode(), webhookData.getSignature(), calculatedSignature);
+            }
+            return isValid;
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             log.error("Error verifying webhook signature", e);
             return false;

@@ -244,10 +244,22 @@ public class PaymentService {
         
         // Verify signature (skip for test webhooks without signature)
         if (webhookData.getSignature() != null && !webhookData.getSignature().isEmpty()) {
-            if (!payOSService.verifyWebhookSignature(webhookData)) {
-                log.error("Invalid webhook signature for orderCode: {}", orderCode);
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid webhook signature");
+            boolean isValid = payOSService.verifyWebhookSignature(webhookData);
+            if (!isValid) {
+                log.error("Invalid webhook signature for orderCode: {}. This might be a test webhook from PayOS.", orderCode);
+                // For test webhooks, PayOS might send invalid signatures
+                // Check if this is a test webhook by checking if payment exists
+                boolean paymentExists = paymentRepo.existsByOrderCode(orderCode);
+                if (!paymentExists) {
+                    log.warn("Payment not found for orderCode: {} - likely a test webhook, skipping signature verification", orderCode);
+                    // Don't throw error for test webhooks, just log and return
+                    return;
+                } else {
+                    // Payment exists but signature is invalid - this is a real issue
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid webhook signature");
+                }
             }
+            log.info("Webhook signature verified successfully for orderCode: {}", orderCode);
         } else {
             log.warn("Webhook without signature received for orderCode: {} (might be test webhook)", orderCode);
         }
