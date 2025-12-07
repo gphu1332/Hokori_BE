@@ -41,7 +41,8 @@ public class SecurityConfig {
                 // IMPORTANT: These must come BEFORE role-based and authenticated endpoints
                 // ============================================
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/ai/**").permitAll()
+                // AI endpoints: packages require auth, but some AI services might be public
+                // /api/ai/packages/** requires authentication (handled by @PreAuthorize)
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/api/hello").permitAll()
                 .requestMatchers("/api/echo").permitAll()
@@ -97,6 +98,9 @@ public class SecurityConfig {
                 
                 // Cart endpoints - authenticated users only
                 .requestMatchers("/api/cart/**").authenticated()
+                
+                // AI Package endpoints - authenticated users only (handled by @PreAuthorize in controller)
+                .requestMatchers("/api/ai/packages/**").authenticated()
                 
                 // Asset endpoints - authenticated users only (typically TEACHER/ADMIN but checked in service)
                 .requestMatchers("/api/assets/**").authenticated()
