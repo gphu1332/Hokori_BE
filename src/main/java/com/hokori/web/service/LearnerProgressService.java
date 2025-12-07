@@ -421,12 +421,14 @@ public class LearnerProgressService {
         
         boolean isTrialChapter = chapter.isTrial();
         
-        // If not trial chapter, require enrollment
+        // Get enrollment and progress (if not trial chapter)
+        Enrollment enrollment = null;
+        Map<Long, UserContentProgress> ucpMap = new HashMap<>();
         if (!isTrialChapter) {
-            enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+            enrollment = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled in this course"));
         }
-        // If trial chapter, allow access without enrollment
+        // If trial chapter, allow access without enrollment (no progress tracking)
 
         // Get lesson entity
         Lesson lesson = lessonRepo.findById(lessonId)
@@ -434,6 +436,24 @@ public class LearnerProgressService {
 
         // Get sections with contents
         List<Section> sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId);
+        
+        // Collect all content IDs and query progress at once (if enrolled)
+        List<Long> allContentIds = new ArrayList<>();
+        for (Section section : sections) {
+            List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(section.getId());
+            for (SectionsContent content : contents) {
+                allContentIds.add(content.getId());
+            }
+        }
+        
+        // Query all progress for this lesson at once with JOIN FETCH (if enrolled)
+        if (enrollment != null && !allContentIds.isEmpty()) {
+            ucpMap = ucpRepo
+                    .findByEnrollment_IdAndContent_IdInWithContent(enrollment.getId(), allContentIds)
+                    .stream()
+                    .collect(Collectors.toMap(ucp -> ucp.getContent().getId(), ucp -> ucp));
+        }
+        
         List<SectionRes> sectionResList = new ArrayList<>(sections.size());
 
         for (Section section : sections) {
@@ -441,6 +461,13 @@ public class LearnerProgressService {
             List<ContentRes> contentResList = new ArrayList<>(contents.size());
 
             for (SectionsContent content : contents) {
+                // Get progress for this content
+                UserContentProgress ucp = ucpMap.get(content.getId());
+                
+                // Get progress for this content
+                Long lastPositionSec = ucp != null ? ucp.getLastPositionSec() : null;
+                Boolean isCompleted = ucp != null && Boolean.TRUE.equals(ucp.getIsCompleted()) ? true : false;
+                
                 contentResList.add(new ContentRes(
                         content.getId(),
                         content.getOrderIndex(),
@@ -448,7 +475,9 @@ public class LearnerProgressService {
                         content.isPrimaryContent(),
                         content.getFilePath(),
                         content.getRichText(),
-                        content.getFlashcardSetId()
+                        content.getFlashcardSetId(),
+                        lastPositionSec,
+                        isCompleted
                 ));
             }
 
