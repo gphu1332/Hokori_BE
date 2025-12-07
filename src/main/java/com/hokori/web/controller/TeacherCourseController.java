@@ -44,6 +44,8 @@ public class TeacherCourseController {
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
     private final TeacherStatisticsService teacherStatisticsService;
+    private final com.hokori.web.repository.SectionRepository sectionRepo;
+    private final com.hokori.web.repository.CourseRepository courseRepo;
 
     /** Lấy userId (teacher) từ SecurityContext (principal=email). */
     private Long currentUserIdOrThrow() {
@@ -238,16 +240,51 @@ public class TeacherCourseController {
             description = """
             Multipart -> uploads/sections/{sectionId}.
             FE nhận về filePath để gọi API tạo Content (ASSET).
+            Hỗ trợ video, audio, và các file media khác.
             """)
     @PostMapping(value = "/sections/{sectionId}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('TEACHER')")
     public FileUploadRes uploadSectionFile(@PathVariable Long sectionId,
                                            @RequestParam("file") MultipartFile file) {
-        currentUserIdOrThrow();
-        String subFolder = "sections/" + sectionId;
-        String relativePath = fileStorageService.store(file, subFolder);
-        String url = "/files/" + relativePath;
-        return new FileUploadRes(relativePath, url);
+        try {
+            Long teacherId = currentUserIdOrThrow();
+            log.debug("Uploading file for sectionId={}, teacherId={}, fileName={}, size={}", 
+                sectionId, teacherId, file.getOriginalFilename(), file.getSize());
+            
+            // Validate file
+            if (file == null || file.isEmpty()) {
+                log.warn("Empty file uploaded for sectionId={}", sectionId);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty or null");
+            }
+            
+            // Check ownership - validate teacher owns the course containing this section
+            Long courseId = sectionRepo.findCourseIdBySectionId(sectionId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
+            
+            // Check if teacher owns the course (same logic as CourseService.assertOwner)
+            if (!courseRepo.existsByIdAndUserIdAndDeletedFlagFalse(courseId, teacherId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not owner of this course");
+            }
+            
+            String subFolder = "sections/" + sectionId;
+            String relativePath = fileStorageService.store(file, subFolder);
+            String url = "/files/" + relativePath;
+            
+            log.debug("File uploaded successfully: sectionId={}, filePath={}", sectionId, relativePath);
+            return new FileUploadRes(relativePath, url);
+        } catch (ResponseStatusException e) {
+            log.warn("ResponseStatusException when uploading file for sectionId={}: {}", 
+                sectionId, e.getReason());
+            throw e; // Re-throw ResponseStatusException as-is
+        } catch (IllegalArgumentException e) {
+            log.warn("IllegalArgumentException when uploading file for sectionId={}: {}", 
+                sectionId, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (Exception e) {
+            log.error("Unexpected error when uploading file for sectionId={}", sectionId, e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Failed to upload file: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+        }
     }
 
     @Operation(summary = "Thêm Content vào Section",
