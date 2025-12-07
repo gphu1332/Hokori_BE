@@ -475,11 +475,16 @@ public class PaymentService {
     private void clearPaidCartItems(Payment payment) {
         if (payment.getCartId() != null) {
             try {
-                // Note: CartService sẽ tự động cleanup khi view cart
-                // Nhưng có thể xóa trực tiếp ở đây để đảm bảo
-                log.info("Cleared cart {} after payment {}", payment.getCartId(), payment.getOrderCode());
+                // Parse course IDs from payment
+                List<Long> courseIds = parseCourseIds(payment.getCourseIds());
+                if (!courseIds.isEmpty()) {
+                    // Clear cart items for these courses
+                    cartService.clearItems(courseIds);
+                    log.info("Cleared cart {} items for courses {} after payment {}", 
+                            payment.getCartId(), courseIds, payment.getOrderCode());
+                }
             } catch (Exception e) {
-                log.error("Error clearing cart items", e);
+                log.error("Error clearing cart items for payment {}", payment.getOrderCode(), e);
             }
         }
     }
