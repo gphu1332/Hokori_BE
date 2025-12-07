@@ -363,6 +363,8 @@ public class LearnerProgressService {
             ucp.setCompletedAt(Boolean.TRUE.equals(req.getIsCompleted()) ? Instant.now() : null);
         }
         ucpRepo.save(ucp);
+        // Flush to ensure data is written to DB immediately
+        ucpRepo.flush();
 
         // update enrollment course percent (recompute simple)
         recomputeCoursePercent(e);
@@ -722,12 +724,47 @@ public class LearnerProgressService {
         Map<Long, LessonProgressRes> lessonProgressMap = lessonProgressList.stream()
                 .collect(Collectors.toMap(LessonProgressRes::getLessonId, lp -> lp));
 
-        // Get all content progress for all lessons
+        // Get all content progress for entire course at once (more efficient)
+        // Collect all contents from all lessons in the course and build content map
+        Map<Long, SectionsContent> allContentsMap = new HashMap<>();
+        List<Long> allContentIds = new ArrayList<>();
+        for (Chapter chapter : chapters) {
+            List<Lesson> lessons = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(chapter.getId());
+            for (Lesson lesson : lessons) {
+                List<Section> sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lesson.getId());
+                for (Section section : sections) {
+                    List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(section.getId());
+                    for (SectionsContent content : contents) {
+                        allContentIds.add(content.getId());
+                        allContentsMap.put(content.getId(), content);
+                    }
+                }
+            }
+        }
+        
+        // Query all UserContentProgress for this enrollment at once with JOIN FETCH
+        Map<Long, UserContentProgress> ucpMap = new HashMap<>();
+        if (!allContentIds.isEmpty()) {
+            ucpMap = ucpRepo
+                    .findByEnrollment_IdAndContent_IdInWithContent(enrollment.getId(), allContentIds)
+                    .stream()
+                    .collect(Collectors.toMap(ucp -> ucp.getContent().getId(), ucp -> ucp));
+        }
+        
+        // Build ContentProgressRes map from UserContentProgress and SectionsContent
         Map<Long, ContentProgressRes> contentProgressMap = new HashMap<>();
-        for (LessonProgressRes lp : lessonProgressList) {
-            List<ContentProgressRes> contents = getLessonContentsProgress(userId, lp.getLessonId());
-            for (ContentProgressRes cp : contents) {
-                contentProgressMap.put(cp.getContentId(), cp);
+        for (Long contentId : allContentIds) {
+            UserContentProgress ucp = ucpMap.get(contentId);
+            SectionsContent content = allContentsMap.get(contentId);
+            if (content != null) {
+                contentProgressMap.put(contentId, ContentProgressRes.builder()
+                        .contentId(contentId)
+                        .contentFormat(content.getContentFormat())
+                        .isTrackable(Boolean.TRUE.equals(content.getIsTrackable()))
+                        .lastPositionSec(ucp != null ? ucp.getLastPositionSec() : null)
+                        .isCompleted(ucp != null && Boolean.TRUE.equals(ucp.getIsCompleted()))
+                        .durationSec(null)
+                        .build());
             }
         }
 
