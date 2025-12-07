@@ -390,8 +390,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         
         // Skip JWT filter for public endpoints
+        // NOTE: /api/ai/packages/** requires authentication, so don't skip it
         return path.startsWith("/api/auth/") ||
-               path.startsWith("/api/ai/") ||
+               // Only skip specific AI endpoints that are public (not packages)
+               // path.startsWith("/api/ai/") || // REMOVED - packages need auth
                path.startsWith("/api/health") ||
                path.startsWith("/api/hello") ||
                path.startsWith("/api/echo") ||
