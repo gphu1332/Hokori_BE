@@ -31,4 +31,10 @@ public class CourseRes {
     private List<ChapterRes> chapters;
     private Long enrollCount;
     private Boolean isEnrolled; // true nếu user hiện tại đã enroll vào course này (null nếu chưa đăng nhập)
+    
+    // Rejection info (chỉ có khi status = REJECTED)
+    private String rejectionReason;
+    private Instant rejectedAt;
+    private Long rejectedByUserId;
+    private String rejectedByUserName; // Tên moderator đã reject
 }

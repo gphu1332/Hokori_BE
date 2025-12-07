@@ -186,6 +186,10 @@ public class CourseService {
 
         // Chuyển sang PENDING_APPROVAL thay vì PUBLISHED
         c.setStatus(CourseStatus.PENDING_APPROVAL);
+        // Clear rejection info khi submit lại
+        c.setRejectionReason(null);
+        c.setRejectedAt(null);
+        c.setRejectedByUserId(null);
         return toCourseResLite(c);
     }
 
@@ -202,11 +206,21 @@ public class CourseService {
 
         c.setStatus(CourseStatus.PUBLISHED);
         c.setPublishedAt(Instant.now());
+        // Clear rejection info khi approve
+        c.setRejectionReason(null);
+        c.setRejectedAt(null);
+        c.setRejectedByUserId(null);
         return toCourseResLite(c);
     }
 
     /**
-     * Reject (request changes): PENDING_APPROVAL -> REJECT
+     * Reject course by moderator: PENDING_APPROVAL -> REJECTED
+     * Teacher can edit and submit again after rejection.
+     * 
+     * @param id Course ID
+     * @param moderatorUserId Moderator user ID who rejects
+     * @param reason Rejection reason (optional, will be persisted)
+     * @return Course response with REJECTED status and rejection info
      */
     public CourseRes rejectCourse(Long id, Long moderatorUserId, String reason) {
         Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
@@ -217,7 +231,11 @@ public class CourseService {
         }
 
         c.setStatus(CourseStatus.REJECTED);
-        // TODO: lưu reason + moderatorUserId vào log nếu cần
+        c.setRejectionReason(reason);
+        c.setRejectedAt(Instant.now());
+        c.setRejectedByUserId(moderatorUserId);
+        
+        // toCourseResLite sẽ tự động map rejection info khi status = REJECTED
         return toCourseResLite(c);
     }
 
@@ -872,6 +890,16 @@ public class CourseService {
         // ✅ luôn trả enrollCount
         long enrollCount = enrollmentRepo.countByCourseId(c.getId());
         res.setEnrollCount(enrollCount);
+
+        // Map rejection info (chỉ có khi status = REJECTED)
+        if (c.getStatus() == CourseStatus.REJECTED) {
+            res.setRejectionReason(c.getRejectionReason());
+            res.setRejectedAt(c.getRejectedAt());
+            res.setRejectedByUserId(c.getRejectedByUserId());
+            if (c.getRejectedByUserId() != null) {
+                res.setRejectedByUserName(getTeacherName(c.getRejectedByUserId()));
+            }
+        }
 
         res.setChapters(List.of());
         return res;

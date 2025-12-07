@@ -34,6 +34,13 @@ public class Course extends BaseEntity {
     @Enumerated(EnumType.STRING) @Column(nullable=false)
     private CourseStatus status = CourseStatus.DRAFT;
     private Instant publishedAt;
+    
+    // Rejection info (khi moderator reject)
+    @Column(name = "rejection_reason", columnDefinition="TEXT")
+    private String rejectionReason;
+    private Instant rejectedAt;
+    @Column(name = "rejected_by_user_id")
+    private Long rejectedByUserId;
 
     private Double ratingAvg = 0.0;
     private Long ratingCount = 0L;

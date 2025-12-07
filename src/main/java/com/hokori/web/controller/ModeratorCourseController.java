@@ -131,7 +131,7 @@ public class ModeratorCourseController {
 
     @Operation(
             summary = "Reject course",
-            description = "Từ chối course. Chuyển status từ PENDING_APPROVAL về DRAFT."
+            description = "Từ chối course. Chuyển status từ PENDING_APPROVAL về REJECTED. Teacher có thể sửa và submit lại sau."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -141,7 +141,7 @@ public class ModeratorCourseController {
                             mediaType = "application/json",
                             schema = @Schema(implementation = ApiResponse.class),
                             examples = @ExampleObject(value = """
-                    {"status":"success","message":"Course rejected","data":{"id":1,"title":"Khóa học N5","status":"DRAFT"}}
+                    {"status":"success","message":"Course rejected","data":{"id":1,"title":"Khóa học N5","status":"REJECTED"}}
                     """)
                     )
             ),
