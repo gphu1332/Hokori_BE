@@ -447,13 +447,11 @@ public class PaymentService {
             
             for (Long courseId : courseIds) {
                 try {
-                    // Check if already enrolled
-                    if (!enrollmentRepo.existsByUserIdAndCourseId(payment.getUserId(), courseId)) {
-                        learnerProgressService.enrollCourse(payment.getUserId(), courseId);
-                        log.info("Enrolled user {} into course {}", payment.getUserId(), courseId);
-                    }
+                    // Use enrollCourseAfterPayment to skip price check (user has already paid)
+                    learnerProgressService.enrollCourseAfterPayment(payment.getUserId(), courseId);
+                    log.info("Enrolled user {} into course {} after successful payment", payment.getUserId(), courseId);
                 } catch (Exception e) {
-                    log.error("Error enrolling user {} into course {}", payment.getUserId(), courseId, e);
+                    log.error("Error enrolling user {} into course {} after payment", payment.getUserId(), courseId, e);
                     // Continue with other courses even if one fails
                 }
             }

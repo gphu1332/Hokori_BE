@@ -112,6 +112,79 @@ public class LearnerProgressService {
                 .build();
     }
     
+    /**
+     * Enroll learner into a course AFTER successful payment
+     * This method skips price check since payment has already been made
+     */
+    public EnrollmentLiteRes enrollCourseAfterPayment(Long userId, Long courseId) {
+        // Check if already enrolled
+        if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+            // Already enrolled, return existing enrollment
+            Enrollment existing = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Enrollment check failed"));
+            return EnrollmentLiteRes.builder()
+                    .enrollmentId(existing.getId())
+                    .courseId(existing.getCourseId())
+                    .progressPercent(existing.getProgressPercent())
+                    .startedAt(existing.getStartedAt())
+                    .completedAt(existing.getCompletedAt())
+                    .lastAccessAt(existing.getLastAccessAt())
+                    .build();
+        }
+        
+        // Check if course exists and is PUBLISHED (use native query to avoid LOB stream error)
+        var courseMetadataOpt = courseRepo.findCourseMetadataById(courseId);
+        if (courseMetadataOpt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+        }
+        
+        Object[] metadata = courseMetadataOpt.get();
+        // Handle nested array case (PostgreSQL)
+        Object[] actualMetadata = metadata;
+        if (metadata.length == 1 && metadata[0] instanceof Object[]) {
+            actualMetadata = (Object[]) metadata[0];
+        }
+        
+        // Validate array length
+        if (actualMetadata.length < 10 || actualMetadata[9] == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course metadata: missing status");
+        }
+        
+        // Check status (at index 9)
+        CourseStatus status;
+        try {
+            status = CourseStatus.valueOf(actualMetadata[9].toString().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Invalid course status: " + actualMetadata[9]);
+        }
+        if (status != CourseStatus.PUBLISHED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Course is not published");
+        }
+        
+        // Skip price check - user has already paid
+        // Create enrollment
+        Enrollment enrollment = Enrollment.builder()
+                .userId(userId)
+                .courseId(courseId)
+                .progressPercent(0)
+                .startedAt(Instant.now())
+                .lastAccessAt(Instant.now())
+                .build();
+        
+        Enrollment saved = enrollmentRepo.save(enrollment);
+        
+        return EnrollmentLiteRes.builder()
+                .enrollmentId(saved.getId())
+                .courseId(saved.getCourseId())
+                .progressPercent(saved.getProgressPercent())
+                .startedAt(saved.getStartedAt())
+                .completedAt(saved.getCompletedAt())
+                .lastAccessAt(saved.getLastAccessAt())
+                .build();
+    }
+    
     @Transactional(readOnly = true)
     public EnrollmentLiteRes getEnrollment(Long userId, Long courseId) {
         Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
