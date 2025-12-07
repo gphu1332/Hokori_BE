@@ -428,8 +428,18 @@ public class PaymentService {
                     activateAIPackagePurchaseFromPayment(payment);
                 } else {
                     // This is a course payment
+                    // IMPORTANT: Enrollment must succeed even if clearing cart fails
                     enrollCoursesFromPayment(payment);
-                    clearPaidCartItems(payment);
+                    
+                    // Clear cart items separately - don't let cart clearing failure rollback enrollment
+                    // This is wrapped in try-catch to ensure enrollment is not affected
+                    try {
+                        clearPaidCartItems(payment);
+                    } catch (Exception cartException) {
+                        // Log error but don't throw - enrollment has already succeeded
+                        log.error("Failed to clear cart items for payment {} (orderCode: {}), but enrollment was successful. Cart can be cleared manually if needed.", 
+                                payment.getId(), payment.getOrderCode(), cartException);
+                    }
                 }
             } else {
                 // Payment failed or cancelled
