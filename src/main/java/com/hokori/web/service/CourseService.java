@@ -127,6 +127,8 @@ public class CourseService {
     public CourseRes updateCoverImage(Long courseId, Long teacherUserId, String coverImagePath) {
         Course c = getOwned(courseId, teacherUserId);  // đã check owner + deletedFlag
         c.setCoverImagePath(coverImagePath);
+        courseRepo.save(c); // Save to persist changes and ensure entity is fully loaded
+        courseRepo.flush(); // Flush to ensure changes are persisted before loading description
         return toCourseResLite(c);
     }
 
