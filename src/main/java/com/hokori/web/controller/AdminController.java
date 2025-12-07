@@ -1,9 +1,16 @@
 package com.hokori.web.controller;
 
+import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.Enum.JLPTLevel;
+import com.hokori.web.Enum.PaymentStatus;
+import com.hokori.web.Enum.WalletTransactionSource;
+import com.hokori.web.Enum.WalletTransactionStatus;
+import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.dto.*;
+import com.hokori.web.entity.Payment;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
+import com.hokori.web.repository.*;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.RoleService;
 import com.hokori.web.service.UserService;
@@ -12,13 +19,25 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Admin Controller.
@@ -44,6 +63,18 @@ public class AdminController {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private CourseRepository courseRepository;
+
+    @Autowired
+    private PaymentRepository paymentRepository;
+
+    @Autowired
+    private WalletTransactionRepository walletTransactionRepository;
+
+    @Autowired
+    private EnrollmentRepository enrollmentRepository;
 
     // =================================================================================
     // ROLE MANAGEMENT
@@ -577,6 +608,351 @@ public class AdminController {
             return ResponseEntity.ok(ApiResponse.success("System statistics retrieved successfully", stats));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("Failed to retrieve system statistics: " + e.getMessage()));
+        }
+    }
+
+    // =================================================================================
+    // TEACHER MANAGEMENT & STATISTICS
+    // =================================================================================
+
+    @GetMapping("/teachers/{teacherId}")
+    @Operation(summary = "Get teacher details with contributions", 
+               description = "Get detailed information about a teacher including courses, statistics, and revenue")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTeacherDetails(@PathVariable Long teacherId) {
+        try {
+            User teacher = userService.getUserWithRole(teacherId)
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
+
+            // Verify user is a teacher
+            if (teacher.getRole() == null || !RoleConstants.TEACHER.equalsIgnoreCase(teacher.getRole().getRoleName())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("User is not a teacher"));
+            }
+
+            // Get teacher courses
+            List<Object[]> courseMetadataList = courseRepository.findCourseMetadataByUserId(teacherId, null, null);
+            List<Map<String, Object>> courses = courseMetadataList.stream().map(metadata -> {
+                Map<String, Object> course = new HashMap<>();
+                course.put("id", metadata[0]);
+                course.put("title", metadata[1]);
+                course.put("slug", metadata[2]);
+                course.put("status", metadata[9]);
+                course.put("priceCents", metadata[5]);
+                course.put("discountedPriceCents", metadata[6]);
+                course.put("publishedAt", metadata[10]);
+                return course;
+            }).collect(Collectors.toList());
+
+            // Count courses by status
+            long publishedCourses = courseRepository.countByUserIdAndStatusAndDeletedFlagFalse(teacherId, CourseStatus.PUBLISHED);
+            long draftCourses = courseRepository.countByUserIdAndStatusAndDeletedFlagFalse(teacherId, CourseStatus.DRAFT);
+            long pendingCourses = courseRepository.countByUserIdAndStatusAndDeletedFlagFalse(teacherId, CourseStatus.PENDING_APPROVAL);
+
+            // Get total enrollments - count enrollments for all courses of this teacher
+            List<Long> teacherCourseIds = courseMetadataList.stream()
+                    .map(metadata -> ((Number) metadata[0]).longValue())
+                    .collect(Collectors.toList());
+            long totalEnrollments = teacherCourseIds.stream()
+                    .mapToLong(courseId -> enrollmentRepository.countByCourseId(courseId))
+                    .sum();
+
+            // Get total revenue (all time)
+            List<com.hokori.web.entity.WalletTransaction> allTransactions = walletTransactionRepository
+                    .findByUser_IdOrderByCreatedAtDesc(teacherId, PageRequest.of(0, 1000, Sort.by(Sort.Direction.DESC, "createdAt")))
+                    .getContent();
+            
+            Long totalRevenueCents = allTransactions.stream()
+                    .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                            && tx.getSource() == WalletTransactionSource.COURSE_SALE)
+                    .mapToLong(com.hokori.web.entity.WalletTransaction::getAmountCents)
+                    .sum();
+
+            // Get monthly revenue (current month)
+            ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
+            YearMonth currentMonth = YearMonth.now(zone);
+            ZonedDateTime fromZdt = currentMonth.atDay(1).atStartOfDay(zone);
+            ZonedDateTime toZdt = currentMonth.plusMonths(1).atDay(1).atStartOfDay(zone);
+            
+            Long monthlyRevenueCents = walletTransactionRepository.sumIncomeForPeriod(
+                    teacherId,
+                    WalletTransactionStatus.COMPLETED,
+                    WalletTransactionSource.COURSE_SALE,
+                    fromZdt.toInstant(),
+                    toZdt.toInstant()
+            );
+            if (monthlyRevenueCents == null) monthlyRevenueCents = 0L;
+
+            Map<String, Object> teacherDetails = new HashMap<>();
+            teacherDetails.put("teacher", Map.of(
+                    "id", teacher.getId(),
+                    "email", teacher.getEmail(),
+                    "username", teacher.getUsername() != null ? teacher.getUsername() : "N/A",
+                    "displayName", teacher.getDisplayName() != null ? teacher.getDisplayName() : "N/A",
+                    "bio", teacher.getBio() != null ? teacher.getBio() : "",
+                    "currentJlptLevel", teacher.getCurrentJlptLevel() != null ? teacher.getCurrentJlptLevel().name() : "N/A",
+                    "approvalStatus", teacher.getApprovalStatus() != null ? teacher.getApprovalStatus().name() : "NONE",
+                    "walletBalance", teacher.getWalletBalance() != null ? teacher.getWalletBalance() : 0L,
+                    "createdAt", teacher.getCreatedAt()
+            ));
+
+            teacherDetails.put("courses", courses);
+            teacherDetails.put("statistics", Map.of(
+                    "totalCourses", courses.size(),
+                    "publishedCourses", publishedCourses,
+                    "draftCourses", draftCourses,
+                    "pendingCourses", pendingCourses,
+                    "totalEnrollments", totalEnrollments
+            ));
+
+            teacherDetails.put("revenue", Map.of(
+                    "totalRevenueCents", totalRevenueCents,
+                    "totalRevenue", BigDecimal.valueOf(totalRevenueCents).movePointLeft(2),
+                    "monthlyRevenueCents", monthlyRevenueCents,
+                    "monthlyRevenue", BigDecimal.valueOf(monthlyRevenueCents).movePointLeft(2),
+                    "currentMonth", currentMonth.toString()
+            ));
+
+            return ResponseEntity.ok(ApiResponse.success("Teacher details retrieved successfully", teacherDetails));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(ApiResponse.error("Failed to retrieve teacher details: " + e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to retrieve teacher details: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/teachers/{teacherId}/revenue")
+    @Operation(summary = "Get teacher revenue statistics", 
+               description = "Get detailed revenue statistics for a teacher including total and monthly breakdown")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTeacherRevenue(@PathVariable Long teacherId,
+                                                                                @RequestParam(required = false) Integer year,
+                                                                                @RequestParam(required = false) Integer month) {
+        try {
+            User teacher = userService.getUserWithRole(teacherId)
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
+
+            if (teacher.getRole() == null || !RoleConstants.TEACHER.equalsIgnoreCase(teacher.getRole().getRoleName())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("User is not a teacher"));
+            }
+
+            ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
+            YearMonth targetMonth;
+            if (year != null && month != null) {
+                targetMonth = YearMonth.of(year, month);
+            } else {
+                targetMonth = YearMonth.now(zone);
+            }
+
+            ZonedDateTime fromZdt = targetMonth.atDay(1).atStartOfDay(zone);
+            ZonedDateTime toZdt = targetMonth.plusMonths(1).atDay(1).atStartOfDay(zone);
+
+            // Get revenue for the period
+            Long revenueCents = walletTransactionRepository.sumIncomeForPeriod(
+                    teacherId,
+                    WalletTransactionStatus.COMPLETED,
+                    WalletTransactionSource.COURSE_SALE,
+                    fromZdt.toInstant(),
+                    toZdt.toInstant()
+            );
+            if (revenueCents == null) revenueCents = 0L;
+
+            // Get all transactions for the period
+            List<com.hokori.web.entity.WalletTransaction> transactions = walletTransactionRepository
+                    .findByUser_IdOrderByCreatedAtDesc(teacherId, PageRequest.of(0, 1000))
+                    .getContent()
+                    .stream()
+                    .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                            && tx.getSource() == WalletTransactionSource.COURSE_SALE
+                            && tx.getCreatedAt().isAfter(fromZdt.toInstant())
+                            && tx.getCreatedAt().isBefore(toZdt.toInstant()))
+                    .collect(Collectors.toList());
+
+            List<Map<String, Object>> transactionDetails = transactions.stream().map(tx -> {
+                Map<String, Object> detail = new HashMap<>();
+                detail.put("id", tx.getId());
+                detail.put("amountCents", tx.getAmountCents());
+                detail.put("amount", BigDecimal.valueOf(tx.getAmountCents()).movePointLeft(2));
+                detail.put("courseId", tx.getCourse() != null ? tx.getCourse().getId() : null);
+                detail.put("courseTitle", tx.getCourse() != null ? tx.getCourse().getTitle() : "N/A");
+                detail.put("description", tx.getDescription());
+                detail.put("createdAt", tx.getCreatedAt());
+                return detail;
+            }).collect(Collectors.toList());
+
+            Map<String, Object> revenue = new HashMap<>();
+            revenue.put("teacherId", teacherId);
+            revenue.put("teacherName", teacher.getDisplayName() != null ? teacher.getDisplayName() : teacher.getEmail());
+            revenue.put("period", targetMonth.toString());
+            revenue.put("revenueCents", revenueCents);
+            revenue.put("revenue", BigDecimal.valueOf(revenueCents).movePointLeft(2));
+            revenue.put("transactionCount", transactions.size());
+            revenue.put("transactions", transactionDetails);
+            revenue.put("walletBalance", teacher.getWalletBalance() != null ? teacher.getWalletBalance() : 0L);
+
+            return ResponseEntity.ok(ApiResponse.success("Teacher revenue retrieved successfully", revenue));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(ApiResponse.error("Failed to retrieve teacher revenue: " + e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to retrieve teacher revenue: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/payments")
+    @Operation(summary = "Get all payments", 
+               description = "Get all payment records, optionally filtered by status (PAID for successful payments)")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getAllPayments(
+            @RequestParam(required = false) PaymentStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        try {
+            Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+            Page<Payment> paymentPage;
+
+            if (status != null) {
+                // Filter by status - need to add this method to repository
+                List<Payment> allPayments = paymentRepository.findAll();
+                List<Payment> filtered = allPayments.stream()
+                        .filter(p -> p.getStatus() == status)
+                        .collect(Collectors.toList());
+                
+                int start = (int) pageable.getOffset();
+                int end = Math.min((start + pageable.getPageSize()), filtered.size());
+                List<Payment> pageContent = filtered.subList(start, end);
+                
+                paymentPage = new org.springframework.data.domain.PageImpl<>(
+                        pageContent, pageable, filtered.size());
+            } else {
+                paymentPage = paymentRepository.findAll(pageable);
+            }
+
+            List<Map<String, Object>> paymentList = paymentPage.getContent().stream().map(payment -> {
+                Map<String, Object> p = new HashMap<>();
+                p.put("id", payment.getId());
+                p.put("orderCode", payment.getOrderCode());
+                p.put("amountCents", payment.getAmountCents());
+                p.put("amount", BigDecimal.valueOf(payment.getAmountCents()).movePointLeft(2));
+                p.put("status", payment.getStatus());
+                p.put("userId", payment.getUserId());
+                p.put("description", payment.getDescription());
+                p.put("paidAt", payment.getPaidAt());
+                p.put("createdAt", payment.getCreatedAt());
+                
+                // Parse courseIds if available
+                if (payment.getCourseIds() != null && !payment.getCourseIds().isEmpty()) {
+                    try {
+                        // Simple parsing - assuming JSON array format [1,2,3]
+                        String courseIdsStr = payment.getCourseIds().replaceAll("[\\[\\]\\s]", "");
+                        if (!courseIdsStr.isEmpty()) {
+                            List<Long> courseIds = new ArrayList<>();
+                            for (String id : courseIdsStr.split(",")) {
+                                try {
+                                    courseIds.add(Long.parseLong(id.trim()));
+                                } catch (NumberFormatException e) {
+                                    // Skip invalid IDs
+                                }
+                            }
+                            p.put("courseIds", courseIds);
+                        }
+                    } catch (Exception e) {
+                        p.put("courseIds", new ArrayList<>());
+                    }
+                } else {
+                    p.put("courseIds", new ArrayList<>());
+                }
+                
+                p.put("aiPackageId", payment.getAiPackageId());
+                return p;
+            }).collect(Collectors.toList());
+
+            // Calculate total amount for successful payments
+            long totalPaidCents = paymentPage.getContent().stream()
+                    .filter(p -> p.getStatus() == PaymentStatus.PAID)
+                    .mapToLong(Payment::getAmountCents)
+                    .sum();
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("payments", paymentList);
+            result.put("totalElements", paymentPage.getTotalElements());
+            result.put("totalPages", paymentPage.getTotalPages());
+            result.put("currentPage", paymentPage.getNumber());
+            result.put("pageSize", paymentPage.getSize());
+            result.put("totalPaidCents", totalPaidCents);
+            result.put("totalPaidAmount", BigDecimal.valueOf(totalPaidCents).movePointLeft(2));
+            result.put("filterStatus", status != null ? status.name() : "ALL");
+
+            return ResponseEntity.ok(ApiResponse.success("Payments retrieved successfully", result));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to retrieve payments: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/teachers")
+    @Operation(summary = "Get all teachers", 
+               description = "Get list of all teachers with basic statistics")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getAllTeachers() {
+        try {
+            List<User> allUsers = userService.getAllUsers();
+            List<User> teachers = allUsers.stream()
+                    .filter(u -> u.getRole() != null && RoleConstants.TEACHER.equalsIgnoreCase(u.getRole().getRoleName()))
+                    .collect(Collectors.toList());
+
+            List<Map<String, Object>> teacherList = teachers.stream().map(teacher -> {
+                // Get basic stats
+                long publishedCourses = courseRepository.countByUserIdAndStatusAndDeletedFlagFalse(
+                        teacher.getId(), CourseStatus.PUBLISHED);
+                // Count enrollments for all courses of this teacher
+                List<Object[]> teacherCourses = courseRepository.findCourseMetadataByUserId(teacher.getId(), null, null);
+                long totalEnrollments = teacherCourses.stream()
+                        .mapToLong(metadata -> {
+                            Long courseId = ((Number) metadata[0]).longValue();
+                            return enrollmentRepository.countByCourseId(courseId);
+                        })
+                        .sum();
+
+                // Get total revenue
+                List<com.hokori.web.entity.WalletTransaction> transactions = walletTransactionRepository
+                        .findByUser_IdOrderByCreatedAtDesc(teacher.getId(), PageRequest.of(0, 1000))
+                        .getContent();
+                Long totalRevenueCents = transactions.stream()
+                        .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                                && tx.getSource() == WalletTransactionSource.COURSE_SALE)
+                        .mapToLong(com.hokori.web.entity.WalletTransaction::getAmountCents)
+                        .sum();
+
+                Map<String, Object> t = new HashMap<>();
+                t.put("id", teacher.getId());
+                t.put("email", teacher.getEmail());
+                t.put("username", teacher.getUsername());
+                t.put("displayName", teacher.getDisplayName());
+                t.put("approvalStatus", teacher.getApprovalStatus() != null ? teacher.getApprovalStatus().name() : "NONE");
+                t.put("publishedCourses", publishedCourses);
+                t.put("totalEnrollments", totalEnrollments);
+                t.put("totalRevenueCents", totalRevenueCents);
+                t.put("totalRevenue", BigDecimal.valueOf(totalRevenueCents).movePointLeft(2));
+                t.put("walletBalance", teacher.getWalletBalance() != null ? teacher.getWalletBalance() : 0L);
+                t.put("createdAt", teacher.getCreatedAt());
+                return t;
+            }).collect(Collectors.toList());
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("teachers", teacherList);
+            result.put("totalTeachers", teacherList.size());
+            result.put("approvedTeachers", teachers.stream()
+                    .filter(t -> t.getApprovalStatus() != null && 
+                            t.getApprovalStatus().name().equals("APPROVED"))
+                    .count());
+            result.put("pendingTeachers", teachers.stream()
+                    .filter(t -> t.getApprovalStatus() != null && 
+                            t.getApprovalStatus().name().equals("PENDING"))
+                    .count());
+
+            return ResponseEntity.ok(ApiResponse.success("Teachers retrieved successfully", result));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to retrieve teachers: " + e.getMessage()));
         }
     }
 }

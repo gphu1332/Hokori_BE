@@ -42,4 +42,17 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     
     // ====== Teacher: lấy danh sách learners trong course ======
     List<Enrollment> findByCourseIdOrderByCreatedAtDesc(Long courseId);
+
+    // ====== Admin: đếm tổng enrollments của teacher ======
+    @Query("""
+        select count(e)
+        from Enrollment e
+        where e.courseId in (
+            select c.id
+            from Course c
+            where c.userId = :teacherId
+              and c.deletedFlag = false
+        )
+        """)
+    long countByCourse_UserId(@Param("teacherId") Long teacherId);
 }
