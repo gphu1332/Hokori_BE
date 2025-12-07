@@ -305,26 +305,27 @@ public class LearnerProgressService {
         Enrollment e = null;
         Map<Long, UserContentProgress> ucpMap = new HashMap<>();
         
+        // Get all contents for this lesson first
+        List<SectionsContent> contents = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId).stream()
+                .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
+                .collect(Collectors.toList());
+        
         // If not trial chapter, require enrollment and get progress
         if (!isTrialChapter) {
             e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
             
-            List<SectionsContent> contents = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId).stream()
-                    .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
-                    .collect(Collectors.toList());
+            List<Long> contentIds = contents.stream().map(SectionsContent::getId).toList();
             
             // Use JOIN FETCH query to eagerly load content to avoid lazy loading issues
-            ucpMap = ucpRepo
-                    .findByEnrollment_IdAndContent_IdInWithContent(e.getId(),
-                            contents.stream().map(SectionsContent::getId).toList())
-                    .stream().collect(Collectors.toMap(c -> c.getContent().getId(), c -> c));
+            List<UserContentProgress> ucpList = ucpRepo
+                    .findByEnrollment_IdAndContent_IdInWithContent(e.getId(), contentIds);
+            
+            // Build map: key is content.id, value is UserContentProgress
+            ucpMap = ucpList.stream()
+                    .collect(Collectors.toMap(ucp -> ucp.getContent().getId(), ucp -> ucp));
         }
         // If trial chapter, allow access without enrollment (no progress tracking)
-
-        List<SectionsContent> contents = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId).stream()
-                .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
-                .collect(Collectors.toList());
 
         List<ContentProgressRes> res = new ArrayList<>(contents.size());
         for (SectionsContent c : contents) {
