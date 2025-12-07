@@ -323,8 +323,9 @@ public class LearnerProgressService {
                 // Query all progress for this enrollment and content IDs
                 // Use JOIN FETCH to eagerly load content relationship
                 // This ensures content.getId() is available without lazy loading issues
+                Long enrollmentId = e.getId(); // Store enrollment ID to ensure consistency
                 List<UserContentProgress> ucpList = ucpRepo
-                        .findByEnrollment_IdAndContent_IdInWithContent(e.getId(), contentIds);
+                        .findByEnrollment_IdAndContent_IdInWithContent(enrollmentId, contentIds);
                 
                 // Build map: key is content.id, value is UserContentProgress
                 // Content is already eagerly fetched, so no lazy loading needed
@@ -340,7 +341,7 @@ public class LearnerProgressService {
                     // This shouldn't happen, but log for debugging
                     System.err.println("WARNING: Query returned " + ucpList.size() + 
                         " UserContentProgress records but ucpMap is empty. " +
-                        "EnrollmentId: " + e.getId() + ", ContentIds: " + contentIds);
+                        "EnrollmentId: " + enrollmentId + ", ContentIds: " + contentIds);
                 }
             }
         }
@@ -353,8 +354,10 @@ public class LearnerProgressService {
             // This handles edge cases where batch query might miss some records
             if (up == null && !isTrialChapter && e != null) {
                 // Check if progress exists in DB for this content
+                // Use stored enrollment ID to ensure consistency
+                Long enrollmentId = e.getId();
                 Optional<UserContentProgress> dbCheck = ucpRepo
-                        .findByEnrollment_IdAndContent_Id(e.getId(), c.getId());
+                        .findByEnrollment_IdAndContent_Id(enrollmentId, c.getId());
                 if (dbCheck.isPresent()) {
                     // Progress exists in DB but wasn't in batch query result - use it
                     up = dbCheck.get();
