@@ -521,16 +521,27 @@ public class PaymentService {
     /**
      * Retry enrollment for a successful payment that hasn't been enrolled yet
      * This is useful when webhook failed but payment was successful
+     * If payment is PENDING, it will be marked as PAID and then enrolled
      */
     @Transactional
     public void retryEnrollmentFromPayment(Long paymentId, Long userId) {
         Payment payment = paymentRepo.findByIdAndUserId(paymentId, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
         
-        // Only allow retry for PAID payments
-        if (payment.getStatus() != PaymentStatus.PAID) {
+        // Allow retry for PAID payments, or PENDING payments (user confirms payment was successful)
+        if (payment.getStatus() != PaymentStatus.PAID && payment.getStatus() != PaymentStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                    "Payment is not in PAID status. Current status: " + payment.getStatus());
+                    "Cannot retry enrollment for payment with status: " + payment.getStatus() + 
+                    ". Only PENDING or PAID payments can be retried.");
+        }
+        
+        // If payment is PENDING, mark it as PAID (user confirms payment was successful)
+        if (payment.getStatus() == PaymentStatus.PENDING) {
+            log.warn("Payment {} (orderCode: {}) is PENDING but user confirms payment was successful. Marking as PAID and enrolling.", 
+                    paymentId, payment.getOrderCode());
+            payment.setStatus(PaymentStatus.PAID);
+            payment.setPaidAt(Instant.now());
+            paymentRepo.save(payment);
         }
         
         // Check if this is a course payment (not AI package)
