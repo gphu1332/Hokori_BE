@@ -312,7 +312,9 @@ public class LearnerProgressService {
         
         // If not trial chapter, require enrollment and get progress
         if (!isTrialChapter) {
-            e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+            // Use findLatestByUserIdAndCourseId to ensure we get the most recent enrollment
+            // This prevents issues when user has multiple enrollments for the same course
+            e = enrollmentRepo.findLatestByUserIdAndCourseId(userId, courseId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
             
             List<Long> contentIds = contents.stream().map(SectionsContent::getId).toList();
@@ -457,7 +459,9 @@ public class LearnerProgressService {
         Enrollment enrollment = null;
         Map<Long, UserContentProgress> ucpMap = new HashMap<>();
         if (!isTrialChapter) {
-            enrollment = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+            // Use findLatestByUserIdAndCourseId to ensure we get the most recent enrollment
+            // This prevents issues when user has multiple enrollments for the same course
+            enrollment = enrollmentRepo.findLatestByUserIdAndCourseId(userId, courseId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled in this course"));
         }
         // If trial chapter, allow access without enrollment (no progress tracking)
