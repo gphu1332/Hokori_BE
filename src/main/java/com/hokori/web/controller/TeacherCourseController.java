@@ -10,8 +10,10 @@ import com.hokori.web.service.FileStorageService;
 import com.hokori.web.service.TeacherStatisticsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.http.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,6 +30,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import java.util.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/teacher/courses")
 @RequiredArgsConstructor
@@ -141,10 +144,37 @@ public class TeacherCourseController {
     @PreAuthorize("hasRole('TEACHER')")
     public CourseRes uploadCoverImage(@PathVariable Long courseId,
                                       @RequestParam("file") MultipartFile file) {
-        Long teacherId = currentUserIdOrThrow();
-        String subFolder = "courses/" + courseId + "/cover";
-        String relativePath = fileStorageService.store(file, subFolder);
-        return courseService.updateCoverImage(courseId, teacherId, relativePath);
+        try {
+            Long teacherId = currentUserIdOrThrow();
+            log.debug("Uploading cover image for courseId={}, teacherId={}, fileName={}, size={}", 
+                courseId, teacherId, file.getOriginalFilename(), file.getSize());
+            
+            // Validate file
+            if (file == null || file.isEmpty()) {
+                log.warn("Empty file uploaded for courseId={}", courseId);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty or null");
+            }
+            
+            String subFolder = "courses/" + courseId + "/cover";
+            String relativePath = fileStorageService.store(file, subFolder);
+            log.debug("File stored successfully: {}", relativePath);
+            
+            CourseRes result = courseService.updateCoverImage(courseId, teacherId, relativePath);
+            log.debug("Cover image updated successfully for courseId={}", courseId);
+            return result;
+        } catch (ResponseStatusException e) {
+            log.warn("ResponseStatusException when uploading cover image for courseId={}: {}", 
+                courseId, e.getReason());
+            throw e; // Re-throw ResponseStatusException as-is
+        } catch (IllegalArgumentException e) {
+            log.warn("IllegalArgumentException when uploading cover image for courseId={}: {}", 
+                courseId, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (Exception e) {
+            log.error("Unexpected error when uploading cover image for courseId={}", courseId, e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "Failed to upload cover image: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+        }
     }
 
     @Operation(summary = "Danh sách khoá học của tôi",
