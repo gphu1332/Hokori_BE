@@ -3,12 +3,15 @@ package com.hokori.web.service;
 import com.hokori.web.entity.FileStorage;
 import com.hokori.web.repository.FileStorageRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileStorageService {
@@ -21,6 +24,7 @@ public class FileStorageService {
      * @param subFolder Thư mục con (ví dụ: "sections/123")
      * @return filePath tương đối để lưu vào SectionsContent
      */
+    @Transactional
     public String store(MultipartFile file, String subFolder) {
         try {
             // Validate file
@@ -81,7 +85,9 @@ public class FileStorageService {
 
             // Save to database
             fileStorageRepository.save(fileStorage);
-
+            fileStorageRepository.flush(); // Ensure file is persisted immediately, especially for large files
+            
+            log.debug("File stored successfully: {} ({} bytes)", filePath, file.getSize());
             return filePath;
         } catch (IllegalArgumentException e) {
             throw e; // Re-throw validation errors
