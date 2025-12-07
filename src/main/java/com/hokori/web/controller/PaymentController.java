@@ -132,7 +132,7 @@ public class PaymentController {
     
     @Operation(
             summary = "Retry enrollment từ payment",
-            description = "Retry enrollment cho payment đã thành công nhưng chưa được enroll (dùng khi webhook failed)"
+            description = "Retry enrollment cho payment đã thành công nhưng chưa được enroll (dùng khi webhook failed). Chỉ dùng cho course payments."
     )
     @PostMapping("/{paymentId}/retry-enrollment")
     public ResponseEntity<ApiResponse<String>> retryEnrollment(
@@ -141,6 +141,19 @@ public class PaymentController {
         Long userId = currentUserService.getUserIdOrThrow();
         paymentService.retryEnrollmentFromPayment(paymentId, userId);
         return ResponseEntity.ok(ApiResponse.success("Enrollment retry completed successfully", null));
+    }
+    
+    @Operation(
+            summary = "Retry AI package activation từ payment",
+            description = "Retry activation cho AI package payment đã thành công nhưng chưa được activate (dùng khi webhook failed). Chỉ dùng cho AI package payments."
+    )
+    @PostMapping("/{paymentId}/retry-ai-package-activation")
+    public ResponseEntity<ApiResponse<String>> retryAIPackageActivation(
+            @Parameter(description = "Payment ID")
+            @PathVariable Long paymentId) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        paymentService.retryAIPackageActivationFromPayment(paymentId, userId);
+        return ResponseEntity.ok(ApiResponse.success("AI package activation retry completed successfully", null));
     }
     
     // Response format expected by PayOS

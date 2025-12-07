@@ -552,7 +552,7 @@ public class PaymentService {
         // Check if this is a course payment (not AI package)
         if (payment.getAiPackageId() != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                    "This payment is for AI package, not courses. Use AI package activation endpoint instead.");
+                    "This payment is for AI package, not courses. Use POST /api/payment/{paymentId}/retry-ai-package-activation instead.");
         }
         
         // Check if courses are already enrolled
@@ -567,6 +567,62 @@ public class PaymentService {
         
         log.info("Retry enrollment completed for payment {} (orderCode: {}), enrolled {} courses", 
                 paymentId, payment.getOrderCode(), courseIds.size());
+    }
+    
+    /**
+     * Retry AI package activation for a successful payment that hasn't been activated yet
+     * This is useful when webhook failed but payment was successful
+     * If payment is PENDING, it will be marked as PAID and then activated
+     */
+    @Transactional
+    public void retryAIPackageActivationFromPayment(Long paymentId, Long userId) {
+        Payment payment = paymentRepo.findByIdAndUserId(paymentId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
+        
+        // Allow retry for PAID payments, or PENDING payments (user confirms payment was successful)
+        if (payment.getStatus() != PaymentStatus.PAID && payment.getStatus() != PaymentStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Cannot retry activation for payment with status: " + payment.getStatus() + 
+                    ". Only PENDING or PAID payments can be retried.");
+        }
+        
+        // Check if this is an AI package payment
+        if (payment.getAiPackageId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "This payment is for courses, not AI package. Use POST /api/payment/{paymentId}/retry-enrollment instead.");
+        }
+        
+        if (payment.getAiPackagePurchaseId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Payment does not have aiPackagePurchaseId. Cannot activate AI package.");
+        }
+        
+        // If payment is PENDING, mark it as PAID (user confirms payment was successful)
+        if (payment.getStatus() == PaymentStatus.PENDING) {
+            log.warn("Payment {} (orderCode: {}) is PENDING but user confirms payment was successful. Marking as PAID and activating AI package.", 
+                    paymentId, payment.getOrderCode());
+            payment.setStatus(PaymentStatus.PAID);
+            payment.setPaidAt(Instant.now());
+            paymentRepo.save(payment);
+        }
+        
+        // Check if already activated
+        var purchase = aiPackagePurchaseRepo.findById(payment.getAiPackagePurchaseId())
+                .orElseThrow(() -> {
+                    log.error("AIPackagePurchase not found for payment {}", payment.getId());
+                    return new ResponseStatusException(HttpStatus.NOT_FOUND, "AI Package purchase not found");
+                });
+        
+        if (purchase.getIsActive() && purchase.getPaymentStatus() == com.hokori.web.Enum.PaymentStatus.PAID) {
+            log.info("AI package purchase {} is already activated for payment {}", purchase.getId(), paymentId);
+            return; // Already activated, no need to retry
+        }
+        
+        // Activate AI package purchase
+        activateAIPackagePurchase(purchase);
+        
+        log.info("Retry AI package activation completed for payment {} (orderCode: {}), packageId={}, purchaseId={}", 
+                paymentId, payment.getOrderCode(), payment.getAiPackageId(), purchase.getId());
     }
     
     /**
@@ -591,10 +647,17 @@ public class PaymentService {
      * Activate AI Package purchase and allocate quotas
      */
     private void activateAIPackagePurchase(com.hokori.web.entity.AIPackagePurchase purchase) {
+        // Check if already activated (idempotent)
+        if (purchase.getIsActive() && purchase.getPaymentStatus() == com.hokori.web.Enum.PaymentStatus.PAID) {
+            log.info("AI package purchase {} is already activated, skipping activation", purchase.getId());
+            return;
+        }
+        
         // Activate purchase
         purchase.setIsActive(true);
         purchase.setPaymentStatus(com.hokori.web.Enum.PaymentStatus.PAID);
-        purchase.setPurchasedAt(Instant.now());
+        // Don't overwrite purchasedAt - keep the original purchase time
+        // purchase.setPurchasedAt(Instant.now()); // Keep original purchase time
         purchase.setTransactionId(String.valueOf(purchase.getId()));
         aiPackagePurchaseRepo.save(purchase);
         
