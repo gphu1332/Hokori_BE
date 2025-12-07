@@ -19,8 +19,9 @@ import java.util.*;
 public class LearnerQuizService {
 
     private final QuizRepository quizRepo;
-    private final LessonRepository lessonRepo;          // giữ sẵn, có thể chưa dùng
-    private final EnrollmentRepository enrollRepo;      // giữ sẵn, có thể chưa dùng
+    private final LessonRepository lessonRepo;
+    private final EnrollmentRepository enrollRepo;
+    private final ChapterRepository chapterRepo; // For trial chapter check
     private final QuizAttemptRepository attemptRepo;
     private final QuizAnswerRepository answerRepo;
     private final QuestionRepository questionRepo;
@@ -28,16 +29,30 @@ public class LearnerQuizService {
     private final LearnerProgressService learnerProgressService;
 
     /**
-     * Helper method to check enrollment and get courseId from lessonId
+     * Helper method to check enrollment and get courseId from lessonId.
+     * Allows access if enrolled OR if lesson belongs to trial chapter.
      */
     private Long checkEnrollmentAndGetCourseId(Long lessonId, Long userId) {
         Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
                 .orElseThrow(() -> new EntityNotFoundException("Lesson not found"));
         
-        if (!enrollRepo.existsByUserIdAndCourseId(userId, courseId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                "You must enroll in this course before taking the quiz");
+        // Check if lesson belongs to trial chapter
+        Long chapterId = lessonRepo.findChapterIdByLessonId(lessonId)
+                .orElseThrow(() -> new EntityNotFoundException("Chapter not found for lesson"));
+        
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new EntityNotFoundException("Chapter not found"));
+        
+        boolean isTrialChapter = chapter.isTrial();
+        
+        // If not trial chapter, require enrollment
+        if (!isTrialChapter) {
+            if (!enrollRepo.existsByUserIdAndCourseId(userId, courseId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                    "You must enroll in this course before taking the quiz");
+            }
         }
+        // If trial chapter, allow access without enrollment
         
         return courseId;
     }

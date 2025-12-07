@@ -7,6 +7,7 @@ import com.hokori.web.entity.*;
 import com.hokori.web.repository.FlashcardSetRepository;
 import com.hokori.web.repository.SectionsContentRepository;
 import com.hokori.web.repository.EnrollmentRepository;
+import com.hokori.web.repository.ChapterRepository;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.FlashcardSetService;
 import com.hokori.web.service.CourseService;
@@ -50,6 +51,7 @@ public class FlashcardSetController {
     private final CurrentUserService currentUserService;
     private final SectionsContentRepository sectionsContentRepo;
     private final EnrollmentRepository enrollmentRepo;
+    private final ChapterRepository chapterRepo; // For trial chapter check
     private final CourseService courseService;
 
     // ===== 1. Learner tạo set cá nhân =====
@@ -261,13 +263,28 @@ public class FlashcardSetController {
                     return FlashcardSetResponse.fromEntity(set);
                 }
                 
-                // Not owner, check if learner is enrolled
-                Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                // Check if content belongs to trial chapter
+                Long chapterId = sectionsContentRepo.findChapterIdBySectionContentId(sectionContentId)
+                        .orElse(null);
                 
-                enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "You must enroll in this course to access flashcard sets"));
+                boolean isTrialChapter = false;
+                if (chapterId != null) {
+                    Chapter chapter = chapterRepo.findById(chapterId).orElse(null);
+                    if (chapter != null) {
+                        isTrialChapter = chapter.isTrial();
+                    }
+                }
+                
+                // If not trial chapter, check enrollment
+                if (!isTrialChapter) {
+                    Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                    
+                    enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "You must enroll in this course to access flashcard sets"));
+                }
+                // If trial chapter, allow access without enrollment
             } else {
                 // SectionContent is null but set is COURSE_VOCAB - this shouldn't happen normally
                 // But if it does, only allow creator
@@ -454,13 +471,28 @@ public class FlashcardSetController {
                         // Teacher owner, allow access
                         authorized = true;
                     } else {
-                        // Not owner, check if learner is enrolled
-                        Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
-                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                        // Check if content belongs to trial chapter
+                        Long chapterId = sectionsContentRepo.findChapterIdBySectionContentId(sectionContentId)
+                                .orElse(null);
                         
-                        enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
-                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                                    "You must enroll in this course to access flashcard cards"));
+                        boolean isTrialChapter = false;
+                        if (chapterId != null) {
+                            Chapter chapter = chapterRepo.findById(chapterId).orElse(null);
+                            if (chapter != null) {
+                                isTrialChapter = chapter.isTrial();
+                            }
+                        }
+                        
+                        // If not trial chapter, check enrollment
+                        if (!isTrialChapter) {
+                            Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                            
+                            enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                        "You must enroll in this course to access flashcard cards"));
+                        }
+                        // If trial chapter, allow access without enrollment
                         authorized = true;
                     }
                 }
@@ -555,13 +587,28 @@ public class FlashcardSetController {
             if (courseOwnerId != null && courseOwnerId.equals(currentUserId)) {
                 // Teacher owner, allow access
             } else {
-                // Not owner, check if learner is enrolled
-                Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                // Check if content belongs to trial chapter
+                Long chapterId = sectionsContentRepo.findChapterIdBySectionContentId(sectionContentId)
+                        .orElse(null);
                 
-                enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "You must enroll in this course to access flashcard sets"));
+                boolean isTrialChapter = false;
+                if (chapterId != null) {
+                    Chapter chapter = chapterRepo.findById(chapterId).orElse(null);
+                    if (chapter != null) {
+                        isTrialChapter = chapter.isTrial();
+                    }
+                }
+                
+                // If not trial chapter, check enrollment
+                if (!isTrialChapter) {
+                    Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                    
+                    enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "You must enroll in this course to access flashcard sets"));
+                }
+                // If trial chapter, allow access without enrollment
             }
         } else if (set.getType() == FlashcardSetType.PERSONAL) {
             // PERSONAL: chỉ cho phép người tạo
@@ -737,13 +784,28 @@ public class FlashcardSetController {
                         // Teacher owner, allow access
                         authorized = true;
                     } else {
-                        // Not owner, check if learner is enrolled
-                        Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
-                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                        // Check if content belongs to trial chapter
+                        Long chapterId = sectionsContentRepo.findChapterIdBySectionContentId(sectionContentId)
+                                .orElse(null);
                         
-                        enrollmentRepo.findByUserIdAndCourseId(current.getId(), courseId)
-                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                                    "You must enroll in this course to review flashcard cards"));
+                        boolean isTrialChapter = false;
+                        if (chapterId != null) {
+                            Chapter chapter = chapterRepo.findById(chapterId).orElse(null);
+                            if (chapter != null) {
+                                isTrialChapter = chapter.isTrial();
+                            }
+                        }
+                        
+                        // If not trial chapter, check enrollment
+                        if (!isTrialChapter) {
+                            Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
+                                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
+                            
+                            enrollmentRepo.findByUserIdAndCourseId(current.getId(), courseId)
+                                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                        "You must enroll in this course to review flashcard cards"));
+                        }
+                        // If trial chapter, allow access without enrollment
                         authorized = true;
                     }
                 }

@@ -635,21 +635,33 @@ public class LearnerProgressService {
         return res;
     }
 
-    // ============== Get Flashcard Set for Course Content (for enrolled learners) ==============
+    // ============== Get Flashcard Set for Course Content (for enrolled learners or trial chapter) ==============
     /**
      * Get flashcard set (COURSE_VOCAB) attached to a section content.
-     * Only accessible if learner is enrolled in the course.
+     * Accessible if learner is enrolled in the course OR if content belongs to trial chapter.
      */
     @Transactional(readOnly = true)
     public FlashcardSetResponse getFlashcardSetForContent(Long userId, Long sectionContentId) {
-        // Get courseId from sectionContent
+        // Get courseId and chapterId from sectionContent
         Long courseId = contentRepo.findCourseIdBySectionContentId(sectionContentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section content not found"));
+        
+        Long chapterId = contentRepo.findChapterIdBySectionContentId(sectionContentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found for section content"));
 
-        // Check enrollment
-        enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                    "You must enroll in this course to access flashcard sets"));
+        // Check if chapter is trial chapter
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        
+        boolean isTrialChapter = chapter.isTrial();
+        
+        // If not trial chapter, require enrollment
+        if (!isTrialChapter) {
+            enrollmentRepo.findLatestByUserIdAndCourseId(userId, courseId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                        "You must enroll in this course to access flashcard sets"));
+        }
+        // If trial chapter, allow access without enrollment
 
         // Get flashcard set with eager fetching to avoid LazyInitializationException
         // If multiple sets exist, get the most recent one (ORDER BY createdAt DESC)
