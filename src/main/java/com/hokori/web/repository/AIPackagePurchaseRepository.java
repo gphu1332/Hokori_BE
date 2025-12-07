@@ -15,9 +15,12 @@ import java.util.Optional;
 public interface AIPackagePurchaseRepository extends JpaRepository<AIPackagePurchase, Long> {
     
     /**
-     * Find active purchase for a user
+     * Find active purchase for a user with eager fetch of aiPackage
      */
-    Optional<AIPackagePurchase> findByUser_IdAndIsActiveTrue(Long userId);
+    @Query("SELECT p FROM AIPackagePurchase p " +
+           "LEFT JOIN FETCH p.aiPackage " +
+           "WHERE p.user.id = :userId AND p.isActive = true")
+    Optional<AIPackagePurchase> findByUser_IdAndIsActiveTrue(@Param("userId") Long userId);
     
     /**
      * Find all purchases for a user (for history)
