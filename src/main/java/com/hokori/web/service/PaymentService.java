@@ -81,7 +81,7 @@ public class PaymentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cart not found"));
         
         Long cartId = cart.getId();
-        if (!cartId.equals(request.getCartId())) {
+        if (!cartId.equals(request.cartId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cart does not belong to user");
         }
         
@@ -95,9 +95,9 @@ public class PaymentService {
         
         // Filter selected items or specific courseIds
         List<CartItemResponse> itemsToCheckout;
-        if (request.getCourseIds() != null && !request.getCourseIds().isEmpty()) {
+        if (request.courseIds() != null && !request.courseIds().isEmpty()) {
             itemsToCheckout = items.stream()
-                    .filter(item -> request.getCourseIds().contains(item.courseId()))
+                    .filter(item -> request.courseIds().contains(item.courseId()))
                     .collect(Collectors.toList());
         } else {
             itemsToCheckout = items.stream()

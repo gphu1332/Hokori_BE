@@ -49,7 +49,7 @@ public class PaymentController {
     public ResponseEntity<ApiResponse<CheckoutResponse>> checkoutAIPackage(
             @Valid @RequestBody AIPackageCheckoutRequest request) {
         Long userId = currentUserService.getUserIdOrThrow();
-        CheckoutResponse response = paymentService.checkoutAIPackage(userId, request.getPackageId());
+        CheckoutResponse response = paymentService.checkoutAIPackage(userId, request.packageId());
         return ResponseEntity.ok(ApiResponse.success("Payment link created", response));
     }
     
