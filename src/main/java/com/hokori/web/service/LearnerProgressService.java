@@ -317,19 +317,21 @@ public class LearnerProgressService {
             
             List<Long> contentIds = contents.stream().map(SectionsContent::getId).toList();
             
-            // Use JOIN FETCH query to eagerly load content to avoid lazy loading issues
-            // Query all progress for this enrollment and content IDs
-            List<UserContentProgress> ucpList = ucpRepo
-                    .findByEnrollment_IdAndContent_IdInWithContent(e.getId(), contentIds);
-            
-            // Build map: key is content.id, value is UserContentProgress
-            // Important: Use ucp.getContent().getId() as key because content is eagerly fetched
-            ucpMap = ucpList.stream()
-                    .collect(Collectors.toMap(
-                            ucp -> ucp.getContent().getId(), 
-                            ucp -> ucp,
-                            (existing, replacement) -> existing // Keep first if duplicate keys
-                    ));
+            if (!contentIds.isEmpty()) {
+                // Use JOIN FETCH query to eagerly load content to avoid lazy loading issues
+                // Query all progress for this enrollment and content IDs
+                List<UserContentProgress> ucpList = ucpRepo
+                        .findByEnrollment_IdAndContent_IdInWithContent(e.getId(), contentIds);
+                
+                // Build map: key is content.id, value is UserContentProgress
+                // Important: Use ucp.getContent().getId() as key because content is eagerly fetched
+                ucpMap = ucpList.stream()
+                        .collect(Collectors.toMap(
+                                ucp -> ucp.getContent().getId(), 
+                                ucp -> ucp,
+                                (existing, replacement) -> existing // Keep first if duplicate keys
+                        ));
+            }
         }
         // If trial chapter, allow access without enrollment (no progress tracking)
 
