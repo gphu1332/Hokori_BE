@@ -332,6 +332,14 @@ public class LearnerProgressService {
                         ucpMap.put(content.getId(), ucp);
                     }
                 }
+                
+                // Debug: Log if query returned results but mapping failed
+                if (!ucpList.isEmpty() && ucpMap.isEmpty()) {
+                    // This shouldn't happen, but log for debugging
+                    System.err.println("WARNING: Query returned " + ucpList.size() + 
+                        " UserContentProgress records but ucpMap is empty. " +
+                        "EnrollmentId: " + e.getId() + ", ContentIds: " + contentIds);
+                }
             }
         }
         // If trial chapter, allow access without enrollment (no progress tracking)
@@ -339,6 +347,17 @@ public class LearnerProgressService {
         List<ContentProgressRes> res = new ArrayList<>(contents.size());
         for (SectionsContent c : contents) {
             UserContentProgress up = ucpMap.get(c.getId());
+            // Debug: Log if content has progress in DB but not in map
+            if (up == null && !isTrialChapter && e != null) {
+                // Check if progress exists in DB for this content
+                Optional<UserContentProgress> dbCheck = ucpRepo
+                        .findByEnrollment_IdAndContent_Id(e.getId(), c.getId());
+                if (dbCheck.isPresent() && Boolean.TRUE.equals(dbCheck.get().getIsCompleted())) {
+                    // Progress exists in DB but wasn't in query result - use it
+                    up = dbCheck.get();
+                    ucpMap.put(c.getId(), up); // Add to map for future iterations
+                }
+            }
             res.add(ContentProgressRes.builder()
                     .contentId(c.getId())
                     .contentFormat(c.getContentFormat())
