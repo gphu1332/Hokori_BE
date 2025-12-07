@@ -110,12 +110,14 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
      * INTERNAL: list published courses metadata without LOB fields.
      *
      * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
-     *           currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
+     *           currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName,
+     *           rejectionReason, rejectedAt, rejectedByUserId]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
                c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag,
-               COALESCE(u.display_name, u.username) as teacher_name
+               COALESCE(u.display_name, u.username) as teacher_name,
+               c.rejection_reason, c.rejected_at, c.rejected_by_user_id
         FROM course c
         LEFT JOIN users u ON c.user_id = u.id
         WHERE c.deleted_flag = :deleted
@@ -164,12 +166,14 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
      * INTERNAL: list courses pending approval (for moderator).
      *
      * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
-     *           currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
+     *           currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName,
+     *           rejectionReason, rejectedAt, rejectedByUserId]
      */
     @Query(value = """
         SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
                c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag,
-               COALESCE(u.display_name, u.username) as teacher_name
+               COALESCE(u.display_name, u.username) as teacher_name,
+               c.rejection_reason, c.rejected_at, c.rejected_by_user_id
         FROM course c
         LEFT JOIN users u ON c.user_id = u.id
         WHERE c.deleted_flag = :deleted

@@ -370,11 +370,14 @@ public class CourseService {
             actualMetadata = (Object[]) metadata[0];
         }
 
-        // Validate array length (should have at least 16 elements now with teacherName and rejection fields)
-        if (actualMetadata.length < 16) {
+        // Validate array length (should have at least 14 elements: basic fields + teacherName)
+        // Can have 17 elements if includes rejection fields (rejectionReason, rejectedAt, rejectedByUserId)
+        if (actualMetadata.length < 14) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Course metadata array too short: expected at least 16 elements, got " + actualMetadata.length);
+                "Course metadata array too short: expected at least 14 elements, got " + actualMetadata.length);
         }
+        
+        boolean hasRejectionFields = actualMetadata.length >= 17;
 
         // [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
         //  currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName,
@@ -401,16 +404,22 @@ public class CourseService {
         Long userId = actualMetadata[11] != null ? ((Number) actualMetadata[11]).longValue() : null;
         String teacherName = actualMetadata[13] != null ? actualMetadata[13].toString() : null;
         
-        // Rejection fields
-        String rejectionReason = actualMetadata[14] != null ? actualMetadata[14].toString() : null;
-        Instant rejectedAt = actualMetadata[15] != null
-                ? (actualMetadata[15] instanceof Instant
-                ? (Instant) actualMetadata[15]
-                : actualMetadata[15] instanceof java.sql.Timestamp
-                ? Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[15]).getTime())
-                : null)
-                : null;
-        Long rejectedByUserId = actualMetadata[16] != null ? ((Number) actualMetadata[16]).longValue() : null;
+        // Rejection fields (only if metadata includes them)
+        String rejectionReason = null;
+        Instant rejectedAt = null;
+        Long rejectedByUserId = null;
+        
+        if (hasRejectionFields && actualMetadata.length >= 17) {
+            rejectionReason = actualMetadata[14] != null ? actualMetadata[14].toString() : null;
+            rejectedAt = actualMetadata[15] != null
+                    ? (actualMetadata[15] instanceof Instant
+                    ? (Instant) actualMetadata[15]
+                    : actualMetadata[15] instanceof java.sql.Timestamp
+                    ? Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[15]).getTime())
+                    : null)
+                    : null;
+            rejectedByUserId = actualMetadata[16] != null ? ((Number) actualMetadata[16]).longValue() : null;
+        }
 
         CourseRes res = new CourseRes();
         res.setId(id);
