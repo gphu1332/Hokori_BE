@@ -1,6 +1,7 @@
 package com.hokori.web.service;
 
 import com.hokori.web.Enum.ApprovalStatus;
+import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.dto.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.mapper.ApprovalMapper;
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -28,6 +30,7 @@ public class TeacherApprovalService {
     private final ProfileApproveRequestRepository reqRepo;
     private final ProfileApproveRequestItemRepository itemRepo;
     private final ApprovalMapper mapper;
+    private final FileStorageService fileStorageService;
 
     /* ===== Certificates ===== */
 
@@ -35,6 +38,55 @@ public class TeacherApprovalService {
     public List<UserCertificateDto> listMyCertificates(Long userId){
         return certRepo.findByUser_Id(userId).stream().map(mapper::toDto).toList();
     }
+
+    /**
+     * Upload certificate image file
+     * Returns fileUrl, fileName, mimeType, fileSizeBytes for use in addCertificate
+     */
+    public CertificateUploadResponse uploadCertificateImage(Long userId, MultipartFile file) {
+        // Validate file
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File is empty or null");
+        }
+
+        // Validate file type (images and PDF only)
+        String contentType = file.getContentType();
+        if (contentType == null) {
+            throw new IllegalArgumentException("Cannot determine file type");
+        }
+
+        boolean isValidType = contentType.startsWith("image/") || 
+                             contentType.equals("application/pdf");
+        if (!isValidType) {
+            throw new IllegalArgumentException(
+                    "Invalid file type. Only images (jpg, png, etc.) and PDF are allowed. Got: " + contentType);
+        }
+
+        // Validate file size (max 10MB for certificates)
+        long maxSize = 10L * 1024 * 1024; // 10MB
+        if (file.getSize() > maxSize) {
+            throw new IllegalArgumentException("File size exceeds maximum limit of 10MB");
+        }
+
+        // Store file in certificates/{userId} folder
+        String subFolder = "certificates/" + userId;
+        String relativePath = fileStorageService.store(file, subFolder);
+        String fileUrl = "/files/" + relativePath;
+
+        return new CertificateUploadResponse(
+                fileUrl,
+                file.getOriginalFilename(),
+                contentType,
+                file.getSize()
+        );
+    }
+
+    public record CertificateUploadResponse(
+            String fileUrl,
+            String fileName,
+            String mimeType,
+            Long fileSizeBytes
+    ) {}
 
     public UserCertificateDto addCertificate(Long userId, UserCertificateReq req){
         User u = userRepo.findById(userId).orElseThrow();
@@ -101,6 +153,12 @@ public class TeacherApprovalService {
     public ApproveRequestDto submitApproval(Long userId, SubmitApprovalReq req){
         User u = userRepo.findById(userId).orElseThrow();
 
+        // Validate user must have TEACHER role
+        if (u.getRole() == null || !RoleConstants.TEACHER.equalsIgnoreCase(u.getRole().getRoleName())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                    "Only users with TEACHER role can submit approval requests");
+        }
+
         // Không cho nộp khi đang PENDING
         if (reqRepo.existsByUser_IdAndStatus(userId, ApprovalStatus.PENDING)) {
             throw new IllegalStateException("You already have a pending request");
@@ -161,7 +219,9 @@ public class TeacherApprovalService {
 
     @Transactional(readOnly = true)
     public ApproveRequestDto getLatestRequest(Long userId){
-        ProfileApproveRequest r = reqRepo.findFirstByUser_IdOrderByCreatedAtDesc(userId).orElseThrow();
+        ProfileApproveRequest r = reqRepo.findFirstByUser_IdOrderByCreatedAtDesc(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                        "No approval request found for this user"));
         r.getItems().size(); // force init
         return mapper.toDto(r);
     }

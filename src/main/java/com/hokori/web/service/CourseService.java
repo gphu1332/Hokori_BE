@@ -1,5 +1,6 @@
 package com.hokori.web.service;
 
+import com.hokori.web.Enum.ApprovalStatus;
 import com.hokori.web.Enum.ContentFormat;
 import com.hokori.web.Enum.ContentType;
 import com.hokori.web.Enum.CourseStatus;
@@ -138,9 +139,22 @@ public class CourseService {
      *
      * NOTE: Currently only requires title. Content validation (chapters, lessons, sections)
      * will be added later when content management is implemented.
+     * 
+     * REQUIREMENT: Teacher must be APPROVED before submitting course for approval.
      */
     public CourseRes submitForApproval(Long id, Long teacherUserId) {
         Course c = getOwned(id, teacherUserId);
+
+        // Check teacher approval status - must be APPROVED to submit course
+        User teacher = userRepo.findById(teacherUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Teacher not found"));
+        
+        if (teacher.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Teacher profile must be approved before submitting courses. Current status: " + 
+                    (teacher.getApprovalStatus() != null ? teacher.getApprovalStatus() : "NONE") + 
+                    ". Please submit your teacher approval request first.");
+        }
 
         if (!(c.getStatus() == CourseStatus.DRAFT
                 || c.getStatus() == CourseStatus.REJECTED

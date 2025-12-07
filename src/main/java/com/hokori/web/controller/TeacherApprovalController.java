@@ -3,6 +3,7 @@ package com.hokori.web.controller;
 import com.hokori.web.dto.*;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.TeacherApprovalService;
+import com.hokori.web.service.TeacherApprovalService.CertificateUploadResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -13,9 +14,11 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -69,9 +72,31 @@ public class TeacherApprovalController {
                 approvalService.listMyCertificates(meId())));
     }
 
+    @PostMapping(value = "/certificates/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Upload hình ảnh chứng chỉ",
+            description = "Upload file hình ảnh chứng chỉ (jpg, png, pdf). Trả về fileUrl để dùng trong addCertificate.",
+            responses = {
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                            responseCode = "200", description = "Uploaded",
+                            content = @Content(schema = @Schema(implementation = CertificateUploadResponse.class))
+                    ),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Bad Request (invalid file)"),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthenticated"),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden")
+            }
+    )
+    public ResponseEntity<ApiResponse<CertificateUploadResponse>> uploadCertificate(
+            @Parameter(description = "File hình ảnh chứng chỉ (jpg, png, pdf)")
+            @RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(ApiResponse.success("Uploaded",
+                approvalService.uploadCertificateImage(meId(), file)));
+    }
+
     @PostMapping("/certificates")
     @Operation(
             summary = "Thêm chứng chỉ",
+            description = "Thêm chứng chỉ với thông tin đầy đủ. Dùng fileUrl từ uploadCertificate hoặc URL bên ngoài.",
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
                     content = @Content(schema = @Schema(implementation = UserCertificateReq.class),
@@ -83,11 +108,11 @@ public class TeacherApprovalController {
                                               "expiryDate": "2025-08-31",
                                               "credentialId": "NAT-TEST-123",
                                               "credentialUrl": "https://example.com/cert/NAT-TEST-123",
-                                              "fileUrl": "https://cdn.hokori.com/certificates/nat-test.pdf",
-                                              "fileName": "nat-test.pdf",
-                                              "mimeType": "application/pdf",
+                                              "fileUrl": "/files/certificates/5/uuid.jpg",
+                                              "fileName": "nat-test.jpg",
+                                              "mimeType": "image/jpeg",
                                               "fileSizeBytes": 123456,
-                                              "storageProvider": "GCS",
+                                              "storageProvider": "LOCAL",
                                               "note": "Bản scan mặt trước & mặt sau."
                                             }
                                             """
