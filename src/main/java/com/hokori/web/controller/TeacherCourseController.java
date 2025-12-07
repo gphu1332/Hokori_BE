@@ -97,12 +97,15 @@ public class TeacherCourseController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Submit khoá học để duyệt", description = """
+    @Operation(summary = "Submit khoá học để duyệt (hoặc resubmit sau khi bị reject)", description = """
         Submit course để moderator duyệt:
-        - Validate cấu trúc trước khi submit:
-        - VOCABULARY: phải có flashcardSetId
-        - GRAMMAR: đúng 1 nội dung primary (video)
-        - KANJI: >= 1 nội dung primary
+        - Có thể submit từ status: DRAFT, REJECTED, hoặc FLAGGED
+        - Nếu course bị REJECTED, teacher có thể sửa và gọi lại endpoint này để resubmit
+        - Khi resubmit, rejection info sẽ được clear
+        - Validate trước khi submit:
+          - Teacher phải có approvalStatus = APPROVED
+          - Course phải có title
+          - Course phải có đúng 1 trial chapter
         - Chuyển status sang PENDING_APPROVAL
         """)
     @PutMapping("/{id}/submit-for-approval")

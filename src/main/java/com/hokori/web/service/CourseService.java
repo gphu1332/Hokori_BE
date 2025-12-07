@@ -135,7 +135,10 @@ public class CourseService {
     }
 
     /**
-     * Submit course for moderator approval (changed from direct publish)
+     * Submit course for moderator approval (or resubmit after rejection)
+     * 
+     * Can submit from status: DRAFT, REJECTED, or FLAGGED
+     * When resubmitting from REJECTED, rejection info will be cleared.
      *
      * NOTE: Currently only requires title. Content validation (chapters, lessons, sections)
      * will be added later when content management is implemented.
