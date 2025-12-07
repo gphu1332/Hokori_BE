@@ -48,6 +48,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/echo").permitAll()
                 .requestMatchers("/api/debug/jwt").permitAll()
                 .requestMatchers("/api/courses/**").permitAll() // Public marketplace - published courses only
+                .requestMatchers("/api/marketplace/**").permitAll() // Public marketplace - courses with enrollment status
                 .requestMatchers("/api/courses-public/**").permitAll() // Public course comments
                 .requestMatchers("/api/payment/webhook").permitAll() // PayOS webhook - public access required
                 .requestMatchers("/actuator/**").permitAll()
