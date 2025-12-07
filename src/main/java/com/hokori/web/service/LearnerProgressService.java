@@ -317,37 +317,22 @@ public class LearnerProgressService {
             e = enrollmentRepo.findLatestByUserIdAndCourseId(userId, courseId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
             
-            List<Long> contentIds = contents.stream().map(SectionsContent::getId).toList();
+            Long enrollmentId = e.getId(); // Store enrollment ID to ensure consistency
             
-            if (!contentIds.isEmpty()) {
-                // Query all progress for this enrollment and content IDs
-                // Use JOIN FETCH to eagerly load content relationship
-                // This ensures content.getId() is available without lazy loading issues
-                Long enrollmentId = e.getId(); // Store enrollment ID to ensure consistency
-                List<UserContentProgress> ucpList = ucpRepo
-                        .findByEnrollment_IdAndContent_IdInWithContent(enrollmentId, contentIds);
-                
-                // Debug: Log batch query results
-                System.err.println("BATCH QUERY: enrollmentId=" + enrollmentId + 
-                    ", contentIds=" + contentIds + ", returned " + ucpList.size() + " records");
-                
-                // Build map: key is content.id, value is UserContentProgress
-                // Content is already eagerly fetched, so no lazy loading needed
-                for (UserContentProgress ucp : ucpList) {
-                    SectionsContent content = ucp.getContent();
-                    if (content != null && content.getId() != null) {
-                        ucpMap.put(content.getId(), ucp);
-                        System.err.println("BATCH QUERY: Mapped contentId=" + content.getId() + 
-                            ", isCompleted=" + ucp.getIsCompleted() + ", lastPositionSec=" + ucp.getLastPositionSec());
-                    }
-                }
-                
-                // Debug: Log if query returned results but mapping failed
-                if (!ucpList.isEmpty() && ucpMap.isEmpty()) {
-                    // This shouldn't happen, but log for debugging
-                    System.err.println("WARNING: Query returned " + ucpList.size() + 
-                        " UserContentProgress records but ucpMap is empty. " +
-                        "EnrollmentId: " + enrollmentId + ", ContentIds: " + contentIds);
+            // NEW APPROACH: Query progress for each content individually to ensure accuracy
+            // This is more reliable than batch query with JOIN FETCH which might have issues
+            for (SectionsContent c : contents) {
+                Optional<UserContentProgress> ucpOpt = ucpRepo
+                        .findByEnrollment_IdAndContent_Id(enrollmentId, c.getId());
+                if (ucpOpt.isPresent()) {
+                    UserContentProgress ucp = ucpOpt.get();
+                    ucpMap.put(c.getId(), ucp);
+                    System.err.println("PROGRESS FOUND: enrollmentId=" + enrollmentId + 
+                        ", contentId=" + c.getId() + ", isCompleted=" + ucp.getIsCompleted() + 
+                        ", lastPositionSec=" + ucp.getLastPositionSec());
+                } else {
+                    System.err.println("NO PROGRESS: enrollmentId=" + enrollmentId + 
+                        ", contentId=" + c.getId());
                 }
             }
         }
@@ -356,23 +341,6 @@ public class LearnerProgressService {
         List<ContentProgressRes> res = new ArrayList<>(contents.size());
         for (SectionsContent c : contents) {
             UserContentProgress up = ucpMap.get(c.getId());
-            // Fallback: If progress not found in batch query, check DB individually
-            // This handles edge cases where batch query might miss some records
-            if (up == null && !isTrialChapter && e != null) {
-                // Check if progress exists in DB for this content
-                // Use stored enrollment ID to ensure consistency
-                Long enrollmentId = e.getId();
-                Optional<UserContentProgress> dbCheck = ucpRepo
-                        .findByEnrollment_IdAndContent_Id(enrollmentId, c.getId());
-                if (dbCheck.isPresent()) {
-                    // Progress exists in DB but wasn't in batch query result - use it
-                    // Log this for debugging
-                    System.err.println("FALLBACK QUERY TRIGGERED: Found progress in DB for enrollmentId=" + 
-                        enrollmentId + ", contentId=" + c.getId() + " but batch query missed it");
-                    up = dbCheck.get();
-                    ucpMap.put(c.getId(), up); // Add to map for future iterations
-                }
-            }
             res.add(ContentProgressRes.builder()
                     .contentId(c.getId())
                     .contentFormat(c.getContentFormat())
