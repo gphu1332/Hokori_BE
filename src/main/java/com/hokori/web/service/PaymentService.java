@@ -254,8 +254,27 @@ public class PaymentService {
         // Check if user already has an active purchase
         var existingPurchase = aiPackagePurchaseRepo.findByUser_IdAndIsActiveTrue(userId);
         if (existingPurchase.isPresent()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                    "User already has an active AI package. Please wait for it to expire or cancel it first.");
+            var purchase = existingPurchase.get();
+            Instant now = Instant.now();
+            
+            // Check if package is expired
+            boolean isExpired = purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now);
+            
+            // Check if all quotas are exhausted
+            boolean allQuotasExhausted = checkAllQuotasExhausted(userId);
+            
+            if (!isExpired && !allQuotasExhausted) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                        "User already has an active AI package. Please wait for it to expire or quota to be exhausted before purchasing a new package.");
+            }
+            
+            // If expired or all quotas exhausted, allow purchase
+            if (isExpired) {
+                log.info("User {} has expired package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
+            }
+            if (allQuotasExhausted) {
+                log.info("User {} has exhausted all quotas for package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
+            }
         }
         
         // Create purchase with PENDING status
@@ -720,6 +739,68 @@ public class PaymentService {
             quotaEntity.setDeletedFlag(false); // Set deleted_flag explicitly
             aiQuotaRepo.save(quotaEntity);
         }
+    }
+    
+    /**
+     * Check if all quotas are exhausted for user's active package
+     * Returns true if:
+     * - User has active package with PAID status
+     * - All service types that have quota limits are exhausted (remainingQuota = 0)
+     * - Unlimited services (null quota) are not considered exhausted
+     */
+    private boolean checkAllQuotasExhausted(Long userId) {
+        var purchaseOpt = aiPackagePurchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        if (purchaseOpt.isEmpty()) {
+            return false; // No active package, not exhausted
+        }
+        
+        var purchase = purchaseOpt.get();
+        if (purchase.getPaymentStatus() != PaymentStatus.PAID) {
+            return false; // Payment not completed, not exhausted
+        }
+        
+        var aiPackage = purchase.getAiPackage();
+        var quotas = aiQuotaRepo.findByUser_Id(userId);
+        
+        // Check each service type
+        for (AIServiceType serviceType : AIServiceType.values()) {
+            Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
+            
+            // If package has unlimited quota (null), skip check
+            if (packageQuota == null) {
+                continue;
+            }
+            
+            // Find quota for this service type
+            var quotaOpt = quotas.stream()
+                    .filter(q -> q.getServiceType() == serviceType)
+                    .findFirst();
+            
+            if (quotaOpt.isPresent()) {
+                var quota = quotaOpt.get();
+                // If remaining quota > 0, not exhausted
+                if (quota.getRemainingQuota() != null && quota.getRemainingQuota() > 0) {
+                    return false;
+                }
+            } else {
+                // No quota record means quota hasn't been allocated yet (not exhausted)
+                return false;
+            }
+        }
+        
+        // All quota-limited services are exhausted
+        return true;
+    }
+    
+    /**
+     * Get quota for a service type from AI Package
+     */
+    private Integer getQuotaForServiceType(AIPackage aiPackage, AIServiceType serviceType) {
+        return switch (serviceType) {
+            case GRAMMAR -> aiPackage.getGrammarQuota();
+            case KAIWA -> aiPackage.getKaiwaQuota();
+            case PRONUN -> aiPackage.getPronunQuota();
+        };
     }
     
     /**

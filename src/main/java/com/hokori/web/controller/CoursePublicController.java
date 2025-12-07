@@ -2,12 +2,17 @@ package com.hokori.web.controller;
 
 import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.dto.course.CourseRes;
+import com.hokori.web.dto.course.LessonRes;
+import com.hokori.web.dto.progress.ContentProgressRes;
 import com.hokori.web.service.CourseService;
 import com.hokori.web.service.CurrentUserService;
+import com.hokori.web.service.LearnerProgressService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 // Swagger
 import io.swagger.v3.oas.annotations.*;
@@ -24,6 +29,7 @@ public class CoursePublicController {
 
     private final CourseService service;
     private final CurrentUserService currentUserService;
+    private final LearnerProgressService progressService;
 
     @Operation(summary = "Danh sách khoá học PUBLISHED")
     @ApiResponse(responseCode = "200",
@@ -43,5 +49,38 @@ public class CoursePublicController {
     @GetMapping("/{id}/tree")
     public CourseRes tree(@PathVariable Long id) {
         return service.getPublishedTree(id);
+    }
+
+    @Operation(
+            summary = "Trial tree của khoá học (chỉ chapter học thử)",
+            description = "Lấy cấu trúc chỉ trial chapter của course PUBLISHED. Không cần enrollment để xem. Guest có thể xem."
+    )
+    @ApiResponse(responseCode = "200",
+            content = @Content(schema = @Schema(implementation = CourseRes.class)))
+    @GetMapping("/{id}/trial-tree")
+    public CourseRes trialTree(@PathVariable Long id) {
+        return service.getTrialTree(id);
+    }
+
+    @Operation(
+            summary = "Chi tiết trial lesson (public - guest có thể xem)",
+            description = "Xem lesson detail với sections và contents của trial chapter. Không cần authentication hoặc enrollment."
+    )
+    @ApiResponse(responseCode = "200",
+            content = @Content(schema = @Schema(implementation = LessonRes.class)))
+    @GetMapping("/lessons/{lessonId}/trial-detail")
+    public LessonRes getTrialLessonDetail(@PathVariable Long lessonId) {
+        return progressService.getTrialLessonDetail(lessonId);
+    }
+
+    @Operation(
+            summary = "Danh sách contents của trial lesson (public - guest có thể xem)",
+            description = "Lấy danh sách contents của trial lesson. Không cần authentication hoặc enrollment. Không track progress."
+    )
+    @ApiResponse(responseCode = "200",
+            content = @Content(schema = @Schema(implementation = ContentProgressRes.class)))
+    @GetMapping("/lessons/{lessonId}/trial-contents")
+    public List<ContentProgressRes> getTrialLessonContents(@PathVariable Long lessonId) {
+        return progressService.getTrialLessonContents(lessonId);
     }
 }

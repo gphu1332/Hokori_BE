@@ -62,7 +62,10 @@ public class SecurityConfig {
                 // 👇 Public marketplace courses (chỉ GET)
                 .requestMatchers(HttpMethod.GET,
                     "/api/courses",
-                    "/api/courses/*/tree"
+                    "/api/courses/*/tree",
+                    "/api/courses/*/trial-tree",
+                    "/api/courses/lessons/*/trial-detail",
+                    "/api/courses/lessons/*/trial-contents"
                 ).permitAll()
 
                 // 👇 Public policies (chỉ đọc)

@@ -292,18 +292,38 @@ public class LearnerProgressService {
     public List<ContentProgressRes> getLessonContentsProgress(Long userId, Long lessonId) {
         Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+        
+        Long chapterId = lessonRepo.findChapterIdByLessonId(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found for lesson"));
 
-        Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
+        // Check if lesson belongs to trial chapter
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        
+        boolean isTrialChapter = chapter.isTrial();
+        
+        Enrollment e = null;
+        Map<Long, UserContentProgress> ucpMap = new HashMap<>();
+        
+        // If not trial chapter, require enrollment and get progress
+        if (!isTrialChapter) {
+            e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
+            
+            List<SectionsContent> contents = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId).stream()
+                    .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
+                    .collect(Collectors.toList());
+            
+            ucpMap = ucpRepo
+                    .findByEnrollment_IdAndContent_IdIn(e.getId(),
+                            contents.stream().map(SectionsContent::getId).toList())
+                    .stream().collect(Collectors.toMap(c -> c.getContent().getId(), c -> c));
+        }
+        // If trial chapter, allow access without enrollment (no progress tracking)
 
         List<SectionsContent> contents = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId).stream()
                 .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
                 .collect(Collectors.toList());
-
-        Map<Long, UserContentProgress> ucpMap = ucpRepo
-                .findByEnrollment_IdAndContent_IdIn(e.getId(),
-                        contents.stream().map(SectionsContent::getId).toList())
-                .stream().collect(Collectors.toMap(c -> c.getContent().getId(), c -> c));
 
         List<ContentProgressRes> res = new ArrayList<>(contents.size());
         for (SectionsContent c : contents) {
@@ -380,16 +400,29 @@ public class LearnerProgressService {
     /**
      * Get lesson detail with sections and contents (filePath, richText) for enrolled learner.
      * Only accessible if learner is enrolled in the course.
+     * For trial chapters, allows access without enrollment.
      */
     @Transactional(readOnly = true)
     public LessonRes getLessonDetail(Long userId, Long lessonId) {
-        // Get courseId from lesson
+        // Get courseId and chapterId from lesson
         Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+        
+        Long chapterId = lessonRepo.findChapterIdByLessonId(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found for lesson"));
 
-        // Check enrollment
-        Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled in this course"));
+        // Check if lesson belongs to trial chapter
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        
+        boolean isTrialChapter = chapter.isTrial();
+        
+        // If not trial chapter, require enrollment
+        if (!isTrialChapter) {
+            enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled in this course"));
+        }
+        // If trial chapter, allow access without enrollment
 
         // Get lesson entity
         Lesson lesson = lessonRepo.findById(lessonId)
@@ -439,6 +472,109 @@ public class LearnerProgressService {
                 sectionResList,
                 quizId
         );
+    }
+
+    /**
+     * Get trial lesson detail (public - no authentication required).
+     * Only works for lessons in trial chapters.
+     */
+    @Transactional(readOnly = true)
+    public LessonRes getTrialLessonDetail(Long lessonId) {
+        Long chapterId = lessonRepo.findChapterIdByLessonId(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found for lesson"));
+
+        // Check if lesson belongs to trial chapter
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        
+        if (!chapter.isTrial()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This lesson is not part of trial chapter");
+        }
+
+        // Get lesson entity
+        Lesson lesson = lessonRepo.findById(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+
+        // Get sections with contents
+        List<Section> sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId);
+        List<SectionRes> sectionResList = new ArrayList<>(sections.size());
+
+        for (Section section : sections) {
+            List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(section.getId());
+            List<ContentRes> contentResList = new ArrayList<>(contents.size());
+
+            for (SectionsContent content : contents) {
+                contentResList.add(new ContentRes(
+                        content.getId(),
+                        content.getOrderIndex(),
+                        content.getContentFormat(),
+                        content.isPrimaryContent(),
+                        content.getFilePath(),
+                        content.getRichText(),
+                        content.getFlashcardSetId()
+                ));
+            }
+
+            sectionResList.add(new SectionRes(
+                    section.getId(),
+                    section.getTitle(),
+                    section.getOrderIndex(),
+                    section.getStudyType(),
+                    section.getFlashcardSetId(),
+                    contentResList
+            ));
+        }
+
+        // Get quizId if exists
+        Long quizId = quizRepo.findByLesson_Id(lessonId)
+                .map(Quiz::getId)
+                .orElse(null);
+
+        // Build and return LessonRes
+        return new LessonRes(
+                lesson.getId(),
+                lesson.getTitle(),
+                lesson.getOrderIndex(),
+                lesson.getTotalDurationSec(),
+                sectionResList,
+                quizId
+        );
+    }
+
+    /**
+     * Get trial lesson contents (public - no authentication required).
+     * Only works for lessons in trial chapters. No progress tracking.
+     */
+    @Transactional(readOnly = true)
+    public List<ContentProgressRes> getTrialLessonContents(Long lessonId) {
+        Long chapterId = lessonRepo.findChapterIdByLessonId(lessonId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found for lesson"));
+
+        // Check if lesson belongs to trial chapter
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        
+        if (!chapter.isTrial()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This lesson is not part of trial chapter");
+        }
+
+        List<SectionsContent> contents = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId).stream()
+                .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
+                .collect(Collectors.toList());
+
+        // No progress tracking for trial (guest access)
+        List<ContentProgressRes> res = new ArrayList<>(contents.size());
+        for (SectionsContent c : contents) {
+            res.add(ContentProgressRes.builder()
+                    .contentId(c.getId())
+                    .contentFormat(c.getContentFormat())
+                    .isTrackable(Boolean.TRUE.equals(c.getIsTrackable()))
+                    .lastPositionSec(null) // No progress for guest
+                    .isCompleted(false) // No progress for guest
+                    .durationSec(null)
+                    .build());
+        }
+        return res;
     }
 
     // ============== Get Flashcard Set for Course Content (for enrolled learners) ==============

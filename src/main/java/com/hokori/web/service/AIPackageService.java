@@ -126,8 +126,27 @@ public class AIPackageService {
         // Check if user already has an active purchase
         Optional<AIPackagePurchase> existingPurchase = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
         if (existingPurchase.isPresent()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                    "User already has an active AI package. Please wait for it to expire or cancel it first.");
+            var purchase = existingPurchase.get();
+            Instant now = Instant.now();
+            
+            // Check if package is expired
+            boolean isExpired = purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now);
+            
+            // Check if all quotas are exhausted
+            boolean allQuotasExhausted = checkAllQuotasExhausted(userId);
+            
+            if (!isExpired && !allQuotasExhausted) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                        "User already has an active AI package. Please wait for it to expire or quota to be exhausted before purchasing a new package.");
+            }
+            
+            // If expired or all quotas exhausted, allow purchase
+            if (isExpired) {
+                log.info("User {} has expired package {}, allowing new purchase via createPurchase", userId, purchase.getAiPackage().getName());
+            }
+            if (allQuotasExhausted) {
+                log.info("User {} has exhausted all quotas for package {}, allowing new purchase via createPurchase", userId, purchase.getAiPackage().getName());
+            }
         }
 
         // Create purchase with PENDING status (payment will be integrated later)
@@ -244,6 +263,57 @@ public class AIPackageService {
             case KAIWA -> aiPackage.getKaiwaQuota();
             case PRONUN -> aiPackage.getPronunQuota();
         };
+    }
+    
+    /**
+     * Check if all quotas are exhausted for user's active package
+     * Returns true if:
+     * - User has active package with PAID status
+     * - All service types that have quota limits are exhausted (remainingQuota = 0)
+     * - Unlimited services (null quota) are not considered exhausted
+     */
+    private boolean checkAllQuotasExhausted(Long userId) {
+        Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        if (purchaseOpt.isEmpty()) {
+            return false; // No active package, not exhausted
+        }
+        
+        AIPackagePurchase purchase = purchaseOpt.get();
+        if (purchase.getPaymentStatus() != PaymentStatus.PAID) {
+            return false; // Payment not completed, not exhausted
+        }
+        
+        AIPackage aiPackage = purchase.getAiPackage();
+        List<AIQuota> quotas = quotaRepo.findByUser_Id(userId);
+        
+        // Check each service type
+        for (AIServiceType serviceType : AIServiceType.values()) {
+            Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
+            
+            // If package has unlimited quota (null), skip check
+            if (packageQuota == null) {
+                continue;
+            }
+            
+            // Find quota for this service type
+            Optional<AIQuota> quotaOpt = quotas.stream()
+                    .filter(q -> q.getServiceType() == serviceType)
+                    .findFirst();
+            
+            if (quotaOpt.isPresent()) {
+                AIQuota quota = quotaOpt.get();
+                // If remaining quota > 0, not exhausted
+                if (quota.getRemainingQuota() != null && quota.getRemainingQuota() > 0) {
+                    return false;
+                }
+            } else {
+                // No quota record means quota hasn't been allocated yet (not exhausted)
+                return false;
+            }
+        }
+        
+        // All quota-limited services are exhausted
+        return true;
     }
     
     // =========================

@@ -258,6 +258,8 @@ public class CourseService {
         // Map metadata to CourseRes (without description to avoid LOB)
         CourseRes courseRes = mapCourseMetadataToRes(metadata);
         Long courseId = courseRes.getId();
+        
+        // Note: Rejection info đã được map trong mapCourseMetadataToRes() khi status = REJECTED
 
         var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
         var chapterDtos = new ArrayList<ChapterRes>();
@@ -368,14 +370,15 @@ public class CourseService {
             actualMetadata = (Object[]) metadata[0];
         }
 
-        // Validate array length (should have at least 13 elements now with teacherName)
-        if (actualMetadata.length < 13) {
+        // Validate array length (should have at least 16 elements now with teacherName and rejection fields)
+        if (actualMetadata.length < 16) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Course metadata array too short: expected at least 13 elements, got " + actualMetadata.length);
+                "Course metadata array too short: expected at least 16 elements, got " + actualMetadata.length);
         }
 
         // [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
-        //  currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName]
+        //  currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName,
+        //  rejectionReason, rejectedAt, rejectedByUserId]
         Long id = actualMetadata[0] != null ? ((Number) actualMetadata[0]).longValue() : null;
         String title = actualMetadata[1] != null ? actualMetadata[1].toString() : null;
         String slug = actualMetadata[2] != null ? actualMetadata[2].toString() : null;
@@ -397,6 +400,17 @@ public class CourseService {
                 : null;
         Long userId = actualMetadata[11] != null ? ((Number) actualMetadata[11]).longValue() : null;
         String teacherName = actualMetadata[13] != null ? actualMetadata[13].toString() : null;
+        
+        // Rejection fields
+        String rejectionReason = actualMetadata[14] != null ? actualMetadata[14].toString() : null;
+        Instant rejectedAt = actualMetadata[15] != null
+                ? (actualMetadata[15] instanceof Instant
+                ? (Instant) actualMetadata[15]
+                : actualMetadata[15] instanceof java.sql.Timestamp
+                ? Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[15]).getTime())
+                : null)
+                : null;
+        Long rejectedByUserId = actualMetadata[16] != null ? ((Number) actualMetadata[16]).longValue() : null;
 
         CourseRes res = new CourseRes();
         res.setId(id);
@@ -417,6 +431,16 @@ public class CourseService {
         // ✅ Quan trọng: set enrollCount ở đây
         long enrollCount = (id != null) ? enrollmentRepo.countByCourseId(id) : 0L;
         res.setEnrollCount(enrollCount);
+        
+        // Map rejection info (chỉ có khi status = REJECTED)
+        if (courseStatus == CourseStatus.REJECTED) {
+            res.setRejectionReason(rejectionReason);
+            res.setRejectedAt(rejectedAt);
+            res.setRejectedByUserId(rejectedByUserId);
+            if (rejectedByUserId != null) {
+                res.setRejectedByUserName(getTeacherName(rejectedByUserId));
+            }
+        }
 
         res.setChapters(Collections.emptyList());
         return res;
@@ -942,6 +966,17 @@ public class CourseService {
         res.setUserId(c.getUserId());
         res.setTeacherName(getTeacherName(c.getUserId()));
         res.setChapters(chapters);
+        
+        // Map rejection info (chỉ có khi status = REJECTED)
+        if (c.getStatus() == CourseStatus.REJECTED) {
+            res.setRejectionReason(c.getRejectionReason());
+            res.setRejectedAt(c.getRejectedAt());
+            res.setRejectedByUserId(c.getRejectedByUserId());
+            if (c.getRejectedByUserId() != null) {
+                res.setRejectedByUserName(getTeacherName(c.getRejectedByUserId()));
+            }
+        }
+        
         return res;
     }
 
@@ -972,6 +1007,17 @@ public class CourseService {
         res.setUserId(c.getUserId());
         res.setTeacherName(getTeacherName(c.getUserId()));
         res.setChapters(chapters);
+        
+        // Map rejection info (chỉ có khi status = REJECTED)
+        if (c.getStatus() == CourseStatus.REJECTED) {
+            res.setRejectionReason(c.getRejectionReason());
+            res.setRejectedAt(c.getRejectedAt());
+            res.setRejectedByUserId(c.getRejectedByUserId());
+            if (c.getRejectedByUserId() != null) {
+                res.setRejectedByUserName(getTeacherName(c.getRejectedByUserId()));
+            }
+        }
+        
         return res;
     }
 
