@@ -319,24 +319,17 @@ public class LearnerProgressService {
             
             if (!contentIds.isEmpty()) {
                 // Query all progress for this enrollment and content IDs
-                // Use simple query - lazy loading should work in same transaction
+                // Use JOIN FETCH to eagerly load content relationship
+                // This ensures content.getId() is available without lazy loading issues
                 List<UserContentProgress> ucpList = ucpRepo
-                        .findByEnrollment_IdAndContent_IdIn(e.getId(), contentIds);
+                        .findByEnrollment_IdAndContent_IdInWithContent(e.getId(), contentIds);
                 
                 // Build map: key is content.id, value is UserContentProgress
-                // Important: Access content.getId() to trigger lazy loading
-                // This should work because we're in the same read-only transaction
+                // Content is already eagerly fetched, so no lazy loading needed
                 for (UserContentProgress ucp : ucpList) {
-                    try {
-                        // Access content relationship to trigger lazy loading
-                        SectionsContent content = ucp.getContent();
-                        if (content != null && content.getId() != null) {
-                            ucpMap.put(content.getId(), ucp);
-                        }
-                    } catch (Exception ex) {
-                        // If lazy loading fails, skip this entry
-                        // This shouldn't happen in same transaction, but handle gracefully
-                        continue;
+                    SectionsContent content = ucp.getContent();
+                    if (content != null && content.getId() != null) {
+                        ucpMap.put(content.getId(), ucp);
                     }
                 }
             }
