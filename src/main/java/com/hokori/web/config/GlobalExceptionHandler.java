@@ -294,7 +294,8 @@ public class GlobalExceptionHandler {
         if (message != null) {
             if (message.contains("course_status_check")) {
                 response.put("message", "Database constraint error: Course status constraint violation. " +
-                    "Please ensure the database constraint allows 'PENDING_APPROVAL' status.");
+                    "Please ensure the database constraint allows all CourseStatus values (DRAFT, PENDING_APPROVAL, REJECTED, PUBLISHED, FLAGGED, ARCHIVED). " +
+                    "Call POST /api/admin/database/fix-course-status-constraint to fix.");
                 response.put("errorCode", "COURSE_STATUS_CONSTRAINT_ERROR");
             } else if (message.contains("unique constraint") || message.contains("duplicate key")) {
                 response.put("message", "Duplicate entry: This record already exists");

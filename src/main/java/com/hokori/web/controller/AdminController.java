@@ -377,27 +377,27 @@ public class AdminController {
     }
 
     /**
-     * TEMPORARY: Fix course_status_check constraint to allow PENDING_APPROVAL
-     * TODO: Remove this endpoint after fixing the constraint
+     * TEMPORARY: Fix course_status_check constraint to allow all CourseStatus values
+     * TODO: Remove this endpoint after fixing the constraint via migration
      */
     @PostMapping("/database/fix-course-status-constraint")
     @Operation(summary = "[TEMPORARY] Fix course status constraint", 
-               description = "Fix course_status_check constraint to allow PENDING_APPROVAL status. Remove after use.")
+               description = "Fix course_status_check constraint to allow all CourseStatus values including REJECTED and FLAGGED. Remove after use.")
     public ResponseEntity<ApiResponse<String>> fixCourseStatusConstraint() {
         try {
             // Drop existing constraint if exists
             jdbcTemplate.execute("ALTER TABLE course DROP CONSTRAINT IF EXISTS course_status_check");
             
-            // Add new constraint with PENDING_APPROVAL
+            // Add new constraint with all CourseStatus values
             jdbcTemplate.execute(
                 "ALTER TABLE course " +
                 "ADD CONSTRAINT course_status_check " +
-                "CHECK (status IN ('DRAFT', 'PENDING_APPROVAL', 'PUBLISHED', 'ARCHIVED'))"
+                "CHECK (status IN ('DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'PUBLISHED', 'FLAGGED', 'ARCHIVED'))"
             );
             
             return ResponseEntity.ok(ApiResponse.success(
                 "Course status constraint fixed successfully", 
-                "Constraint now allows: DRAFT, PENDING_APPROVAL, PUBLISHED, ARCHIVED"
+                "Constraint now allows: DRAFT, PENDING_APPROVAL, REJECTED, PUBLISHED, FLAGGED, ARCHIVED"
             ));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(
