@@ -318,38 +318,18 @@ public class LearnerProgressService {
             List<Long> contentIds = contents.stream().map(SectionsContent::getId).toList();
             
             if (!contentIds.isEmpty()) {
-                // Try JOIN FETCH query first to eagerly load content
+                // Query all progress for this enrollment and content IDs
+                // Use simple query first (more reliable than JOIN FETCH in some cases)
                 List<UserContentProgress> ucpList = ucpRepo
-                        .findByEnrollment_IdAndContent_IdInWithContent(e.getId(), contentIds);
+                        .findByEnrollment_IdAndContent_IdIn(e.getId(), contentIds);
                 
-                // If JOIN FETCH returns results, use it
-                if (!ucpList.isEmpty()) {
-                    ucpMap = ucpList.stream()
-                            .collect(Collectors.toMap(
-                                    ucp -> ucp.getContent().getId(), 
-                                    ucp -> ucp,
-                                    (existing, replacement) -> existing
-                            ));
-                } else {
-                    // Fallback: Use simple query without JOIN FETCH
-                    // This handles cases where JOIN FETCH might not work as expected
-                    List<UserContentProgress> simpleList = ucpRepo
-                            .findByEnrollment_IdAndContent_IdIn(e.getId(), contentIds);
-                    
-                    // Build map using content ID from the relationship
-                    // Note: This requires accessing lazy-loaded content, but should work in same transaction
-                    ucpMap = simpleList.stream()
-                            .collect(Collectors.toMap(
-                                    ucp -> {
-                                        // Access content to trigger lazy loading
-                                        SectionsContent content = ucp.getContent();
-                                        return content != null ? content.getId() : null;
-                                    },
-                                    ucp -> ucp,
-                                    (existing, replacement) -> existing
-                            ));
-                    // Remove null keys (if any content failed to load)
-                    ucpMap.entrySet().removeIf(entry -> entry.getKey() == null);
+                // Build map: key is content.id, value is UserContentProgress
+                // Access content to trigger lazy loading (should work in same transaction)
+                for (UserContentProgress ucp : ucpList) {
+                    SectionsContent content = ucp.getContent(); // Trigger lazy loading
+                    if (content != null) {
+                        ucpMap.put(content.getId(), ucp);
+                    }
                 }
             }
         }
