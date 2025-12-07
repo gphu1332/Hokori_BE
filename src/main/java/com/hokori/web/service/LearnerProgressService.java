@@ -380,7 +380,9 @@ public class LearnerProgressService {
         Long lessonId = content.getSection().getLesson().getId();
         Long courseId = content.getSection().getLesson().getChapter().getCourse().getId();
 
-        Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+        // Use findLatestByUserIdAndCourseId to ensure we get the most recent enrollment
+        // This prevents issues when user has multiple enrollments for the same course
+        Enrollment e = enrollmentRepo.findLatestByUserIdAndCourseId(userId, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
 
         UserContentProgress ucp = ucpRepo.findByEnrollment_IdAndContent_Id(e.getId(), contentId)

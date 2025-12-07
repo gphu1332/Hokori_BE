@@ -12,6 +12,19 @@ import java.util.Optional;
 public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
 
     Optional<Enrollment> findByUserIdAndCourseId(Long userId, Long courseId);
+    
+    /**
+     * Find the most recent enrollment for a user and course.
+     * If user has multiple enrollments, returns the latest one.
+     * Uses native query to ensure we get the most recent enrollment.
+     */
+    @Query(value = """
+        SELECT * FROM enrollment
+        WHERE user_id = :userId AND course_id = :courseId
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, nativeQuery = true)
+    Optional<Enrollment> findLatestByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
 
     List<Enrollment> findByUserId(Long userId);
 
