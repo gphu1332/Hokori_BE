@@ -327,12 +327,18 @@ public class LearnerProgressService {
                 List<UserContentProgress> ucpList = ucpRepo
                         .findByEnrollment_IdAndContent_IdInWithContent(enrollmentId, contentIds);
                 
+                // Debug: Log batch query results
+                System.err.println("BATCH QUERY: enrollmentId=" + enrollmentId + 
+                    ", contentIds=" + contentIds + ", returned " + ucpList.size() + " records");
+                
                 // Build map: key is content.id, value is UserContentProgress
                 // Content is already eagerly fetched, so no lazy loading needed
                 for (UserContentProgress ucp : ucpList) {
                     SectionsContent content = ucp.getContent();
                     if (content != null && content.getId() != null) {
                         ucpMap.put(content.getId(), ucp);
+                        System.err.println("BATCH QUERY: Mapped contentId=" + content.getId() + 
+                            ", isCompleted=" + ucp.getIsCompleted() + ", lastPositionSec=" + ucp.getLastPositionSec());
                     }
                 }
                 
@@ -360,6 +366,9 @@ public class LearnerProgressService {
                         .findByEnrollment_IdAndContent_Id(enrollmentId, c.getId());
                 if (dbCheck.isPresent()) {
                     // Progress exists in DB but wasn't in batch query result - use it
+                    // Log this for debugging
+                    System.err.println("FALLBACK QUERY TRIGGERED: Found progress in DB for enrollmentId=" + 
+                        enrollmentId + ", contentId=" + c.getId() + " but batch query missed it");
                     up = dbCheck.get();
                     ucpMap.put(c.getId(), up); // Add to map for future iterations
                 }
