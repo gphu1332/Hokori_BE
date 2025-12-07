@@ -519,6 +519,41 @@ public class PaymentService {
     }
     
     /**
+     * Retry enrollment for a successful payment that hasn't been enrolled yet
+     * This is useful when webhook failed but payment was successful
+     */
+    @Transactional
+    public void retryEnrollmentFromPayment(Long paymentId, Long userId) {
+        Payment payment = paymentRepo.findByIdAndUserId(paymentId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
+        
+        // Only allow retry for PAID payments
+        if (payment.getStatus() != PaymentStatus.PAID) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Payment is not in PAID status. Current status: " + payment.getStatus());
+        }
+        
+        // Check if this is a course payment (not AI package)
+        if (payment.getAiPackageId() != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "This payment is for AI package, not courses. Use AI package activation endpoint instead.");
+        }
+        
+        // Check if courses are already enrolled
+        List<Long> courseIds = parseCourseIds(payment.getCourseIds());
+        if (courseIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No courses found in payment");
+        }
+        
+        // Enroll user into courses
+        enrollCoursesFromPayment(payment);
+        clearPaidCartItems(payment);
+        
+        log.info("Retry enrollment completed for payment {} (orderCode: {}), enrolled {} courses", 
+                paymentId, payment.getOrderCode(), courseIds.size());
+    }
+    
+    /**
      * Activate AI Package purchase after successful payment
      */
     private void activateAIPackagePurchaseFromPayment(Payment payment) {

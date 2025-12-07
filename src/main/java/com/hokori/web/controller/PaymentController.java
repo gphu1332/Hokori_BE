@@ -130,6 +130,19 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.success("Payment detail retrieved", payment));
     }
     
+    @Operation(
+            summary = "Retry enrollment từ payment",
+            description = "Retry enrollment cho payment đã thành công nhưng chưa được enroll (dùng khi webhook failed)"
+    )
+    @PostMapping("/{paymentId}/retry-enrollment")
+    public ResponseEntity<ApiResponse<String>> retryEnrollment(
+            @Parameter(description = "Payment ID")
+            @PathVariable Long paymentId) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        paymentService.retryEnrollmentFromPayment(paymentId, userId);
+        return ResponseEntity.ok(ApiResponse.success("Enrollment retry completed successfully", null));
+    }
+    
     // Response format expected by PayOS
     private record WebhookResponse(int code, String desc, Object data) {}
 }
