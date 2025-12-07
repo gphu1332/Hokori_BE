@@ -347,13 +347,14 @@ public class LearnerProgressService {
         List<ContentProgressRes> res = new ArrayList<>(contents.size());
         for (SectionsContent c : contents) {
             UserContentProgress up = ucpMap.get(c.getId());
-            // Debug: Log if content has progress in DB but not in map
+            // Fallback: If progress not found in batch query, check DB individually
+            // This handles edge cases where batch query might miss some records
             if (up == null && !isTrialChapter && e != null) {
                 // Check if progress exists in DB for this content
                 Optional<UserContentProgress> dbCheck = ucpRepo
                         .findByEnrollment_IdAndContent_Id(e.getId(), c.getId());
-                if (dbCheck.isPresent() && Boolean.TRUE.equals(dbCheck.get().getIsCompleted())) {
-                    // Progress exists in DB but wasn't in query result - use it
+                if (dbCheck.isPresent()) {
+                    // Progress exists in DB but wasn't in batch query result - use it
                     up = dbCheck.get();
                     ucpMap.put(c.getId(), up); // Add to map for future iterations
                 }
@@ -477,9 +478,9 @@ public class LearnerProgressService {
         
         // Query all progress for this lesson at once with JOIN FETCH (if enrolled)
         if (enrollment != null && !allContentIds.isEmpty()) {
-            ucpMap = ucpRepo
-                    .findByEnrollment_IdAndContent_IdInWithContent(enrollment.getId(), allContentIds)
-                    .stream()
+            List<UserContentProgress> ucpList = ucpRepo
+                    .findByEnrollment_IdAndContent_IdInWithContent(enrollment.getId(), allContentIds);
+            ucpMap = ucpList.stream()
                     .collect(Collectors.toMap(ucp -> ucp.getContent().getId(), ucp -> ucp));
         }
         
@@ -493,7 +494,16 @@ public class LearnerProgressService {
                 // Get progress for this content
                 UserContentProgress ucp = ucpMap.get(content.getId());
                 
-                // Get progress for this content
+                // Fallback: If progress not found in batch query, check DB individually
+                if (ucp == null && enrollment != null) {
+                    Optional<UserContentProgress> dbCheck = ucpRepo
+                            .findByEnrollment_IdAndContent_Id(enrollment.getId(), content.getId());
+                    if (dbCheck.isPresent()) {
+                        ucp = dbCheck.get();
+                        ucpMap.put(content.getId(), ucp); // Add to map for future iterations
+                    }
+                }
+                
                 Long lastPositionSec = ucp != null ? ucp.getLastPositionSec() : null;
                 Boolean isCompleted = ucp != null && Boolean.TRUE.equals(ucp.getIsCompleted()) ? true : false;
                 
