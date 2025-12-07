@@ -314,8 +314,9 @@ public class LearnerProgressService {
                     .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
                     .collect(Collectors.toList());
             
+            // Use JOIN FETCH query to eagerly load content to avoid lazy loading issues
             ucpMap = ucpRepo
-                    .findByEnrollment_IdAndContent_IdIn(e.getId(),
+                    .findByEnrollment_IdAndContent_IdInWithContent(e.getId(),
                             contents.stream().map(SectionsContent::getId).toList())
                     .stream().collect(Collectors.toMap(c -> c.getContent().getId(), c -> c));
         }
@@ -341,6 +342,7 @@ public class LearnerProgressService {
     }
 
     // ============== Update one content progress ======================
+    @Transactional
     public ContentProgressRes updateContentProgress(Long userId, Long contentId, ContentProgressUpsertReq req) {
         SectionsContent content = contentRepo.findById(contentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Content not found"));
