@@ -403,6 +403,19 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public Page<CourseRes> listPublished(JLPTLevel level, int page, int size) {
+        return listPublished(level, page, size, null);
+    }
+
+    /**
+     * List published courses with optional enrollment check for authenticated user
+     * @param level JLPT level filter (optional)
+     * @param page Page number (0-based)
+     * @param size Page size
+     * @param userId User ID to check enrollment (optional, null if not authenticated)
+     * @return Page of CourseRes with isEnrolled field set
+     */
+    @Transactional(readOnly = true)
+    public Page<CourseRes> listPublished(JLPTLevel level, int page, int size, Long userId) {
         String levelStr = level != null ? level.name() : null;
 
         List<Object[]> metadataList = courseRepo.findPublishedCourseMetadata(levelStr);
@@ -412,8 +425,25 @@ public class CourseService {
         int end = Math.min(start + size, total);
         List<Object[]> pagedList = (start < total) ? metadataList.subList(start, end) : Collections.emptyList();
 
+        // Get enrolled course IDs for this user (if authenticated)
+        Set<Long> enrolledCourseIds = userId != null
+                ? enrollmentRepo.findByUserId(userId).stream()
+                        .map(e -> e.getCourseId())
+                        .collect(Collectors.toSet())
+                : Collections.emptySet();
+
+        final Set<Long> finalEnrolledCourseIds = enrolledCourseIds;
         List<CourseRes> content = pagedList.stream()
-                .map(this::mapCourseMetadataToRes)
+                .map(metadata -> {
+                    CourseRes res = mapCourseMetadataToRes(metadata);
+                    // Set isEnrolled field
+                    if (userId != null && res.getId() != null) {
+                        res.setIsEnrolled(finalEnrolledCourseIds.contains(res.getId()));
+                    } else {
+                        res.setIsEnrolled(null); // Not authenticated
+                    }
+                    return res;
+                })
                 .collect(Collectors.toList());
 
         return new PageImpl<>(content, PageRequest.of(page, size, Sort.by("publishedAt").descending()), total);

@@ -30,4 +30,5 @@ public class CourseRes {
     private String teacherName; // Tên giáo viên (displayName hoặc username)
     private List<ChapterRes> chapters;
     private Long enrollCount;
+    private Boolean isEnrolled; // true nếu user hiện tại đã enroll vào course này (null nếu chưa đăng nhập)
 }

@@ -3,6 +3,7 @@ package com.hokori.web.controller;
 import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.dto.course.CourseRes;
 import com.hokori.web.service.CourseService;
+import com.hokori.web.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -22,6 +23,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public class CoursePublicController {
 
     private final CourseService service;
+    private final CurrentUserService currentUserService;
 
     @Operation(summary = "Danh sách khoá học PUBLISHED")
     @ApiResponse(responseCode = "200",
@@ -30,7 +32,9 @@ public class CoursePublicController {
     public Page<CourseRes> list(@RequestParam(required = false) JLPTLevel level,
                                 @RequestParam(defaultValue = "0") int page,
                                 @RequestParam(defaultValue = "20") int size) {
-        return service.listPublished(level, page, size);
+        // Get userId if authenticated (optional)
+        Long userId = currentUserService.getUserIdOrNull();
+        return service.listPublished(level, page, size, userId);
     }
 
     @Operation(summary = "Full tree của khoá học (PUBLISHED-only)")
