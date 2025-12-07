@@ -478,8 +478,9 @@ public class PaymentService {
                 // Parse course IDs from payment
                 List<Long> courseIds = parseCourseIds(payment.getCourseIds());
                 if (!courseIds.isEmpty()) {
-                    // Clear cart items for these courses
-                    cartService.clearItems(courseIds);
+                    // Clear cart items for these courses using userId from payment
+                    // (webhook context doesn't have authenticated user in SecurityContext)
+                    cartService.clearItemsForUser(payment.getUserId(), courseIds);
                     log.info("Cleared cart {} items for courses {} after payment {}", 
                             payment.getCartId(), courseIds, payment.getOrderCode());
                 }

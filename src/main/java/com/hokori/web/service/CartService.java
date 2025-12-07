@@ -338,9 +338,19 @@ public class CartService {
     
     /**
      * Remove cart items by course IDs (used after enrolling in free courses)
+     * Uses current authenticated user from SecurityContext
      */
     public void clearItems(List<Long> courseIds) {
         Long userId = current.getCurrentUserId();
+        clearItemsForUser(userId, courseIds);
+    }
+    
+    /**
+     * Remove cart items by course IDs for a specific user (used in webhook context)
+     * @param userId User ID whose cart items should be cleared
+     * @param courseIds Course IDs to remove from cart
+     */
+    public void clearItemsForUser(Long userId, List<Long> courseIds) {
         Cart cart = getOrCreateCart(userId);
         // Delete items for these course IDs
         itemRepo.deleteByCart_IdAndCourse_IdIn(cart.getId(), courseIds);
