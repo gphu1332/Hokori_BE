@@ -7,6 +7,7 @@ import com.hokori.web.dto.progress.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional
 public class LearnerProgressService {
 
@@ -419,6 +421,8 @@ public class LearnerProgressService {
         // Nếu đạt 100% và chưa có completedAt -> set completedAt và tạo certificate
         // Check cả oldPercent < 100 (mới đạt) hoặc oldPercent == 100 nhưng chưa có completedAt (fix case cũ)
         if (percent == 100 && e.getCompletedAt() == null) {
+            log.info("Course completion detected: enrollmentId={}, courseId={}, userId={}", 
+                    e.getId(), e.getCourseId(), e.getUserId());
             Instant now = Instant.now();
             e.setCompletedAt(now);
             createCompletionCertificate(e);
@@ -430,6 +434,7 @@ public class LearnerProgressService {
      */
     @Transactional
     public void ensureCertificateForEnrollment(Long userId, Long courseId) {
+        log.info("Ensuring certificate for enrollment: userId={}, courseId={}", userId, courseId);
         Enrollment enrollment = enrollmentRepo.findLatestByUserIdAndCourseId(userId, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Enrollment not found"));
         
@@ -437,12 +442,15 @@ public class LearnerProgressService {
         if (enrollment.getProgressPercent() == 100) {
             // Set completedAt nếu chưa có
             if (enrollment.getCompletedAt() == null) {
+                log.info("Setting completedAt for enrollmentId={}", enrollment.getId());
                 enrollment.setCompletedAt(Instant.now());
                 enrollmentRepo.save(enrollment);
             }
             // Tạo certificate nếu chưa có
             createCompletionCertificate(enrollment);
+            log.info("Certificate ensured successfully for enrollmentId={}", enrollment.getId());
         } else {
+            log.warn("Cannot create certificate: course not completed. Progress: {}%", enrollment.getProgressPercent());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                     "Course is not completed yet. Progress: " + enrollment.getProgressPercent() + "%");
         }
@@ -454,8 +462,12 @@ public class LearnerProgressService {
     private void createCompletionCertificate(Enrollment enrollment) {
         // Kiểm tra đã có certificate chưa (tránh duplicate)
         if (certificateRepo.findByEnrollmentId(enrollment.getId()).isPresent()) {
+            log.debug("Certificate already exists for enrollmentId={}", enrollment.getId());
             return;
         }
+        
+        log.info("Creating certificate for completed course: enrollmentId={}, courseId={}, userId={}", 
+                enrollment.getId(), enrollment.getCourseId(), enrollment.getUserId());
         
         // Lấy thông tin course
         Object[] courseMetadata = courseRepo.findCourseMetadataById(enrollment.getCourseId())
@@ -477,6 +489,8 @@ public class LearnerProgressService {
                         .build();
         
         certificateRepo.save(certificate);
+        log.info("Certificate created successfully: certificateId={}, certificateNumber={}", 
+                certificate.getId(), certificate.getCertificateNumber());
     }
 
     // ============== Get Lesson Detail with Full Content (for enrolled learners) ==============

@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/learner/certificates")
 @RequiredArgsConstructor
+@Slf4j
 @PreAuthorize("hasRole('LEARNER')")
 @SecurityRequirement(name = "Bearer Authentication")
 @Tag(name = "Learner - Certificates", description = "Xem certificates/accomplishments khi hoàn thành courses")
@@ -38,7 +40,9 @@ public class LearnerCertificateController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<CourseCompletionCertificateRes>>> getMyCertificates() {
         Long userId = currentUserService.getCurrentUserId();
+        log.info("Getting certificates for userId={}", userId);
         List<CourseCompletionCertificateRes> certificates = certificateService.getMyCertificates(userId);
+        log.info("Found {} certificates for userId={}", certificates.size(), userId);
         return ResponseEntity.ok(ApiResponse.success("OK", certificates));
     }
 
@@ -78,10 +82,13 @@ public class LearnerCertificateController {
             @Parameter(name = "courseId", in = ParameterIn.PATH, required = true, description = "Course ID", example = "107")
             @PathVariable Long courseId) {
         Long userId = currentUserService.getCurrentUserId();
+        log.info("POST /api/learner/certificates/course/{}/ensure called by userId={}", courseId, userId);
         progressService.ensureCertificateForEnrollment(userId, courseId);
         
         // Lấy certificate vừa tạo
         CourseCompletionCertificateRes certificate = certificateService.getCertificateByCourse(userId, courseId);
+        log.info("Certificate ensured successfully: certificateId={}, courseId={}, userId={}", 
+                certificate.getId(), courseId, userId);
         return ResponseEntity.ok(ApiResponse.success("Certificate created successfully", certificate));
     }
 }
