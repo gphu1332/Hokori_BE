@@ -36,6 +36,7 @@ public class CourseService {
     private final EnrollmentRepository enrollmentRepo;
     private final com.hokori.web.service.NotificationService notificationService;
     private final QuizRepository quizRepo;
+    private final FileStorageService fileStorageService;
 
     // =========================
     // COURSE
@@ -1325,6 +1326,20 @@ public class CourseService {
         // validate theo section hiện tại
         validateContentPayload(c.getSection(), r);
 
+        // Xóa file cũ nếu filePath thay đổi và content có filePath cũ
+        String oldFilePath = c.getFilePath();
+        String newFilePath = r.getFilePath();
+        if (oldFilePath != null && !oldFilePath.equals(newFilePath) && newFilePath != null) {
+            // FilePath đã thay đổi, xóa file cũ
+            try {
+                fileStorageService.deleteFile(oldFilePath);
+            } catch (Exception e) {
+                // Log error nhưng không throw để không block update
+                // File có thể đã bị xóa hoặc không tồn tại
+                System.err.println("Warning: Could not delete old file: " + oldFilePath + " - " + e.getMessage());
+            }
+        }
+
         if (r.getContentFormat() != null) {
             c.setContentFormat(r.getContentFormat());
         }
@@ -1341,6 +1356,18 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Content not found"));
         Long courseId = c.getSection().getLesson().getChapter().getCourse().getId();
         assertOwner(courseId, teacherUserId);
+
+        // Xóa file vật lý nếu content có filePath
+        String filePath = c.getFilePath();
+        if (filePath != null && !filePath.trim().isEmpty()) {
+            try {
+                fileStorageService.deleteFile(filePath);
+            } catch (Exception e) {
+                // Log error nhưng không throw để không block delete
+                // File có thể đã bị xóa hoặc không tồn tại
+                System.err.println("Warning: Could not delete file: " + filePath + " - " + e.getMessage());
+            }
+        }
 
         Long sectionId = c.getSection().getId();
         contentRepo.delete(c);
