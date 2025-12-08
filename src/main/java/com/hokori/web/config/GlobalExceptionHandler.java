@@ -12,6 +12,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -88,6 +89,50 @@ public class GlobalExceptionHandler {
         logger.warn("JSON parse error: {}", message);
         
         return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMediaTypeNotSupportedException(
+            HttpMediaTypeNotSupportedException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        
+        String contentType = ex.getContentType() != null ? ex.getContentType().toString() : "unknown";
+        String supportedTypes = ex.getSupportedMediaTypes() != null && !ex.getSupportedMediaTypes().isEmpty()
+                ? ex.getSupportedMediaTypes().toString()
+                : "multipart/form-data";
+        
+        String detailedMessage;
+        if (contentType.contains("application/json")) {
+            detailedMessage = String.format(
+                "Content-Type '%s' is not supported for file upload endpoints. " +
+                "Please use 'multipart/form-data' instead. " +
+                "Use FormData to append the file and let the browser set Content-Type automatically.",
+                contentType);
+        } else {
+            detailedMessage = String.format(
+                "Content-Type '%s' is not supported. Supported types: %s",
+                contentType, supportedTypes);
+        }
+        
+        response.put("message", detailedMessage);
+        response.put("status", "error");
+        response.put("errorCode", "UNSUPPORTED_MEDIA_TYPE");
+        response.put("receivedContentType", contentType);
+        response.put("supportedContentTypes", supportedTypes);
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false).replace("uri=", ""));
+        
+        // Add helpful suggestions for file upload
+        Map<String, String> suggestions = new HashMap<>();
+        suggestions.put("useFormData", "Use FormData to append file: const formData = new FormData(); formData.append('file', file);");
+        suggestions.put("dontSetContentType", "Do NOT manually set Content-Type header when using FormData - browser will set it automatically");
+        suggestions.put("useMultipart", "Ensure Content-Type is 'multipart/form-data' (browser sets this automatically with FormData)");
+        response.put("suggestions", suggestions);
+        
+        logger.warn("HttpMediaTypeNotSupportedException: Content-Type '{}' not supported. Supported: {}", 
+            contentType, supportedTypes);
+        
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(response);
     }
 
     @ExceptionHandler(EntityNotFoundException.class)

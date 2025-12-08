@@ -100,7 +100,7 @@ public class JlptTestController {
             description = """
                     Upload audio file cho listening questions.
                     Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WEBM, OPUS
-                    Max file size: 512MB
+                    Max file size: 100MB (Cloudflare Free plan limit)
                     Trả về filePath để dùng trong createQuestion/updateQuestion.
                     """
     )

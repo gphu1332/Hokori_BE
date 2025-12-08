@@ -32,10 +32,11 @@ public class FileStorageService {
                 throw new IllegalArgumentException("File is empty or null");
             }
             
-            // Validate file size (max 512MB as configured in application.yml)
-            long maxSize = 512L * 1024 * 1024; // 512MB
+            // Validate file size (max 100MB as configured in application.yml)
+            // Note: Cloudflare Free plan has ~100MB upload limit
+            long maxSize = 100L * 1024 * 1024; // 100MB
             if (file.getSize() > maxSize) {
-                throw new IllegalArgumentException("File size exceeds maximum limit of 512MB");
+                throw new IllegalArgumentException("File size exceeds maximum limit of 100MB");
             }
             
             // Generate unique file name

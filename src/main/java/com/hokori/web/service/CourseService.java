@@ -538,14 +538,26 @@ public class CourseService {
                 : r.getOrderIndex();
         ch.setOrderIndex(oi);
 
-        if (Boolean.TRUE.equals(r.getIsTrial())) {
+        // Chapter đầu tiên (orderIndex = 0) luôn phải là trial
+        if (oi == 0) {
+            // Nếu đã có trial chapter khác, bỏ trial của nó
+            chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
+                old.setTrial(false);
+            });
+            ch.setTrial(true);
+        } else if (Boolean.TRUE.equals(r.getIsTrial())) {
+            // Nếu teacher muốn set trial cho chapter khác, kiểm tra đã có trial chưa
             if (chapterRepo.countByCourse_IdAndIsTrialTrue(courseId) > 0) {
-                throw bad("Course already has a trial chapter");
+                throw bad("Course already has a trial chapter. The first chapter (orderIndex=0) is always the trial chapter.");
             }
             ch.setTrial(true);
         }
 
         Chapter saved = chapterRepo.save(ch);
+        
+        // Đảm bảo chapter đầu tiên luôn là trial (sau khi save để có ID)
+        ensureFirstChapterIsTrial(courseId);
+        
         return toChapterResShallow(saved);
     }
 
@@ -1127,14 +1139,35 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
         assertOwner(ch.getCourse().getId(), teacherUserId);
 
+        Long courseId = ch.getCourse().getId();
+
         if (r.getTitle() != null) ch.setTitle(r.getTitle());
         ch.setSummary(r.getSummary());
-        if (Boolean.TRUE.equals(r.getIsTrial())) {
-            chapterRepo.findByCourse_IdAndIsTrialTrue(ch.getCourse().getId()).ifPresent(old -> {
+        
+        // Nếu update orderIndex về 0, chapter đó phải là trial
+        if (r.getOrderIndex() != null && r.getOrderIndex() == 0) {
+            // Bỏ trial của chapter trial cũ
+            chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
+                if (!old.getId().equals(ch.getId())) old.setTrial(false);
+            });
+            ch.setTrial(true);
+            ch.setOrderIndex(0);
+        } else if (Boolean.TRUE.equals(r.getIsTrial())) {
+            // Nếu teacher muốn set trial cho chapter khác (không phải đầu tiên)
+            if (ch.getOrderIndex() != 0) {
+                throw bad("Only the first chapter (orderIndex=0) can be a trial chapter. Please reorder this chapter to position 0 first.");
+            }
+            chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
                 if (!old.getId().equals(ch.getId())) old.setTrial(false);
             });
             ch.setTrial(true);
         }
+        
+        chapterRepo.save(ch);
+        
+        // Đảm bảo chapter đầu tiên luôn là trial
+        ensureFirstChapterIsTrial(courseId);
+        
         return toChapterResShallow(ch);
     }
 
@@ -1146,6 +1179,9 @@ public class CourseService {
         Long courseId = ch.getCourse().getId();
         chapterRepo.delete(ch);
         renormalizeChapterOrder(courseId);
+        
+        // Đảm bảo chapter đầu tiên luôn là trial (sau khi xóa và renormalize)
+        ensureFirstChapterIsTrial(courseId);
     }
 
     public ChapterRes reorderChapter(Long chapterId, Long teacherUserId, int newIndex) {
@@ -1153,8 +1189,13 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
         assertOwner(ch.getCourse().getId(), teacherUserId);
 
-        List<Chapter> list = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(ch.getCourse().getId());
+        Long courseId = ch.getCourse().getId();
+        List<Chapter> list = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
         applyReorder(list, chapterId, newIndex, (it, idx) -> it.setOrderIndex(idx));
+        
+        // Đảm bảo chapter đầu tiên luôn là trial (sau khi reorder)
+        ensureFirstChapterIsTrial(courseId);
+        
         return toChapterResShallow(ch);
     }
 
@@ -1316,6 +1357,40 @@ public class CourseService {
     private void renormalizeChapterOrder(Long courseId) {
         List<Chapter> list = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
         for (int i = 0; i < list.size(); i++) list.get(i).setOrderIndex(i);
+    }
+
+    /**
+     * Đảm bảo chapter đầu tiên (orderIndex = 0) luôn là trial chapter.
+     * Nếu chapter đầu tiên không phải trial, tự động set thành trial.
+     * Nếu có chapter trial khác, bỏ trial của nó.
+     */
+    private void ensureFirstChapterIsTrial(Long courseId) {
+        List<Chapter> chapters = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
+        if (chapters.isEmpty()) {
+            return; // Không có chapter nào, không cần làm gì
+        }
+        
+        Chapter firstChapter = chapters.get(0);
+        
+        // Nếu chapter đầu tiên chưa phải trial, set thành trial
+        if (!firstChapter.isTrial()) {
+            // Bỏ trial của chapter trial cũ (nếu có)
+            chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
+                if (!old.getId().equals(firstChapter.getId())) {
+                    old.setTrial(false);
+                }
+            });
+            firstChapter.setTrial(true);
+            chapterRepo.save(firstChapter);
+        } else {
+            // Nếu chapter đầu tiên đã là trial, đảm bảo không có chapter trial nào khác
+            chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
+                if (!old.getId().equals(firstChapter.getId())) {
+                    old.setTrial(false);
+                    chapterRepo.save(old);
+                }
+            });
+        }
     }
 
     private void renormalizeLessonOrder(Long chapterId) {
