@@ -71,28 +71,82 @@ public class CourseCompletionCertificateService {
         // Lấy thêm thông tin course nếu cần
         String courseSlug = null;
         String coverImagePath = null;
-        String courseTitle = cert.getCourseTitle();
+        String courseTitle = null; // Luôn load từ course metadata để có tên mới nhất
         
         try {
-            Object[] courseMetadata = courseRepo.findCourseMetadataById(cert.getCourseId()).orElse(null);
-            if (courseMetadata != null && courseMetadata.length > 2) {
-                courseSlug = courseMetadata[2] != null ? courseMetadata[2].toString() : null;
+            // Thử query với deleted_flag = false trước
+            Optional<Object[]> courseMetadataOpt = courseRepo.findCourseMetadataById(cert.getCourseId());
+            
+            // Nếu không tìm thấy, thử query cả khi deleted_flag = true (để lấy title)
+            if (courseMetadataOpt.isEmpty()) {
+                log.debug("Course not found with deleted_flag=false for courseId={}, trying with deleted_flag=true", cert.getCourseId());
+                courseMetadataOpt = courseRepo.findCourseMetadataByIdInternal(cert.getCourseId(), true);
             }
-            if (courseMetadata != null && courseMetadata.length > 8) {
-                coverImagePath = courseMetadata[8] != null ? courseMetadata[8].toString() : null;
-            }
-            // Fallback courseTitle nếu null trong certificate
-            if ((courseTitle == null || courseTitle.isEmpty()) && courseMetadata != null && courseMetadata.length > 1) {
-                courseTitle = courseMetadata[1] != null ? courseMetadata[1].toString().trim() : null;
-                if (courseTitle == null || courseTitle.isEmpty()) {
-                    courseTitle = "Course #" + cert.getCourseId();
+            
+            if (courseMetadataOpt.isPresent()) {
+                Object[] courseMetadata = courseMetadataOpt.get();
+                log.debug("Found course metadata for courseId={}, array length={}", cert.getCourseId(), courseMetadata.length);
+                
+                // Handle nested array case (PostgreSQL)
+                Object[] actualMetadata = courseMetadata;
+                if (courseMetadata.length == 1 && courseMetadata[0] instanceof Object[]) {
+                    actualMetadata = (Object[]) courseMetadata[0];
+                    log.debug("Unwrapped nested array, new length={}", actualMetadata.length);
                 }
-            } else if (courseTitle == null || courseTitle.isEmpty()) {
+                
+                if (actualMetadata != null && actualMetadata.length > 1) {
+                    // Ưu tiên lấy courseTitle từ course metadata (tên thực tế)
+                    Object titleObj = actualMetadata[1];
+                    if (titleObj != null) {
+                        courseTitle = titleObj.toString().trim();
+                        log.debug("Loaded courseTitle from metadata: '{}' for courseId={}", courseTitle, cert.getCourseId());
+                    } else {
+                        log.warn("courseMetadata[1] is null for courseId={}", cert.getCourseId());
+                    }
+                } else {
+                    log.warn("actualMetadata is null or length < 2 for courseId={}, length={}", 
+                            cert.getCourseId(), actualMetadata != null ? actualMetadata.length : 0);
+                }
+                
+                if (actualMetadata != null && actualMetadata.length > 2) {
+                    Object slugObj = actualMetadata[2];
+                    if (slugObj != null) {
+                        courseSlug = slugObj.toString();
+                    }
+                }
+                
+                if (actualMetadata != null && actualMetadata.length > 8) {
+                    Object coverObj = actualMetadata[8];
+                    if (coverObj != null) {
+                        coverImagePath = coverObj.toString();
+                    }
+                }
+            } else {
+                // Course không tồn tại hoặc đã bị xóa (deleted_flag = true)
+                log.warn("Course metadata not found for courseId={} (may be deleted or deleted_flag=true), certificateId={}", 
+                        cert.getCourseId(), cert.getId());
+            }
+            
+            // Fallback: nếu không load được từ metadata, dùng courseTitle trong certificate
+            if (courseTitle == null || courseTitle.isEmpty()) {
+                courseTitle = cert.getCourseTitle();
+                if (courseTitle != null && !courseTitle.isEmpty()) {
+                    log.debug("Using courseTitle from certificate snapshot for courseId={}, certificateId={}", 
+                            cert.getCourseId(), cert.getId());
+                }
+            }
+            
+            // Fallback cuối cùng: nếu vẫn null, dùng courseId
+            if (courseTitle == null || courseTitle.isEmpty()) {
+                log.warn("Course title is null/empty for courseId={}, certificateId={}, using fallback", 
+                        cert.getCourseId(), cert.getId());
                 courseTitle = "Course #" + cert.getCourseId();
             }
         } catch (Exception e) {
-            log.warn("Failed to load course metadata for certificate {}", cert.getId(), e);
-            // Fallback nếu không load được
+            log.error("Failed to load course metadata for certificate {}, courseId={}", 
+                    cert.getId(), cert.getCourseId(), e);
+            // Fallback: dùng courseTitle trong certificate
+            courseTitle = cert.getCourseTitle();
             if (courseTitle == null || courseTitle.isEmpty()) {
                 courseTitle = "Course #" + cert.getCourseId();
             }
