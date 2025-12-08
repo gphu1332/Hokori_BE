@@ -40,6 +40,7 @@ public class LearnerProgressService {
     private final UserDailyLearningRepository userDailyLearningRepo;
     private final com.hokori.web.repository.CourseCompletionCertificateRepository certificateRepo;
     private final com.hokori.web.service.NotificationService notificationService;
+    private final com.hokori.web.repository.UserRepository userRepo;
 
     // ================= Enrollment =================
     
@@ -479,7 +480,13 @@ public class LearnerProgressService {
         
         String courseTitle = null;
         if (courseMetadata != null && courseMetadata.length > 1) {
-            courseTitle = courseMetadata[1] != null ? courseMetadata[1].toString() : null;
+            courseTitle = courseMetadata[1] != null ? courseMetadata[1].toString().trim() : null;
+        }
+        
+        // Validate courseTitle không được null hoặc empty
+        if (courseTitle == null || courseTitle.isEmpty()) {
+            log.warn("Course title is null or empty for courseId={}, using fallback", enrollment.getCourseId());
+            courseTitle = "Course #" + enrollment.getCourseId();
         }
         
         // Tạo certificate

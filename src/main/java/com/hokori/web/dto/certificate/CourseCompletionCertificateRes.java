@@ -26,5 +26,8 @@ public class CourseCompletionCertificateRes {
     // Thông tin thêm từ course (optional, có thể load sau)
     private String courseSlug;
     private String coverImagePath;
+    
+    // Thông tin learner
+    private String learnerName;
 }
 
