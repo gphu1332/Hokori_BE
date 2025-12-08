@@ -42,6 +42,7 @@ public class PaymentService {
     private final AIQuotaRepository aiQuotaRepo;
     private final UserRepository userRepo;
     private final ObjectMapper objectMapper;
+    private final com.hokori.web.service.NotificationService notificationService;
     
     public PaymentService(
             PayOSService payOSService,
@@ -56,7 +57,8 @@ public class PaymentService {
             AIPackagePurchaseRepository aiPackagePurchaseRepo,
             AIQuotaRepository aiQuotaRepo,
             UserRepository userRepo,
-            @Qualifier("payOSObjectMapper") ObjectMapper objectMapper) {
+            @Qualifier("payOSObjectMapper") ObjectMapper objectMapper,
+            com.hokori.web.service.NotificationService notificationService) {
         this.payOSService = payOSService;
         this.cartService = cartService;
         this.learnerProgressService = learnerProgressService;
@@ -70,6 +72,7 @@ public class PaymentService {
         this.aiQuotaRepo = aiQuotaRepo;
         this.userRepo = userRepo;
         this.objectMapper = objectMapper;
+        this.notificationService = notificationService;
     }
     
     /**
@@ -296,6 +299,20 @@ public class PaymentService {
         // If price is 0 (free package), activate immediately
         if (aiPackage.getPriceCents() == 0) {
             activateAIPackagePurchase(purchase);
+            
+            // Create notification for free AI package activation
+            try {
+                notificationService.notifyAIPackageActivated(
+                        userId,
+                        packageId,
+                        aiPackage.getName()
+                );
+            } catch (Exception notifException) {
+                // Log error but don't throw - activation succeeded
+                log.error("Failed to create AI package activation notification for free package {}, but activation was successful.", 
+                        packageId, notifException);
+            }
+            
             return CheckoutResponse.builder()
                     .paymentId(null)
                     .orderCode(null)
@@ -445,10 +462,46 @@ public class PaymentService {
                 if (payment.getAiPackageId() != null) {
                     // This is an AI Package payment
                     activateAIPackagePurchaseFromPayment(payment);
+                    
+                    // Create notification for AI package activation
+                    try {
+                        var aiPackage = aiPackageRepo.findById(payment.getAiPackageId()).orElse(null);
+                        if (aiPackage != null) {
+                            notificationService.notifyAIPackageActivated(
+                                    payment.getUserId(),
+                                    payment.getAiPackageId(),
+                                    aiPackage.getName()
+                            );
+                        }
+                    } catch (Exception notifException) {
+                        // Log error but don't throw - activation succeeded
+                        log.error("Failed to create AI package activation notification for payment {} (orderCode: {}), but activation was successful.", 
+                                payment.getId(), payment.getOrderCode(), notifException);
+                    }
                 } else {
                     // This is a course payment
                     // IMPORTANT: Enrollment must succeed even if clearing cart fails
                     enrollCoursesFromPayment(payment);
+                    
+                    // Create notification for each enrolled course
+                    try {
+                        List<Long> courseIds = parseCourseIds(payment.getCourseIds());
+                        for (Long courseId : courseIds) {
+                            Course course = courseRepo.findById(courseId).orElse(null);
+                            if (course != null) {
+                                notificationService.notifyPaymentSuccess(
+                                        payment.getUserId(),
+                                        payment.getId(),
+                                        courseId,
+                                        course.getTitle()
+                                );
+                            }
+                        }
+                    } catch (Exception notifException) {
+                        // Log error but don't throw - enrollment has already succeeded
+                        log.error("Failed to create payment success notification for payment {} (orderCode: {}), but enrollment was successful.", 
+                                payment.getId(), payment.getOrderCode(), notifException);
+                    }
                     
                     // Clear cart items separately - don't let cart clearing failure rollback enrollment
                     // This is wrapped in try-catch to ensure enrollment is not affected

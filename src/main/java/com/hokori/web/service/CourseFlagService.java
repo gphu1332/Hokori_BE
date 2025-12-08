@@ -31,6 +31,7 @@ public class CourseFlagService {
     private final CourseFlagRepository flagRepo;
     private final CourseRepository courseRepo;
     private final UserRepository userRepo;
+    private final com.hokori.web.service.NotificationService notificationService;
 
     /**
      * User flag một course
@@ -183,6 +184,14 @@ public class CourseFlagService {
 
         courseRepo.save(course);
         log.info("Course {} flagged by moderator {}", courseId, moderatorUserId);
+        
+        // Tạo notification cho teacher
+        notificationService.notifyCourseFlagged(
+                course.getUserId(), 
+                courseId, 
+                course.getTitle(), 
+                reasonBuilder.toString()
+        );
     }
 
     /**

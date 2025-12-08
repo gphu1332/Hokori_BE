@@ -36,6 +36,7 @@ public class LearnerProgressService {
     private final FlashcardSetRepository flashcardSetRepo;
     private final UserDailyLearningRepository userDailyLearningRepo;
     private final com.hokori.web.repository.CourseCompletionCertificateRepository certificateRepo;
+    private final com.hokori.web.service.NotificationService notificationService;
 
     // ================= Enrollment =================
     
@@ -491,6 +492,19 @@ public class LearnerProgressService {
         certificateRepo.save(certificate);
         log.info("Certificate created successfully: certificateId={}, certificateNumber={}", 
                 certificate.getId(), certificate.getCertificateNumber());
+        
+        // Create notification for course completion
+        try {
+            notificationService.notifyCourseCompleted(
+                    enrollment.getUserId(),
+                    enrollment.getCourseId(),
+                    courseTitle != null ? courseTitle : "Course"
+            );
+        } catch (Exception e) {
+            // Log error but don't throw - certificate creation succeeded
+            log.error("Failed to create course completion notification for enrollmentId={}, courseId={}", 
+                    enrollment.getId(), enrollment.getCourseId(), e);
+        }
     }
 
     // ============== Get Lesson Detail with Full Content (for enrolled learners) ==============

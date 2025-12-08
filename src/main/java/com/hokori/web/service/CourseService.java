@@ -34,6 +34,7 @@ public class CourseService {
     private final SectionsContentRepository contentRepo;
     private final UserRepository userRepo;
     private final EnrollmentRepository enrollmentRepo;
+    private final com.hokori.web.service.NotificationService notificationService;
     private final QuizRepository quizRepo;
 
     // =========================
@@ -198,6 +199,10 @@ public class CourseService {
         c.setRejectionReason(null);
         c.setRejectedAt(null);
         c.setRejectedByUserId(null);
+        
+        // Tạo notification cho teacher
+        notificationService.notifyCourseSubmitted(c.getUserId(), c.getId(), c.getTitle());
+        
         return toCourseResLite(c);
     }
 
@@ -218,6 +223,10 @@ public class CourseService {
         c.setRejectionReason(null);
         c.setRejectedAt(null);
         c.setRejectedByUserId(null);
+        
+        // Tạo notification cho teacher
+        notificationService.notifyCourseApproved(c.getUserId(), c.getId(), c.getTitle());
+        
         return toCourseResLite(c);
     }
 
@@ -242,6 +251,9 @@ public class CourseService {
         c.setRejectionReason(reason);
         c.setRejectedAt(Instant.now());
         c.setRejectedByUserId(moderatorUserId);
+        
+        // Tạo notification cho teacher
+        notificationService.notifyCourseRejected(c.getUserId(), c.getId(), c.getTitle(), reason);
         
         // toCourseResLite sẽ tự động map rejection info khi status = REJECTED
         return toCourseResLite(c);

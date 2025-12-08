@@ -31,6 +31,7 @@ public class TeacherApprovalService {
     private final ProfileApproveRequestItemRepository itemRepo;
     private final ApprovalMapper mapper;
     private final FileStorageService fileStorageService;
+    private final com.hokori.web.service.NotificationService notificationService;
 
     /* ===== Certificates ===== */
 
@@ -253,6 +254,18 @@ public class TeacherApprovalService {
             u.setCurrentApproveRequest(r); // giữ tham chiếu
         }
         userRepo.save(u);
+
+        // Tạo notification cho teacher
+        try {
+            if (req.action() == ApprovalStatus.APPROVED) {
+                notificationService.notifyProfileApproved(u.getId(), req.note());
+            } else if (req.action() == ApprovalStatus.REJECTED) {
+                notificationService.notifyProfileRejected(u.getId(), req.note());
+            }
+        } catch (Exception e) {
+            // Log error but don't throw - approval succeeded
+            // Notification failure shouldn't block approval process
+        }
 
         r.getItems().size();
         return mapper.toDto(r);
