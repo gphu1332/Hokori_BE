@@ -4,6 +4,8 @@ import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.dto.course.CourseRes;
 import com.hokori.web.dto.course.LessonRes;
 import com.hokori.web.dto.progress.ContentProgressRes;
+import com.hokori.web.dto.flashcard.FlashcardSetResponse;
+import com.hokori.web.dto.flashcard.FlashcardResponse;
 import com.hokori.web.service.CourseService;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.LearnerProgressService;
@@ -93,6 +95,28 @@ public class CoursePublicController {
     @GetMapping("/lessons/{lessonId}/trial-contents")
     public List<ContentProgressRes> getTrialLessonContents(@PathVariable Long lessonId) {
         return progressService.getTrialLessonContents(lessonId);
+    }
+
+    @Operation(
+            summary = "Lấy flashcard set cho trial content (public - guest có thể xem)",
+            description = "Lấy flashcard set gắn với section content trong trial chapter. Không cần authentication hoặc enrollment."
+    )
+    @ApiResponse(responseCode = "200",
+            content = @Content(schema = @Schema(implementation = com.hokori.web.dto.flashcard.FlashcardSetResponse.class)))
+    @GetMapping("/contents/{sectionContentId}/trial-flashcard")
+    public FlashcardSetResponse getTrialFlashcardSet(@PathVariable Long sectionContentId) {
+        return progressService.getTrialFlashcardSetForContent(sectionContentId);
+    }
+
+    @Operation(
+            summary = "Lấy danh sách flashcard cards cho trial content (public - guest có thể xem)",
+            description = "Lấy danh sách flashcard cards trong flashcard set gắn với section content trong trial chapter. Không cần authentication hoặc enrollment."
+    )
+    @ApiResponse(responseCode = "200",
+            content = @Content(array = @ArraySchema(schema = @Schema(implementation = FlashcardResponse.class))))
+    @GetMapping("/contents/{sectionContentId}/trial-flashcard/cards")
+    public List<FlashcardResponse> getTrialFlashcardCards(@PathVariable Long sectionContentId) {
+        return progressService.getTrialFlashcardCards(sectionContentId);
     }
 
     @Operation(

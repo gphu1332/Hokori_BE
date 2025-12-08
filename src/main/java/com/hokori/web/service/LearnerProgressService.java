@@ -3,6 +3,8 @@ package com.hokori.web.service;
 import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.dto.course.*;
 import com.hokori.web.dto.flashcard.FlashcardSetResponse;
+import com.hokori.web.dto.flashcard.FlashcardResponse;
+import com.hokori.web.entity.Flashcard;
 import com.hokori.web.dto.progress.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
@@ -34,6 +36,7 @@ public class LearnerProgressService {
     private final UserContentProgressRepository ucpRepo;
     private final QuizRepository quizRepo;
     private final FlashcardSetRepository flashcardSetRepo;
+    private final FlashcardSetService flashcardSetService;
     private final UserDailyLearningRepository userDailyLearningRepo;
     private final com.hokori.web.repository.CourseCompletionCertificateRepository certificateRepo;
     private final com.hokori.web.service.NotificationService notificationService;
@@ -730,6 +733,38 @@ public class LearnerProgressService {
 
     // ============== Get Flashcard Set for Course Content (for enrolled learners or trial chapter) ==============
     /**
+     * Get flashcard set (COURSE_VOCAB) attached to a section content (PUBLIC - for trial chapter).
+     * Only works for contents in trial chapters. No authentication required.
+     */
+    @Transactional(readOnly = true)
+    public FlashcardSetResponse getTrialFlashcardSetForContent(Long sectionContentId) {
+        // Get chapterId from sectionContent
+        Long chapterId = contentRepo.findChapterIdBySectionContentId(sectionContentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found for section content"));
+
+        // Check if chapter is trial chapter
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        
+        if (!chapter.isTrial()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                "This content is not part of trial chapter");
+        }
+
+        // Get flashcard set with eager fetching to avoid LazyInitializationException
+        // If multiple sets exist, get the most recent one (ORDER BY createdAt DESC)
+        List<FlashcardSet> sets = flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId);
+        if (sets.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                "Flashcard set not found for this section content");
+        }
+        // Get the most recent set (first in list due to ORDER BY createdAt DESC)
+        FlashcardSet set = sets.get(0);
+
+        return FlashcardSetResponse.fromEntity(set);
+    }
+
+    /**
      * Get flashcard set (COURSE_VOCAB) attached to a section content.
      * Accessible if learner is enrolled in the course OR if content belongs to trial chapter.
      */
@@ -767,6 +802,40 @@ public class LearnerProgressService {
         FlashcardSet set = sets.get(0);
 
         return FlashcardSetResponse.fromEntity(set);
+    }
+
+    /**
+     * Get flashcard cards for trial content (PUBLIC - for trial chapter).
+     * Only works for contents in trial chapters. No authentication required.
+     */
+    @Transactional(readOnly = true)
+    public List<FlashcardResponse> getTrialFlashcardCards(Long sectionContentId) {
+        // Get chapterId from sectionContent
+        Long chapterId = contentRepo.findChapterIdBySectionContentId(sectionContentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found for section content"));
+
+        // Check if chapter is trial chapter
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
+        
+        if (!chapter.isTrial()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                "This content is not part of trial chapter");
+        }
+
+        // Get flashcard set
+        List<FlashcardSet> sets = flashcardSetRepo.findBySectionContent_IdAndDeletedFlagFalseWithCreatedBy(sectionContentId);
+        if (sets.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                "Flashcard set not found for this section content");
+        }
+        FlashcardSet set = sets.get(0);
+
+        // Get cards
+        List<Flashcard> cards = flashcardSetService.listCards(set.getId());
+        return cards.stream()
+                .map(FlashcardResponse::fromEntity)
+                .collect(Collectors.toList());
     }
 
     public void recordLearningActivity(Long userId, Instant when) {
