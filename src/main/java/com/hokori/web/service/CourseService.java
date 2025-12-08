@@ -701,7 +701,7 @@ public class CourseService {
         assertOwner(courseId, teacherUserId);
 
         Section scRef = sectionRepo.getReferenceById(sectionId);
-        validateContentPayload(scRef, r);
+        validateContentPayload(scRef, r, null); // null = CREATE, không exclude content nào
 
         SectionsContent ct = new SectionsContent();
         ct.setSection(scRef);
@@ -745,7 +745,13 @@ public class CourseService {
 //        }
     }
 
-    private void validateContentPayload(Section section, ContentUpsertReq r) {
+    /**
+     * Validate content payload
+     * @param section Section chứa content
+     * @param r Request payload
+     * @param excludeContentId Content ID cần loại trừ khỏi validation (null khi CREATE, không null khi UPDATE)
+     */
+    private void validateContentPayload(Section section, ContentUpsertReq r, Long excludeContentId) {
         ContentFormat fmt = r.getContentFormat();
 
         // mặc định ASSET nếu null
@@ -758,6 +764,7 @@ public class CourseService {
             // GRAMMAR: chỉ 1 primaryContent (video chính)
             if (section.getStudyType() == ContentType.GRAMMAR && r.isPrimaryContent()) {
                 long primaryCount = section.getContents().stream()
+                        .filter(sc -> excludeContentId == null || !sc.getId().equals(excludeContentId)) // Loại trừ content đang update
                         .filter(SectionsContent::isPrimaryContent)
                         .count();
                 if (primaryCount >= 1) {
@@ -1371,8 +1378,8 @@ public class CourseService {
         Long courseId = c.getSection().getLesson().getChapter().getCourse().getId();
         assertOwner(courseId, teacherUserId);
 
-        // validate theo section hiện tại
-        validateContentPayload(c.getSection(), r);
+        // validate theo section hiện tại, exclude chính content đang update
+        validateContentPayload(c.getSection(), r, contentId);
 
         // Xóa file cũ nếu filePath thay đổi và content có filePath cũ
         String oldFilePath = c.getFilePath();
