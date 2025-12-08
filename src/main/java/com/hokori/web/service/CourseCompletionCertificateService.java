@@ -59,6 +59,7 @@ public class CourseCompletionCertificateService {
         return toRes(cert);
     }
 
+
     /**
      * Map entity to DTO
      */

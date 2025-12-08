@@ -417,10 +417,34 @@ public class LearnerProgressService {
         e.setProgressPercent(percent);
         
         // Nếu đạt 100% và chưa có completedAt -> set completedAt và tạo certificate
-        if (percent == 100 && oldPercent < 100 && e.getCompletedAt() == null) {
+        // Check cả oldPercent < 100 (mới đạt) hoặc oldPercent == 100 nhưng chưa có completedAt (fix case cũ)
+        if (percent == 100 && e.getCompletedAt() == null) {
             Instant now = Instant.now();
             e.setCompletedAt(now);
             createCompletionCertificate(e);
+        }
+    }
+    
+    /**
+     * Đảm bảo certificate được tạo cho enrollment đã hoàn thành (dùng để fix old data)
+     */
+    @Transactional
+    public void ensureCertificateForEnrollment(Long userId, Long courseId) {
+        Enrollment enrollment = enrollmentRepo.findLatestByUserIdAndCourseId(userId, courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Enrollment not found"));
+        
+        // Chỉ xử lý nếu đã hoàn thành 100%
+        if (enrollment.getProgressPercent() == 100) {
+            // Set completedAt nếu chưa có
+            if (enrollment.getCompletedAt() == null) {
+                enrollment.setCompletedAt(Instant.now());
+                enrollmentRepo.save(enrollment);
+            }
+            // Tạo certificate nếu chưa có
+            createCompletionCertificate(enrollment);
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Course is not completed yet. Progress: " + enrollment.getProgressPercent() + "%");
         }
     }
     

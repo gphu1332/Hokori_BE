@@ -29,6 +29,7 @@ public class LearnerCertificateController {
 
     private final CourseCompletionCertificateService certificateService;
     private final CurrentUserService currentUserService;
+    private final com.hokori.web.service.LearnerProgressService progressService;
 
     @Operation(
             summary = "Danh sách tất cả certificates của learner",
@@ -65,6 +66,23 @@ public class LearnerCertificateController {
         Long userId = currentUserService.getCurrentUserId();
         CourseCompletionCertificateRes certificate = certificateService.getCertificateById(certificateId, userId);
         return ResponseEntity.ok(ApiResponse.success("OK", certificate));
+    }
+
+    @Operation(
+            summary = "Tạo certificate cho enrollment đã hoàn thành (fix old data)",
+            description = "Manually trigger certificate creation cho enrollment đã hoàn thành 100% nhưng chưa có certificate. " +
+                    "Dùng để fix các trường hợp enrollment đã hoàn thành trước khi code mới được deploy."
+    )
+    @PostMapping("/course/{courseId}/ensure")
+    public ResponseEntity<ApiResponse<CourseCompletionCertificateRes>> ensureCertificate(
+            @Parameter(name = "courseId", in = ParameterIn.PATH, required = true, description = "Course ID", example = "107")
+            @PathVariable Long courseId) {
+        Long userId = currentUserService.getCurrentUserId();
+        progressService.ensureCertificateForEnrollment(userId, courseId);
+        
+        // Lấy certificate vừa tạo
+        CourseCompletionCertificateRes certificate = certificateService.getCertificateByCourse(userId, courseId);
+        return ResponseEntity.ok(ApiResponse.success("Certificate created successfully", certificate));
     }
 }
 
