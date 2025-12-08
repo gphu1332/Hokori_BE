@@ -350,9 +350,57 @@ public class CourseService {
         Chapter trial = chapterRepo.findByCourse_IdAndIsTrialTrue(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No trial chapter"));
 
-        // Convert trial chapter to DTO
-        List<ChapterRes> chapterDtos = List.of(toChapterResShallow(trial));
-        courseRes.setChapters(chapterDtos);
+        // Load full trial chapter with lessons, sections, and contents (similar to getTree)
+        var lessonEntities = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(trial.getId());
+        var lessonDtos = new ArrayList<LessonRes>();
+
+        for (var ls : lessonEntities) {
+            var sectionEntities = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(ls.getId());
+            var sectionDtos = new ArrayList<SectionRes>();
+
+            for (var s : sectionEntities) {
+                var contentEntities = contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId());
+                var contentDtos = new ArrayList<ContentRes>(contentEntities.size());
+                for (var ct : contentEntities) {
+                    contentDtos.add(new ContentRes(
+                            ct.getId(),
+                            ct.getOrderIndex(),
+                            ct.getContentFormat(),
+                            ct.isPrimaryContent(),
+                            ct.getFilePath(),
+                            ct.getRichText(),
+                            ct.getFlashcardSetId()
+                    ));
+                }
+                sectionDtos.add(new SectionRes(
+                        s.getId(),
+                        s.getTitle(),
+                        s.getOrderIndex(),
+                        s.getStudyType(),
+                        s.getFlashcardSetId(),
+                        contentDtos
+                ));
+            }
+
+            lessonDtos.add(new LessonRes(
+                    ls.getId(),
+                    ls.getTitle(),
+                    ls.getOrderIndex(),
+                    ls.getTotalDurationSec(),
+                    sectionDtos
+            ));
+        }
+
+        ChapterRes chapterRes = new ChapterRes(
+                trial.getId(),
+                trial.getTitle(),
+                trial.getOrderIndex(),
+                trial.getSummary(),
+                trial.isTrial(),
+                lessonDtos
+        );
+
+        courseRes.setChapters(List.of(chapterRes));
 
         return courseRes;
     }
