@@ -315,6 +315,7 @@ public class CourseService {
                     ch.getTitle(),
                     ch.getOrderIndex(),
                     ch.getSummary(),
+                    ch.isTrial(),
                     lessonDtos
             ));
         }
@@ -1010,7 +1011,7 @@ public class CourseService {
         List<ChapterRes> chapters = include.stream()
                 .sorted(Comparator.comparing(Chapter::getOrderIndex))
                 .map(ch -> new ChapterRes(
-                        ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(),
+                        ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), ch.isTrial(),
                         ch.getLessons().stream()
                                 .sorted(Comparator.comparing(Lesson::getOrderIndex))
                                 .map(this::toLessonResFull)
@@ -1048,7 +1049,7 @@ public class CourseService {
     }
 
     private ChapterRes toChapterResShallow(Chapter ch) {
-        return new ChapterRes(ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), List.of());
+        return new ChapterRes(ch.getId(), ch.getTitle(), ch.getOrderIndex(), ch.getSummary(), ch.isTrial(), List.of());
     }
 
     private LessonRes toLessonResShallow(Lesson ls) {
@@ -1410,6 +1411,11 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public CourseRes getPublishedTree(Long courseId) {
+        return getPublishedTree(courseId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public CourseRes getPublishedTree(Long courseId, Long userId) {
         // Use native query to check status without loading LOB fields
         Object[] metadata = courseRepo.findCourseMetadataById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
@@ -1441,6 +1447,13 @@ public class CourseService {
         CourseRes res = getTree(courseId);
         long enrollCount = enrollmentRepo.countByCourseId(courseId);
         res.setEnrollCount(enrollCount);
+        
+        // Set isEnrolled if userId provided
+        if (userId != null) {
+            boolean isEnrolled = enrollmentRepo.existsByUserIdAndCourseId(userId, courseId);
+            res.setIsEnrolled(isEnrolled);
+        }
+        
         return res;
     }
 

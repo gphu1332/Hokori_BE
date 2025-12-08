@@ -43,12 +43,18 @@ public class CoursePublicController {
         return service.listPublished(level, page, size, userId);
     }
 
-    @Operation(summary = "Full tree của khoá học (PUBLISHED-only)")
+    @Operation(
+            summary = "Full tree của khoá học (PUBLISHED-only)",
+            description = "Lấy cấu trúc đầy đủ của course (chapters -> lessons -> sections -> contents). " +
+                    "Public endpoint, không cần enrollment. Nếu user đã đăng nhập, sẽ trả về isEnrolled để FE biết đã enroll chưa."
+    )
     @ApiResponse(responseCode = "200",
             content = @Content(schema = @Schema(implementation = CourseRes.class)))
     @GetMapping("/{id}/tree")
     public CourseRes tree(@PathVariable Long id) {
-        return service.getPublishedTree(id);
+        // Get userId if authenticated (optional)
+        Long userId = currentUserService.getUserIdOrNull();
+        return service.getPublishedTree(id, userId);
     }
 
     @Operation(
