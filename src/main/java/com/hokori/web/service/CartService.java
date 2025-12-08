@@ -47,7 +47,8 @@ public class CartService {
                     if (meta.length == 1 && meta[0] instanceof Object[]) {
                         actualMeta = (Object[]) meta[0];
                     }
-                    // Metadata: [id, courseId, quantity, totalPrice, selected, courseStatus, courseDeletedFlag]
+                    // Metadata: [id, courseId, quantity, totalPrice, selected, courseStatus, courseDeletedFlag,
+                    //           courseTitle, courseSlug, coverImagePath, teacherName]
                     Long itemId = ((Number) actualMeta[0]).longValue();
                     Long courseId = ((Number) actualMeta[1]).longValue();
                     Integer quantity = ((Number) actualMeta[2]).intValue();
@@ -59,8 +60,13 @@ public class CartService {
                     Boolean courseDeletedFlag = actualMeta[6] instanceof Boolean ? 
                         (Boolean) actualMeta[6] : 
                         ((Number) actualMeta[6]).intValue() != 0;
+                    String courseTitle = actualMeta[7] != null ? actualMeta[7].toString() : null;
+                    String courseSlug = actualMeta[8] != null ? actualMeta[8].toString() : null;
+                    String coverImagePath = actualMeta[9] != null ? actualMeta[9].toString() : null;
+                    String teacherName = actualMeta[10] != null ? actualMeta[10].toString() : null;
                     
-                    return new Object[]{itemId, courseId, quantity, totalPrice, selected, courseStatus, courseDeletedFlag};
+                    return new Object[]{itemId, courseId, quantity, totalPrice, selected, courseStatus, courseDeletedFlag,
+                                       courseTitle, courseSlug, coverImagePath, teacherName};
                 })
                 .filter(meta -> {
                     // Filter: remove deleted courses, unpublished courses, and courses user already enrolled
@@ -91,7 +97,12 @@ public class CartService {
                     Integer quantity = (Integer) meta[2];
                     Long totalPrice = (Long) meta[3];
                     Boolean selected = (Boolean) meta[4];
-                    return new CartItemResponse(itemId, courseId, quantity, totalPrice, selected);
+                    String courseTitle = (String) meta[7];
+                    String courseSlug = (String) meta[8];
+                    String coverImagePath = (String) meta[9];
+                    String teacherName = (String) meta[10];
+                    return new CartItemResponse(itemId, courseId, quantity, totalPrice, selected,
+                                                courseTitle, courseSlug, coverImagePath, teacherName);
                 })
                 .toList();
         
@@ -104,6 +115,23 @@ public class CartService {
                 .sum();
         
         return new CartResponse(cart.getId(), itemDtos, subtotal);
+    }
+    
+    /**
+     * Lấy thông tin checkout đơn giản - chỉ cartId và courseIds đã được chọn
+     * Dùng để đơn giản hóa request khi thanh toán
+     */
+    public CartCheckoutInfo getCheckoutInfo() {
+        Long userId = current.getCurrentUserId();
+        Cart cart = getOrCreateCart(userId);
+        
+        // Get selected course IDs
+        List<Long> selectedCourseIds = view().items().stream()
+                .filter(CartItemResponse::selected)
+                .map(CartItemResponse::courseId)
+                .toList();
+        
+        return new CartCheckoutInfo(cart.getId(), selectedCourseIds);
     }
     
     /**

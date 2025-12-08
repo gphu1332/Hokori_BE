@@ -55,15 +55,19 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     
     /**
      * Get cart item metadata without loading Course entity (avoids LOB stream error).
-     * Includes course status and deletedFlag for filtering invalid items.
+     * Includes course status, deletedFlag, and course display info (title, slug, coverImagePath, teacherName).
      * Compatible with both PostgreSQL (Railway) and SQL Server (SSMS).
-     * Returns: [id, courseId, quantity, totalPrice, selected, courseStatus, courseDeletedFlag]
+     * Returns: [id, courseId, quantity, totalPrice, selected, courseStatus, courseDeletedFlag, 
+     *           courseTitle, courseSlug, coverImagePath, teacherName]
      */
     @Query(value = """
         SELECT ci.id, ci.course_id, ci.quantity, ci.total_price, ci.is_selected, 
-               c.status, c.deleted_flag
+               c.status, c.deleted_flag,
+               c.title, c.slug, c.cover_image_path,
+               COALESCE(u.display_name, u.username) as teacher_name
         FROM cartitem ci
         INNER JOIN course c ON ci.course_id = c.id
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE ci.cart_id = :cartId
         ORDER BY ci.added_at ASC
         """, nativeQuery = true)

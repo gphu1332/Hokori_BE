@@ -2,6 +2,7 @@ package com.hokori.web.controller;
 
 import com.hokori.web.dto.ApiResponse;
 import com.hokori.web.dto.cart.AddItemRequest;
+import com.hokori.web.dto.cart.CartCheckoutInfo;
 import com.hokori.web.dto.cart.CartResponse;
 import com.hokori.web.dto.cart.UpdateItemRequest;
 import com.hokori.web.service.CartService;
@@ -203,5 +204,30 @@ public class CartController {
     @DeleteMapping("/items")
     public ResponseEntity<ApiResponse<CartResponse>> clear() {
         return ResponseEntity.ok(ApiResponse.success("Cart cleared", service.clear()));
+    }
+
+    // ------------------------------------------------------------------------
+    // GET /api/cart/checkout-info
+    // ------------------------------------------------------------------------
+    @Operation(
+            summary = "Lấy thông tin checkout đơn giản",
+            description = "Trả về cartId và danh sách courseIds đã được chọn (selected). Dùng để đơn giản hóa request khi thanh toán."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = ApiResponse.class),
+                            examples = @ExampleObject(value = """
+                {"status":"success","message":"OK","data":{"cartId":5,"courseIds":[101,102]}}
+                """)
+                    )
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized")
+    })
+    @GetMapping("/checkout-info")
+    public ResponseEntity<ApiResponse<CartCheckoutInfo>> getCheckoutInfo() {
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getCheckoutInfo()));
     }
 }
