@@ -65,7 +65,9 @@ public class SecurityConfig {
                     "/api/courses/*/tree",
                     "/api/courses/*/trial-tree",
                     "/api/courses/lessons/*/trial-detail",
-                    "/api/courses/lessons/*/trial-contents"
+                    "/api/courses/lessons/*/trial-contents",
+                    "/api/courses/contents/*/trial-flashcard",
+                    "/api/courses/contents/*/trial-flashcard/cards"
                 ).permitAll()
 
                 // 👇 Public policies (chỉ đọc)
