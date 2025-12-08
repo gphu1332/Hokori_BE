@@ -37,4 +37,10 @@ public class CourseRes {
     private Instant rejectedAt;
     private Long rejectedByUserId;
     private String rejectedByUserName; // Tên moderator đã reject
+    
+    // Flag info (chỉ có khi status = FLAGGED)
+    private String flaggedReason; // Lý do flag (tổng hợp từ các flags)
+    private Instant flaggedAt;
+    private Long flaggedByUserId;
+    private String flaggedByUserName; // Tên moderator đã flag
 }

@@ -41,6 +41,13 @@ public class Course extends BaseEntity {
     private Instant rejectedAt;
     @Column(name = "rejected_by_user_id")
     private Long rejectedByUserId;
+    
+    // Flag info (khi moderator flag course)
+    @Column(name = "flagged_reason", columnDefinition="TEXT")
+    private String flaggedReason; // Lý do flag (tổng hợp từ các flags)
+    private Instant flaggedAt;
+    @Column(name = "flagged_by_user_id")
+    private Long flaggedByUserId; // Moderator đã flag
 
     private Double ratingAvg = 0.0;
     private Long ratingCount = 0L;

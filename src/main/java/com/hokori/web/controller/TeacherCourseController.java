@@ -46,6 +46,7 @@ public class TeacherCourseController {
     private final TeacherStatisticsService teacherStatisticsService;
     private final com.hokori.web.repository.SectionRepository sectionRepo;
     private final com.hokori.web.repository.CourseRepository courseRepo;
+    private final com.hokori.web.service.CourseFlagService courseFlagService;
 
     /** Lấy userId (teacher) từ SecurityContext (principal=email). */
     private Long currentUserIdOrThrow() {
@@ -425,5 +426,30 @@ public class TeacherCourseController {
     @PreAuthorize("hasRole('TEACHER')")
     public ApiResponse<TeacherLearnerStatisticsResponse> getLearnerStatistics(@PathVariable Long courseId) {
         return ApiResponse.success("OK", teacherStatisticsService.getCourseLearnerStatistics(courseId));
+    }
+
+    @Operation(
+            summary = "Xem lý do course bị flag",
+            description = "Teacher xem lý do course bị flag và danh sách các flags từ users. Chỉ owner của course mới xem được."
+    )
+    @GetMapping("/{courseId}/flag-reason")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ApiResponse<com.hokori.web.dto.course.FlaggedCourseRes> getFlagReason(@PathVariable Long courseId) {
+        Long teacherId = currentUserIdOrThrow();
+        com.hokori.web.dto.course.FlaggedCourseRes flagReason = courseFlagService.getFlagReason(courseId, teacherId);
+        return ApiResponse.success("OK", flagReason);
+    }
+
+    @Operation(
+            summary = "Resubmit course sau khi sửa",
+            description = "Teacher resubmit course sau khi đã sửa nội dung theo lý do flag. Chuyển status từ FLAGGED về PENDING_APPROVAL để moderator review lại."
+    )
+    @PutMapping("/{courseId}/resubmit")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ApiResponse<CourseRes> resubmitCourse(@PathVariable Long courseId) {
+        Long teacherId = currentUserIdOrThrow();
+        courseFlagService.resubmitCourse(courseId, teacherId);
+        CourseRes course = courseService.getTree(courseId);
+        return ApiResponse.success("Course resubmitted for review", course);
     }
 }

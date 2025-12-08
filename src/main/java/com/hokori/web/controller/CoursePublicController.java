@@ -7,12 +7,16 @@ import com.hokori.web.dto.progress.ContentProgressRes;
 import com.hokori.web.service.CourseService;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.LearnerProgressService;
+import com.hokori.web.service.CourseFlagService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import org.springframework.http.ResponseEntity;
 
 // Swagger
 import io.swagger.v3.oas.annotations.*;
@@ -30,6 +34,7 @@ public class CoursePublicController {
     private final CourseService service;
     private final CurrentUserService currentUserService;
     private final LearnerProgressService progressService;
+    private final CourseFlagService courseFlagService;
 
     @Operation(summary = "Danh sách khoá học PUBLISHED")
     @ApiResponse(responseCode = "200",
@@ -88,5 +93,20 @@ public class CoursePublicController {
     @GetMapping("/lessons/{lessonId}/trial-contents")
     public List<ContentProgressRes> getTrialLessonContents(@PathVariable Long lessonId) {
         return progressService.getTrialLessonContents(lessonId);
+    }
+
+    @Operation(
+            summary = "Flag/Report course",
+            description = "User flag một course đã PUBLISHED. Chỉ cho phép flag course đã publish và user chưa flag course này trước đó. Yêu cầu authentication."
+    )
+    @PreAuthorize("isAuthenticated()")
+    @io.swagger.v3.oas.annotations.security.SecurityRequirement(name = "Bearer Authentication")
+    @PostMapping("/{courseId}/flag")
+    public ResponseEntity<Map<String, String>> flagCourse(
+            @PathVariable Long courseId,
+            @RequestBody com.hokori.web.dto.course.CourseFlagReq req) {
+        Long userId = currentUserService.getUserIdOrThrow();
+        courseFlagService.flagCourse(courseId, userId, req);
+        return ResponseEntity.ok(Map.of("message", "Course flagged successfully"));
     }
 }

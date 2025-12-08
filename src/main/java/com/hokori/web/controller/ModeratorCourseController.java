@@ -42,6 +42,7 @@ public class ModeratorCourseController {
     private final CourseService courseService;
     private final CourseModerationAIService moderationAIService;
     private final CurrentUserService currentUserService;
+    private final com.hokori.web.service.CourseFlagService courseFlagService;
 
     private Long currentModeratorId() {
         return currentUserService.getCurrentUserId();
@@ -190,6 +191,29 @@ public class ModeratorCourseController {
             @PathVariable Long id) {
         CourseAICheckResponse result = moderationAIService.checkCourseContent(id);
         return ResponseEntity.ok(ApiResponse.success("AI check completed", result));
+    }
+
+    @Operation(
+            summary = "Danh sách courses bị flag",
+            description = "Lấy danh sách courses bị flag, sắp xếp theo số lượng flag (cao đến thấp). Chỉ hiển thị courses có status PUBLISHED hoặc FLAGGED."
+    )
+    @GetMapping("/flagged")
+    public ResponseEntity<ApiResponse<List<com.hokori.web.dto.course.FlaggedCourseRes>>> listFlaggedCourses() {
+        List<com.hokori.web.dto.course.FlaggedCourseRes> flaggedCourses = courseFlagService.listFlaggedCourses();
+        return ResponseEntity.ok(ApiResponse.success("OK", flaggedCourses));
+    }
+
+    @Operation(
+            summary = "Flag course (unpublish)",
+            description = "Moderator flag course và set status = FLAGGED. Course sẽ bị ẩn khỏi public. Tổng hợp lý do từ các flags của users."
+    )
+    @PutMapping("/{id}/flag")
+    public ResponseEntity<ApiResponse<CourseRes>> flagCourse(
+            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long id) {
+        courseFlagService.moderatorFlagCourse(id, currentModeratorId());
+        CourseRes course = courseService.getTree(id);
+        return ResponseEntity.ok(ApiResponse.success("Course flagged", course));
     }
 }
 

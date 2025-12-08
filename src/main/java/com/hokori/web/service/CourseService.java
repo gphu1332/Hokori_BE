@@ -378,12 +378,14 @@ public class CourseService {
 
         // Validate array length (should have at least 14 elements: basic fields + teacherName)
         // Can have 17 elements if includes rejection fields (rejectionReason, rejectedAt, rejectedByUserId)
+        // Can have 20 elements if includes flag fields (flaggedReason, flaggedAt, flaggedByUserId)
         if (actualMetadata.length < 14) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Course metadata array too short: expected at least 14 elements, got " + actualMetadata.length);
         }
         
         boolean hasRejectionFields = actualMetadata.length >= 17;
+        boolean hasFlagFields = actualMetadata.length >= 20;
 
         // [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
         //  currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName,
@@ -426,6 +428,23 @@ public class CourseService {
                     : null;
             rejectedByUserId = actualMetadata[16] != null ? ((Number) actualMetadata[16]).longValue() : null;
         }
+        
+        // Flag fields (only if metadata includes them)
+        String flaggedReason = null;
+        Instant flaggedAt = null;
+        Long flaggedByUserId = null;
+        
+        if (hasFlagFields && actualMetadata.length >= 20) {
+            flaggedReason = actualMetadata[17] != null ? actualMetadata[17].toString() : null;
+            flaggedAt = actualMetadata[18] != null
+                    ? (actualMetadata[18] instanceof Instant
+                    ? (Instant) actualMetadata[18]
+                    : actualMetadata[18] instanceof java.sql.Timestamp
+                    ? Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[18]).getTime())
+                    : null)
+                    : null;
+            flaggedByUserId = actualMetadata[19] != null ? ((Number) actualMetadata[19]).longValue() : null;
+        }
 
         CourseRes res = new CourseRes();
         res.setId(id);
@@ -454,6 +473,16 @@ public class CourseService {
             res.setRejectedByUserId(rejectedByUserId);
             if (rejectedByUserId != null) {
                 res.setRejectedByUserName(getTeacherName(rejectedByUserId));
+            }
+        }
+        
+        // Map flag info (chỉ có khi status = FLAGGED)
+        if (courseStatus == CourseStatus.FLAGGED) {
+            res.setFlaggedReason(flaggedReason);
+            res.setFlaggedAt(flaggedAt);
+            res.setFlaggedByUserId(flaggedByUserId);
+            if (flaggedByUserId != null) {
+                res.setFlaggedByUserName(getTeacherName(flaggedByUserId));
             }
         }
 
@@ -1441,7 +1470,10 @@ public class CourseService {
                 "Invalid course status: " + actualMetadata[9]);
         }
         if (status != CourseStatus.PUBLISHED) {
-            // Ẩn sự tồn tại nếu chưa publish
+            // Ẩn sự tồn tại nếu chưa publish hoặc bị flagged
+            if (status == CourseStatus.FLAGGED) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course has been flagged and is temporarily unavailable");
+            }
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
         }
         CourseRes res = getTree(courseId);
