@@ -33,6 +33,7 @@ public class LearnerProgressService {
     private final QuizRepository quizRepo;
     private final FlashcardSetRepository flashcardSetRepo;
     private final UserDailyLearningRepository userDailyLearningRepo;
+    private final com.hokori.web.repository.CourseCompletionCertificateRepository certificateRepo;
 
     // ================= Enrollment =================
     
@@ -411,7 +412,47 @@ public class LearnerProgressService {
         long total = allTrackableContentIds.size();
         long completed = (total == 0) ? 0 : ucpRepo.countCompletedInList(e.getId(), allTrackableContentIds);
         int percent = (total == 0) ? 100 : (int)Math.round(100.0 * completed / total);
+        
+        int oldPercent = e.getProgressPercent();
         e.setProgressPercent(percent);
+        
+        // Nếu đạt 100% và chưa có completedAt -> set completedAt và tạo certificate
+        if (percent == 100 && oldPercent < 100 && e.getCompletedAt() == null) {
+            Instant now = Instant.now();
+            e.setCompletedAt(now);
+            createCompletionCertificate(e);
+        }
+    }
+    
+    /**
+     * Tự động tạo certificate khi learner hoàn thành 100% course
+     */
+    private void createCompletionCertificate(Enrollment enrollment) {
+        // Kiểm tra đã có certificate chưa (tránh duplicate)
+        if (certificateRepo.findByEnrollmentId(enrollment.getId()).isPresent()) {
+            return;
+        }
+        
+        // Lấy thông tin course
+        Object[] courseMetadata = courseRepo.findCourseMetadataById(enrollment.getCourseId())
+                .orElse(null);
+        
+        String courseTitle = null;
+        if (courseMetadata != null && courseMetadata.length > 1) {
+            courseTitle = courseMetadata[1] != null ? courseMetadata[1].toString() : null;
+        }
+        
+        // Tạo certificate
+        com.hokori.web.entity.CourseCompletionCertificate certificate = 
+                com.hokori.web.entity.CourseCompletionCertificate.builder()
+                        .enrollmentId(enrollment.getId())
+                        .userId(enrollment.getUserId())
+                        .courseId(enrollment.getCourseId())
+                        .courseTitle(courseTitle)
+                        .completedAt(enrollment.getCompletedAt())
+                        .build();
+        
+        certificateRepo.save(certificate);
     }
 
     // ============== Get Lesson Detail with Full Content (for enrolled learners) ==============
