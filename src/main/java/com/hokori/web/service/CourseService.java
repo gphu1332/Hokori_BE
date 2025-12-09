@@ -569,6 +569,9 @@ public class CourseService {
         
         // Set canFlag cho moderator: chỉ có thể flag course có status = PUBLISHED
         res.setCanFlag(courseStatus == CourseStatus.PUBLISHED);
+        
+        // Set isModeratorFlagged: true nếu course đã được moderator flag (đã gửi thông báo cho teacher)
+        res.setIsModeratorFlagged(courseStatus == CourseStatus.FLAGGED && flaggedByUserId != null);
 
         res.setChapters(Collections.emptyList());
         return res;
@@ -1089,6 +1092,9 @@ public class CourseService {
         
         // Set canFlag cho moderator: chỉ có thể flag course có status = PUBLISHED
         res.setCanFlag(c.getStatus() == CourseStatus.PUBLISHED);
+        
+        // Set isModeratorFlagged: true nếu course đã được moderator flag (đã gửi thông báo cho teacher)
+        res.setIsModeratorFlagged(c.getStatus() == CourseStatus.FLAGGED && c.getFlaggedByUserId() != null);
 
         res.setChapters(List.of());
         return res;
