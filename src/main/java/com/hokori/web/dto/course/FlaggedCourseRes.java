@@ -1,5 +1,6 @@
 package com.hokori.web.dto.course;
 
+import com.hokori.web.Enum.CourseStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,6 +22,7 @@ public class FlaggedCourseRes {
     private String courseSlug;
     private Long teacherId;
     private String teacherName;
+    private CourseStatus status; // PUBLISHED = chỉ có flags từ users, FLAGGED = đã bị moderator flag
     private Long flagCount; // Số lượng flags
     private Instant latestFlagAt; // Thời điểm flag gần nhất
     private String flaggedReason; // Lý do flag (tổng hợp)

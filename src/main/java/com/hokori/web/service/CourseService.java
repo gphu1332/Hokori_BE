@@ -1571,20 +1571,30 @@ public class CourseService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Invalid course status: " + actualMetadata[9]);
         }
+        
+        // Check if user is enrolled (for FLAGGED courses access)
+        boolean isEnrolled = userId != null && enrollmentRepo.existsByUserIdAndCourseId(userId, courseId);
+        
         if (status != CourseStatus.PUBLISHED) {
-            // Ẩn sự tồn tại nếu chưa publish hoặc bị flagged
+            // Nếu course bị FLAGGED: chỉ cho phép access nếu user đã enrolled
             if (status == CourseStatus.FLAGGED) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course has been flagged and is temporarily unavailable");
+                if (!isEnrolled) {
+                    // User chưa enrolled → ẩn course như không tồn tại
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course has been flagged and is temporarily unavailable");
+                }
+                // User đã enrolled → cho phép access (đã trả tiền)
+            } else {
+                // Các status khác (DRAFT, PENDING_APPROVAL, REJECTED, ARCHIVED) → reject
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
             }
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course is not published");
         }
+        
         CourseRes res = getTree(courseId);
         long enrollCount = enrollmentRepo.countByCourseId(courseId);
         res.setEnrollCount(enrollCount);
         
         // Set isEnrolled if userId provided
         if (userId != null) {
-            boolean isEnrolled = enrollmentRepo.existsByUserIdAndCourseId(userId, courseId);
             res.setIsEnrolled(isEnrolled);
         }
         

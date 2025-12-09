@@ -78,8 +78,19 @@ public class CourseFlagService {
             String courseTitle = row[1] != null ? row[1].toString() : "";
             String courseSlug = row[2] != null ? row[2].toString() : "";
             Long teacherId = row[3] != null ? ((Number) row[3]).longValue() : null;
+            String statusStr = row[4] != null ? row[4].toString() : null;
             Long flagCount = row[5] != null ? ((Number) row[5]).longValue() : 0L;
             Instant latestFlagAt = row[6] != null ? (Instant) row[6] : null;
+
+            // Parse status
+            CourseStatus status = null;
+            if (statusStr != null) {
+                try {
+                    status = CourseStatus.valueOf(statusStr.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid course status: {}", statusStr);
+                }
+            }
 
             // Lấy course để lấy thông tin flag
             Course course = courseRepo.findById(courseId).orElse(null);
@@ -138,6 +149,7 @@ public class CourseFlagService {
                     .courseSlug(courseSlug)
                     .teacherId(teacherId)
                     .teacherName(teacherName)
+                    .status(status) // PUBLISHED = chỉ có flags từ users, FLAGGED = đã bị moderator flag
                     .flagCount(flagCount)
                     .latestFlagAt(latestFlagAt)
                     .flaggedReason(flaggedReason)
@@ -252,6 +264,7 @@ public class CourseFlagService {
                 .courseTitle(course.getTitle())
                 .courseSlug(course.getSlug())
                 .teacherId(course.getUserId())
+                .status(course.getStatus()) // FLAGGED (vì đã check ở trên)
                 .flagCount((long) flags.size())
                 .latestFlagAt(flags.isEmpty() ? null : flags.get(0).getCreatedAt())
                 .flaggedReason(course.getFlaggedReason())
