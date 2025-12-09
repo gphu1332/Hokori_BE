@@ -186,7 +186,11 @@ public class CartService {
     public CartResponse add(AddItemRequest req) {
         Long userId = current.getCurrentUserId();
         Cart cart = getOrCreateCart(userId);
-        int qty = (req.quantity() == null || req.quantity() < 1) ? 1 : req.quantity();
+        
+        // For courses, quantity must always be 1
+        if (req.quantity() != null && req.quantity() != 1) {
+            throw new IllegalArgumentException("BAD_QUANTITY: Course quantity must be 1");
+        }
 
         // Check if already enrolled
         if (enrollmentRepo.existsByUserIdAndCourseId(userId, req.courseId())) {
@@ -227,23 +231,20 @@ public class CartService {
             throw new IllegalStateException("COURSE_NOT_PUBLISHED");
         }
         
+        // Check if course already exists in cart
+        if (itemRepo.findByCart_IdAndCourse_Id(cart.getId(), courseId).isPresent()) {
+            throw new IllegalStateException("COURSE_ALREADY_IN_CART");
+        }
+
         // Use getReference to avoid loading full entity
         Course courseRef = courseRepo.getReferenceById(courseId);
 
-        CartItem item = itemRepo.findByCart_IdAndCourse_Id(cart.getId(), courseId)
-                .map(ci -> {
-                    ci.setQuantity(ci.getQuantity() + qty);
-                    ci.setTotalPrice(priceCents * ci.getQuantity());
-                    return ci;
-                })
-                .orElseGet(() -> {
-                    CartItem ci = new CartItem();
-                    ci.setCart(cart);
-                    ci.setCourse(courseRef);
-                    ci.setQuantity(qty);
-                    ci.setTotalPrice(priceCents * qty);
-                    return ci;
-                });
+        // Create new cart item (quantity is always 1 for courses)
+        CartItem item = new CartItem();
+        item.setCart(cart);
+        item.setCourse(courseRef);
+        item.setQuantity(1); // Courses can only have quantity = 1
+        item.setTotalPrice(priceCents); // Price for 1 course
 
         itemRepo.save(item);
         return view();
@@ -280,7 +281,10 @@ public class CartService {
                 .orElseThrow(() -> new IllegalArgumentException("ITEM_NOT_FOUND"));
 
         if (req.quantity() != null) {
-            if (req.quantity() < 1) throw new IllegalArgumentException("BAD_QUANTITY");
+            // For courses, quantity must always be 1
+            if (req.quantity() != 1) {
+                throw new IllegalArgumentException("BAD_QUANTITY: Course quantity must be 1");
+            }
             // Use native query to avoid LOB stream error when accessing course price
             Object[] courseData = courseRepo.findCoursePriceById(courseId)
                     .orElseThrow(() -> new IllegalArgumentException("COURSE_NOT_FOUND"));
@@ -313,8 +317,9 @@ public class CartService {
                 throw new IllegalStateException("COURSE_NOT_PUBLISHED");
             }
             
-            item.setQuantity(req.quantity());
-            item.setTotalPrice(priceCents * req.quantity());
+            // Set quantity to 1 (courses can only have quantity = 1)
+            item.setQuantity(1);
+            item.setTotalPrice(priceCents); // Price for 1 course
         }
         if (req.selected() != null) item.setSelected(req.selected());
 

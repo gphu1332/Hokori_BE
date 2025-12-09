@@ -70,8 +70,9 @@ public class CartController {
             summary = "Thêm khóa học vào giỏ",
             description = """
             Thêm 1 khóa học vào giỏ của user hiện tại.
-            - Nếu item đã tồn tại: cộng dồn `quantity`, cập nhật `totalPrice` (snapshot theo giá hiện tại).
-            - Chặn nếu user đã sở hữu khóa học (đã enroll).
+            - Mỗi khóa học chỉ có thể thêm vào cart 1 lần (quantity luôn = 1).
+            - Nếu course đã có trong cart: trả về lỗi COURSE_ALREADY_IN_CART (409).
+            - Chặn nếu user đã sở hữu khóa học (đã enroll): trả về lỗi COURSE_OWNED (409).
             """
     )
     @ApiResponses({
@@ -87,7 +88,7 @@ public class CartController {
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COURSE_NOT_FOUND / BAD_REQUEST"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "COURSE_OWNED")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "COURSE_OWNED / COURSE_ALREADY_IN_CART")
     })
     @RequestBody(
             required = true,
@@ -110,7 +111,11 @@ public class CartController {
     // ------------------------------------------------------------------------
     @Operation(
             summary = "Cập nhật 1 dòng trong giỏ",
-            description = "Thay đổi số lượng (>=1) và/hoặc trạng thái chọn; `totalPrice` cập nhật theo `quantity`."
+            description = """
+            Cập nhật cart item (chỉ có thể thay đổi trạng thái `selected`).
+            - Với khóa học: `quantity` phải luôn = 1 (không thể thay đổi).
+            - Nếu gửi `quantity` khác 1: trả về lỗi BAD_QUANTITY (400).
+            """
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -119,11 +124,11 @@ public class CartController {
                             mediaType = "application/json",
                             schema = @Schema(implementation = ApiResponse.class),
                             examples = @ExampleObject(value = """
-                {"status":"success","message":"Item updated","data":{"cartId":5,"items":[{"itemId":12,"courseId":101,"quantity":3,"totalPrice":5970000,"selected":true}],"selectedSubtotal":5970000}}
+                {"status":"success","message":"Item updated","data":{"cartId":5,"items":[{"itemId":12,"courseId":101,"quantity":1,"totalPrice":1990000,"selected":false}],"selectedSubtotal":0}}
                 """)
                     )
             ),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "BAD_QUANTITY / COURSE_NOT_FOUND"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "BAD_QUANTITY (quantity must be 1) / COURSE_NOT_FOUND"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "ITEM_NOT_FOUND")
     })
