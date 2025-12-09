@@ -10,10 +10,20 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 
 public interface WalletTransactionRepository extends JpaRepository<WalletTransaction, Long> {
 
     Page<WalletTransaction> findByUser_IdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+
+    // ====== Load WalletTransaction with Course (JOIN FETCH) ======
+    @Query("""
+        select t from WalletTransaction t
+        left join fetch t.course
+        where t.user.id = :userId
+        order by t.createdAt desc
+        """)
+    List<WalletTransaction> findByUser_IdWithCourseOrderByCreatedAtDesc(@Param("userId") Long userId);
 
     // ====== NEW: tổng amount_cents trong 1 khoảng thời gian ======
     @Query("""

@@ -172,10 +172,9 @@ public class TeacherDashboardService {
         );
         if (revenueCents == null) revenueCents = 0L;
 
-        // Get all transactions for the period
+        // Get all transactions for the period (with Course loaded)
         List<WalletTransaction> transactions = walletTxRepo
-                .findByUser_IdOrderByCreatedAtDesc(teacherId, PageRequest.of(0, 1000))
-                .getContent()
+                .findByUser_IdWithCourseOrderByCreatedAtDesc(teacherId)
                 .stream()
                 .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
                         && tx.getSource() == WalletTransactionSource.COURSE_SALE
@@ -235,10 +234,9 @@ public class TeacherDashboardService {
         ZonedDateTime fromZdt = targetMonth.atDay(1).atStartOfDay(zone);
         ZonedDateTime toZdt = targetMonth.plusMonths(1).atDay(1).atStartOfDay(zone);
 
-        // Get all transactions for the period, filtered by course
+        // Get all transactions for the period, filtered by course (with Course loaded)
         List<WalletTransaction> transactions = walletTxRepo
-                .findByUser_IdOrderByCreatedAtDesc(teacherId, PageRequest.of(0, 1000))
-                .getContent()
+                .findByUser_IdWithCourseOrderByCreatedAtDesc(teacherId)
                 .stream()
                 .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
                         && tx.getSource() == WalletTransactionSource.COURSE_SALE
