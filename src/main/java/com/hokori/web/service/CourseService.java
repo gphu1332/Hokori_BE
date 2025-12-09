@@ -277,6 +277,10 @@ public class CourseService {
         CourseRes courseRes = mapCourseMetadataToRes(metadata);
         Long courseId = courseRes.getId();
         
+        // Load description separately to avoid LOB issues
+        String description = courseRepo.findDescriptionById(courseId).orElse(null);
+        courseRes.setDescription(description);
+        
         // Note: Rejection info đã được map trong mapCourseMetadataToRes() khi status = REJECTED
 
         var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
@@ -346,6 +350,10 @@ public class CourseService {
 
         // Map metadata to CourseRes (without description to avoid LOB)
         CourseRes courseRes = mapCourseMetadataToRes(metadata);
+        
+        // Load description separately to avoid LOB issues
+        String description = courseRepo.findDescriptionById(courseId).orElse(null);
+        courseRes.setDescription(description);
 
         Chapter trial = chapterRepo.findByCourse_IdAndIsTrialTrue(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No trial chapter"));

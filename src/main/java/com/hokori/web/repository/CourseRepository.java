@@ -199,4 +199,19 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
     Page<Course> findByUserIdAndDeletedFlagFalse(Long userId, Pageable pageable);
 
     List<Course> findAllByDeletedFlagFalse();
+
+    // ===================================
+    // 6) Course description (for detail endpoints)
+    // ===================================
+
+    /**
+     * Get course description by id (for detail endpoints that need description).
+     * Returns Optional<String> - empty if course not found or deleted.
+     */
+    @Query(value = """
+        SELECT c.description
+        FROM course c
+        WHERE c.id = :id AND c.deleted_flag = false
+        """, nativeQuery = true)
+    Optional<String> findDescriptionById(@Param("id") Long id);
 }
