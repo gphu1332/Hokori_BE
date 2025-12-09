@@ -41,9 +41,11 @@ public class TeacherDashboardService {
         Long teacherId = currentUser.getUserIdOrThrow();
 
         // ===== 1. Active students =====
+        // Đếm học viên từ cả PUBLISHED và FLAGGED courses
+        // (FLAGGED courses vẫn có học viên đã enroll, nên vẫn tính vào tổng số)
         long activeStudents = enrollmentRepo.countActiveStudentsByTeacher(
                 teacherId,
-                CourseStatus.PUBLISHED
+                List.of(CourseStatus.PUBLISHED, CourseStatus.FLAGGED)
         );
 
         // TODO: nếu sau này có bảng thống kê tháng trước thì mới tính % change

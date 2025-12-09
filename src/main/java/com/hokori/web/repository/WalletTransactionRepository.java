@@ -41,4 +41,36 @@ public interface WalletTransactionRepository extends JpaRepository<WalletTransac
             @Param("from") Instant from,
             @Param("to") Instant to
     );
+
+    // ====== Admin: Tổng doanh thu từ TẤT CẢ teachers trong 1 khoảng thời gian ======
+    @Query("""
+        select coalesce(sum(t.amountCents), 0)
+        from WalletTransaction t
+        where t.status = :status
+          and t.source = :source
+          and t.createdAt between :from and :to
+        """)
+    Long sumTotalIncomeForPeriod(
+            @Param("status") WalletTransactionStatus status,
+            @Param("source") WalletTransactionSource source,
+            @Param("from") Instant from,
+            @Param("to") Instant to
+    );
+
+    // ====== Admin: Lấy tất cả transactions từ tất cả teachers với Course và User ======
+    @Query("""
+        select t from WalletTransaction t
+        left join fetch t.course
+        left join fetch t.user
+        where t.status = :status
+          and t.source = :source
+          and t.createdAt between :from and :to
+        order by t.createdAt desc
+        """)
+    List<WalletTransaction> findAllWithCourseAndUserForPeriod(
+            @Param("status") WalletTransactionStatus status,
+            @Param("source") WalletTransactionSource source,
+            @Param("from") Instant from,
+            @Param("to") Instant to
+    );
 }

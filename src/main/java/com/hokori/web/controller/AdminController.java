@@ -8,6 +8,7 @@ import com.hokori.web.Enum.WalletTransactionStatus;
 import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.dto.*;
 import com.hokori.web.dto.revenue.CourseRevenueRes;
+import com.hokori.web.dto.revenue.TotalRevenueRes;
 import com.hokori.web.entity.Payment;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
@@ -17,6 +18,7 @@ import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.RoleService;
 import com.hokori.web.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -893,6 +895,122 @@ public class AdminController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error("Failed to retrieve course revenue: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/revenue/total")
+    @Operation(
+            summary = "Admin: Xem tổng doanh thu từ tất cả các khóa học",
+            description = """
+            Admin xem tổng doanh thu từ TẤT CẢ các khóa học của TẤT CẢ teachers.
+            - Nếu không có year/month → xem tháng hiện tại.
+            - Nếu year = -1 và month = -1 → xem tổng tất cả thời gian (all-time).
+            """
+    )
+    public ResponseEntity<ApiResponse<TotalRevenueRes>> getTotalRevenue(
+            @Parameter(description = "Năm (ví dụ: 2025). Nếu -1 → all-time. Nếu null → năm hiện tại")
+            @RequestParam(required = false) Integer year,
+            @Parameter(description = "Tháng (1-12). Nếu -1 → all-time. Nếu null → tháng hiện tại")
+            @RequestParam(required = false) Integer month
+    ) {
+        try {
+            ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
+            Instant fromInstant;
+            Instant toInstant;
+            String period;
+
+            // Check if all-time request
+            if (year != null && year == -1 && month != null && month == -1) {
+                // All-time: from beginning to now
+                fromInstant = Instant.ofEpochMilli(0); // Beginning of epoch
+                toInstant = Instant.now();
+                period = "all-time";
+            } else {
+                // Specific month
+                YearMonth targetMonth;
+                if (year != null && month != null) {
+                    targetMonth = YearMonth.of(year, month);
+                } else {
+                    targetMonth = YearMonth.now(zone);
+                }
+
+                ZonedDateTime fromZdt = targetMonth.atDay(1).atStartOfDay(zone);
+                ZonedDateTime toZdt = targetMonth.plusMonths(1).atDay(1).atStartOfDay(zone);
+                fromInstant = fromZdt.toInstant();
+                toInstant = toZdt.toInstant();
+                period = targetMonth.toString();
+            }
+
+            // Get total revenue for the period
+            Long revenueCents = walletTransactionRepository.sumTotalIncomeForPeriod(
+                    WalletTransactionStatus.COMPLETED,
+                    WalletTransactionSource.COURSE_SALE,
+                    fromInstant,
+                    toInstant
+            );
+            if (revenueCents == null) revenueCents = 0L;
+
+            // Get all transactions for the period (with Course and User loaded)
+            List<WalletTransaction> transactions = walletTransactionRepository
+                    .findAllWithCourseAndUserForPeriod(
+                            WalletTransactionStatus.COMPLETED,
+                            WalletTransactionSource.COURSE_SALE,
+                            fromInstant,
+                            toInstant
+                    );
+
+            // Calculate unique teacher count and course count
+            long uniqueTeacherCount = transactions.stream()
+                    .map(tx -> tx.getUser() != null ? tx.getUser().getId() : null)
+                    .filter(id -> id != null)
+                    .distinct()
+                    .count();
+
+            long uniqueCourseCount = transactions.stream()
+                    .map(tx -> tx.getCourse() != null ? tx.getCourse().getId() : null)
+                    .filter(id -> id != null)
+                    .distinct()
+                    .count();
+
+            // Build transaction details
+            List<TotalRevenueRes.TransactionDetail> transactionDetails = transactions.stream().map(tx -> {
+                String teacherName = "N/A";
+                Long teacherId = null;
+                if (tx.getUser() != null) {
+                    teacherId = tx.getUser().getId();
+                    teacherName = tx.getUser().getDisplayName() != null && !tx.getUser().getDisplayName().isEmpty()
+                            ? tx.getUser().getDisplayName()
+                            : tx.getUser().getUsername() != null ? tx.getUser().getUsername() : tx.getUser().getEmail();
+                }
+
+                return TotalRevenueRes.TransactionDetail.builder()
+                        .id(tx.getId())
+                        .amountCents(tx.getAmountCents())
+                        .amount(BigDecimal.valueOf(tx.getAmountCents())) // VND trực tiếp, không chia 100
+                        .teacherId(teacherId)
+                        .teacherName(teacherName)
+                        .courseId(tx.getCourse() != null ? tx.getCourse().getId() : null)
+                        .courseTitle(tx.getCourse() != null ? tx.getCourse().getTitle() : "N/A")
+                        .description(tx.getDescription())
+                        .createdAt(tx.getCreatedAt())
+                        .build();
+            }).collect(Collectors.toList());
+
+            TotalRevenueRes revenue = TotalRevenueRes.builder()
+                    .period(period)
+                    .revenueCents(revenueCents)
+                    .revenue(BigDecimal.valueOf(revenueCents)) // VND trực tiếp, không chia 100
+                    .transactionCount(transactions.size())
+                    .teacherCount((int) uniqueTeacherCount)
+                    .courseCount((int) uniqueCourseCount)
+                    .transactions(transactionDetails)
+                    .build();
+
+            return ResponseEntity.ok(ApiResponse.success("Total revenue retrieved successfully", revenue));
+        } catch (Exception e) {
+            log.error("Error retrieving total revenue", e);
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to retrieve total revenue: " + e.getMessage()));
         }
     }
 

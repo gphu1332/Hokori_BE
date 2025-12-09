@@ -31,6 +31,8 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     boolean existsByUserIdAndCourseId(Long userId, Long courseId);
 
     // ====== NEW: đếm học viên active của teacher ======
+    // Đếm tất cả học viên từ các courses PUBLISHED và FLAGGED của teacher
+    // (FLAGGED courses vẫn có học viên đã enroll, nên vẫn tính vào tổng số)
     @Query("""
         select count(distinct e.userId)
         from Enrollment e
@@ -38,13 +40,13 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
             select c.id
             from Course c
             where c.userId = :teacherId
-              and c.status = :status
+              and c.status in :statuses
               and c.deletedFlag = false
         )
         """)
     long countActiveStudentsByTeacher(
             @Param("teacherId") Long teacherId,
-            @Param("status") CourseStatus status
+            @Param("statuses") List<CourseStatus> statuses
     );
 
     // ====== NEW: đếm enrollment theo course ======
