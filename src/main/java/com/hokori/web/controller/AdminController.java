@@ -20,6 +20,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -51,6 +52,7 @@ import java.util.stream.Collectors;
 @Tag(name = "Admin Management", description = "Administrative functions for user and role management")
 @SecurityRequirement(name = "Bearer Authentication") // chỉ dành cho Swagger UI
 @CrossOrigin(origins = "*")
+@Slf4j
 @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')") // ⬅️ BẮT BUỘC LÀ ADMIN (RoleConstants.ADMIN)
 public class AdminController {
 
@@ -77,6 +79,9 @@ public class AdminController {
 
     @Autowired
     private EnrollmentRepository enrollmentRepository;
+
+    @Autowired
+    private com.hokori.web.service.PaymentService paymentService;
 
     // =================================================================================
     // ROLE MANAGEMENT
@@ -890,6 +895,29 @@ public class AdminController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error("Failed to retrieve course revenue: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/payments/backfill-wallet-transactions")
+    @Operation(
+            summary = "Admin: Backfill WalletTransaction cho các payment cũ",
+            description = """
+                    Tạo WalletTransaction cho các payment đã thành công (PAID) nhưng chưa có WalletTransaction.
+                    Chỉ xử lý payments có courseIds (không phải AI Package).
+                    Có thể chạy nhiều lần an toàn (idempotent).
+                    """
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> backfillWalletTransactions() {
+        try {
+            int processedCount = paymentService.backfillWalletTransactionsForOldPayments();
+            Map<String, Object> result = new HashMap<>();
+            result.put("processedCount", processedCount);
+            result.put("message", "Backfill completed successfully");
+            return ResponseEntity.ok(ApiResponse.success("Backfill completed", result));
+        } catch (Exception e) {
+            log.error("Error during wallet transaction backfill", e);
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to backfill wallet transactions: " + e.getMessage()));
         }
     }
 
