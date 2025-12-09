@@ -43,6 +43,7 @@ public class PaymentService {
     private final UserRepository userRepo;
     private final ObjectMapper objectMapper;
     private final com.hokori.web.service.NotificationService notificationService;
+    private final com.hokori.web.service.WalletService walletService;
     
     public PaymentService(
             PayOSService payOSService,
@@ -58,7 +59,8 @@ public class PaymentService {
             AIQuotaRepository aiQuotaRepo,
             UserRepository userRepo,
             @Qualifier("payOSObjectMapper") ObjectMapper objectMapper,
-            com.hokori.web.service.NotificationService notificationService) {
+            com.hokori.web.service.NotificationService notificationService,
+            com.hokori.web.service.WalletService walletService) {
         this.payOSService = payOSService;
         this.cartService = cartService;
         this.learnerProgressService = learnerProgressService;
@@ -73,6 +75,7 @@ public class PaymentService {
         this.userRepo = userRepo;
         this.objectMapper = objectMapper;
         this.notificationService = notificationService;
+        this.walletService = walletService;
     }
     
     /**
@@ -483,18 +486,82 @@ public class PaymentService {
                     // IMPORTANT: Enrollment must succeed even if clearing cart fails
                     enrollCoursesFromPayment(payment);
                     
-                    // Create notification for each enrolled course
+                    // Create wallet transactions and notifications for each enrolled course
                     try {
                         List<Long> courseIds = parseCourseIds(payment.getCourseIds());
+                        
+                        // Calculate price per course if multiple courses
+                        // If single course, use full amount; if multiple, need to query course prices
+                        long totalCoursePriceCents = 0L;
+                        List<Course> courses = new ArrayList<>();
                         for (Long courseId : courseIds) {
                             Course course = courseRepo.findById(courseId).orElse(null);
                             if (course != null) {
+                                courses.add(course);
+                                // Use discounted price if available, otherwise use regular price
+                                long coursePriceCents = course.getDiscountedPriceCents() != null 
+                                        ? course.getDiscountedPriceCents() 
+                                        : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
+                                totalCoursePriceCents += coursePriceCents;
+                            }
+                        }
+                        
+                        // Create wallet transaction for each course
+                        for (Course course : courses) {
+                            try {
+                                // Calculate teacher revenue for this course
+                                // Use discounted price if available, otherwise use regular price
+                                long coursePriceCents = course.getDiscountedPriceCents() != null 
+                                        ? course.getDiscountedPriceCents() 
+                                        : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
+                                
+                                // If multiple courses, calculate proportional amount
+                                long teacherRevenueCents;
+                                if (courses.size() == 1) {
+                                    // Single course: teacher gets full payment amount
+                                    teacherRevenueCents = payment.getAmountCents();
+                                } else {
+                                    // Multiple courses: calculate proportional amount based on course price
+                                    // Formula: (coursePrice / totalCoursePrice) * paymentAmount
+                                    if (totalCoursePriceCents > 0) {
+                                        teacherRevenueCents = (coursePriceCents * payment.getAmountCents()) / totalCoursePriceCents;
+                                    } else {
+                                        // Fallback: divide equally
+                                        teacherRevenueCents = payment.getAmountCents() / courses.size();
+                                    }
+                                }
+                                
+                                // Only create wallet transaction if course has a price and teacher exists
+                                if (teacherRevenueCents > 0 && course.getUserId() != null) {
+                                    walletService.createCourseSaleTransaction(
+                                            course.getUserId(),
+                                            course.getId(),
+                                            teacherRevenueCents,
+                                            null // createdBy = null (system)
+                                    );
+                                    log.info("Created wallet transaction for teacher {} from course {} sale: {} cents", 
+                                            course.getUserId(), course.getId(), teacherRevenueCents);
+                                }
+                            } catch (Exception walletException) {
+                                // Log error but don't throw - enrollment has already succeeded
+                                log.error("Failed to create wallet transaction for course {} after payment {} (orderCode: {}), but enrollment was successful.", 
+                                        course.getId(), payment.getId(), payment.getOrderCode(), walletException);
+                            }
+                        }
+                        
+                        // Create notification for each enrolled course
+                        for (Course course : courses) {
+                            try {
                                 notificationService.notifyPaymentSuccess(
                                         payment.getUserId(),
                                         payment.getId(),
-                                        courseId,
+                                        course.getId(),
                                         course.getTitle()
                                 );
+                            } catch (Exception notifException) {
+                                // Log error but don't throw - enrollment has already succeeded
+                                log.error("Failed to create payment success notification for course {} after payment {} (orderCode: {}), but enrollment was successful.", 
+                                        course.getId(), payment.getId(), payment.getOrderCode(), notifException);
                             }
                         }
                     } catch (Exception notifException) {
