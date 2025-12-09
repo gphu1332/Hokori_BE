@@ -46,4 +46,7 @@ public class CourseRes {
     
     // Status message (thân thiện cho learner, không gây tiêu cực)
     private String statusMessage; // Message hiển thị cho learner khi status = FLAGGED
+    
+    // Flag action (cho moderator)
+    private Boolean canFlag; // true nếu moderator có thể flag course này (status = PUBLISHED)
 }

@@ -566,6 +566,9 @@ public class CourseService {
             // Message thân thiện cho learner (không gây tiêu cực) - chỉ hiển thị cho enrolled learners
             res.setStatusMessage("Khóa học đang được cập nhật. Bạn vẫn có thể học tập bình thường.");
         }
+        
+        // Set canFlag cho moderator: chỉ có thể flag course có status = PUBLISHED
+        res.setCanFlag(courseStatus == CourseStatus.PUBLISHED);
 
         res.setChapters(Collections.emptyList());
         return res;
@@ -1083,6 +1086,9 @@ public class CourseService {
             // Message thân thiện cho learner (không gây tiêu cực) - chỉ hiển thị cho enrolled learners
             res.setStatusMessage("Khóa học đang được cập nhật. Bạn vẫn có thể học tập bình thường.");
         }
+        
+        // Set canFlag cho moderator: chỉ có thể flag course có status = PUBLISHED
+        res.setCanFlag(c.getStatus() == CourseStatus.PUBLISHED);
 
         res.setChapters(List.of());
         return res;
