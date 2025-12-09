@@ -335,12 +335,6 @@ public class LearnerProgressService {
                 if (ucpOpt.isPresent()) {
                     UserContentProgress ucp = ucpOpt.get();
                     ucpMap.put(c.getId(), ucp);
-                    System.err.println("PROGRESS FOUND: enrollmentId=" + enrollmentId + 
-                        ", contentId=" + c.getId() + ", isCompleted=" + ucp.getIsCompleted() + 
-                        ", lastPositionSec=" + ucp.getLastPositionSec());
-                } else {
-                    System.err.println("NO PROGRESS: enrollmentId=" + enrollmentId + 
-                        ", contentId=" + c.getId());
                 }
             }
         }

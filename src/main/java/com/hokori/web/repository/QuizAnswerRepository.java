@@ -10,6 +10,16 @@ import java.util.Optional;
 
 public interface QuizAnswerRepository extends JpaRepository<QuizAnswer, Long> {
     List<QuizAnswer> findByAttempt_Id(Long attemptId);
+    
+    /**
+     * Load QuizAnswer with Option (JOIN FETCH) to avoid LazyInitializationException
+     */
+    @Query("""
+        select a from QuizAnswer a
+        left join fetch a.option
+        where a.attempt.id = :attemptId
+        """)
+    List<QuizAnswer> findByAttempt_IdWithOption(@Param("attemptId") Long attemptId);
 
     @Query("""
         select a from QuizAnswer a

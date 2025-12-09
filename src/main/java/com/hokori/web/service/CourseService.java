@@ -1594,9 +1594,17 @@ public class CourseService {
         }
 
         // Validate array length
-        if (actualMetadata.length < 10 || actualMetadata[9] == null) {
+        if (actualMetadata.length < 10) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Invalid course metadata: missing status");
+                String.format("Invalid course metadata: array too short (expected >= 10, got %d) for course %d", 
+                    actualMetadata.length, courseId));
+        }
+        
+        // Validate status field (index 9)
+        if (actualMetadata[9] == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                String.format("Invalid course metadata: missing status (status is null) for course %d. " +
+                    "This may indicate a data integrity issue. Please check course status in database.", courseId));
         }
 
         // Check status (at index 9)

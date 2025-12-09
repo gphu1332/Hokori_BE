@@ -109,7 +109,7 @@ public class LearnerQuizService {
         }
         
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
-            throw new RuntimeException("Attempt not in progress");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Attempt not in progress");
 
         // Use native query to avoid LOB stream error
         var unansweredIds = answerRepo.findUnansweredQuestionIds(a.getQuiz().getId(), a.getId());
@@ -173,18 +173,18 @@ public class LearnerQuizService {
         }
         
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
-            throw new RuntimeException("Attempt not in progress");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Attempt not in progress");
 
         Question q = questionRepo.findById(questionId)
                 .orElseThrow(() -> new EntityNotFoundException("Question not found"));
         if (!Objects.equals(q.getQuiz().getId(), a.getQuiz().getId()))
-            throw new RuntimeException("Question not in this quiz");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Question not in this quiz");
 
         // AnswerReq là record → dùng optionId()
         Option chosen = optionRepo.findById(req.optionId())
                 .orElseThrow(() -> new EntityNotFoundException("Option not found"));
         if (!Objects.equals(chosen.getQuestion().getId(), q.getId()))
-            throw new RuntimeException("Option not in this question");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Option not in this question");
 
         QuizAnswer ans = answerRepo.findOne(a.getId(), q.getId()).orElse(new QuizAnswer());
         ans.setAttempt(a);
@@ -205,18 +205,25 @@ public class LearnerQuizService {
         }
         
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
-            throw new RuntimeException("Attempt already submitted");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Attempt already submitted");
 
         int total = (a.getTotalQuestions() != null)
                 ? a.getTotalQuestions()
                 : attemptRepo.countQuestions(a.getQuiz().getId());
 
         int correct = 0;
-        var answers = answerRepo.findByAttempt_Id(a.getId());
+        // Load answers with Option to avoid LazyInitializationException
+        var answers = answerRepo.findByAttempt_IdWithOption(a.getId());
         for (QuizAnswer ans : answers) {
-            boolean ok = Boolean.TRUE.equals(ans.getOption().getIsCorrect());
-            ans.setIsCorrect(ok);
-            if (ok) correct++;
+            // Option may be null if user didn't answer this question
+            if (ans.getOption() != null) {
+                boolean ok = Boolean.TRUE.equals(ans.getOption().getIsCorrect());
+                ans.setIsCorrect(ok);
+                if (ok) correct++;
+            } else {
+                // No answer provided - mark as incorrect
+                ans.setIsCorrect(false);
+            }
         }
         answerRepo.saveAll(answers);
 
@@ -243,9 +250,15 @@ public class LearnerQuizService {
             checkEnrollmentAndGetCourseId(lesson.getId(), userId);
         }
 
-        var answers = answerRepo.findByAttempt_Id(a.getId());
+        // Load answers with Option and Question to avoid LazyInitializationException
+        var answers = answerRepo.findByAttempt_IdWithOption(a.getId());
         Map<Long, QuizAnswer> map = new HashMap<>();
-        for (QuizAnswer x : answers) map.put(x.getQuestion().getId(), x);
+        for (QuizAnswer x : answers) {
+            // Access question.id to trigger lazy loading while in transaction
+            if (x.getQuestion() != null) {
+                map.put(x.getQuestion().getId(), x);
+            }
+        }
 
         var questions = questionRepo.findByQuiz_IdOrderByOrderIndexAsc(a.getQuiz().getId());
 
