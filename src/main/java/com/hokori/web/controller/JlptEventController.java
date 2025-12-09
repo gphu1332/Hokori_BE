@@ -59,6 +59,25 @@ public class JlptEventController {
     ) {
         User admin = currentUserService.getCurrentUserOrThrow();
 
+        // Validate dates
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        
+        // startAt không được là quá khứ
+        if (req.getStartAt().isBefore(now)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "startAt không được là quá khứ. Thời gian bắt đầu phải sau thời điểm hiện tại."
+            );
+        }
+        
+        // endAt phải sau startAt
+        if (req.getEndAt().isBefore(req.getStartAt()) || req.getEndAt().isEqual(req.getStartAt())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "endAt phải sau startAt. Thời gian kết thúc phải sau thời gian bắt đầu."
+            );
+        }
+
         JlptEvent e = JlptEvent.builder()
                 .createdBy(admin)
                 .title(req.getTitle())

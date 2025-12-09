@@ -713,9 +713,9 @@ public class AdminController {
 
             teacherDetails.put("revenue", Map.of(
                     "totalRevenueCents", totalRevenueCents,
-                    "totalRevenue", BigDecimal.valueOf(totalRevenueCents).movePointLeft(2),
+                    "totalRevenue", BigDecimal.valueOf(totalRevenueCents), // VND trực tiếp, không chia 100
                     "monthlyRevenueCents", monthlyRevenueCents,
-                    "monthlyRevenue", BigDecimal.valueOf(monthlyRevenueCents).movePointLeft(2),
+                    "monthlyRevenue", BigDecimal.valueOf(monthlyRevenueCents), // VND trực tiếp, không chia 100
                     "currentMonth", currentMonth.toString()
             ));
 
@@ -778,7 +778,7 @@ public class AdminController {
                 Map<String, Object> detail = new HashMap<>();
                 detail.put("id", tx.getId());
                 detail.put("amountCents", tx.getAmountCents());
-                detail.put("amount", BigDecimal.valueOf(tx.getAmountCents()).movePointLeft(2));
+                detail.put("amount", BigDecimal.valueOf(tx.getAmountCents())); // VND trực tiếp, không chia 100
                 detail.put("courseId", tx.getCourse() != null ? tx.getCourse().getId() : null);
                 detail.put("courseTitle", tx.getCourse() != null ? tx.getCourse().getTitle() : "N/A");
                 detail.put("description", tx.getDescription());
@@ -791,7 +791,7 @@ public class AdminController {
             revenue.put("teacherName", teacher.getDisplayName() != null ? teacher.getDisplayName() : teacher.getEmail());
             revenue.put("period", targetMonth.toString());
             revenue.put("revenueCents", revenueCents);
-            revenue.put("revenue", BigDecimal.valueOf(revenueCents).movePointLeft(2));
+            revenue.put("revenue", BigDecimal.valueOf(revenueCents)); // VND trực tiếp, không chia 100
             revenue.put("transactionCount", transactions.size());
             revenue.put("transactions", transactionDetails);
             revenue.put("walletBalance", teacher.getWalletBalance() != null ? teacher.getWalletBalance() : 0L);
@@ -865,7 +865,7 @@ public class AdminController {
                 return CourseRevenueRes.TransactionDetail.builder()
                         .id(tx.getId())
                         .amountCents(tx.getAmountCents())
-                        .amount(BigDecimal.valueOf(tx.getAmountCents()).movePointLeft(2))
+                        .amount(BigDecimal.valueOf(tx.getAmountCents())) // VND trực tiếp, không chia 100
                         .description(tx.getDescription())
                         .createdAt(tx.getCreatedAt())
                         .build();
@@ -882,7 +882,7 @@ public class AdminController {
                     .courseTitle(course.getTitle())
                     .period(targetMonth.toString())
                     .revenueCents(revenueCents)
-                    .revenue(BigDecimal.valueOf(revenueCents).movePointLeft(2))
+                    .revenue(BigDecimal.valueOf(revenueCents)) // VND trực tiếp, không chia 100
                     .transactionCount(transactions.size())
                     .transactions(transactionDetails)
                     .build();
@@ -952,7 +952,7 @@ public class AdminController {
                 p.put("id", payment.getId());
                 p.put("orderCode", payment.getOrderCode());
                 p.put("amountCents", payment.getAmountCents());
-                p.put("amount", BigDecimal.valueOf(payment.getAmountCents()).movePointLeft(2));
+                p.put("amount", BigDecimal.valueOf(payment.getAmountCents())); // VND trực tiếp, không chia 100
                 p.put("status", payment.getStatus());
                 p.put("userId", payment.getUserId());
                 p.put("description", payment.getDescription());
@@ -999,7 +999,7 @@ public class AdminController {
             result.put("currentPage", paymentPage.getNumber());
             result.put("pageSize", paymentPage.getSize());
             result.put("totalPaidCents", totalPaidCents);
-            result.put("totalPaidAmount", BigDecimal.valueOf(totalPaidCents).movePointLeft(2));
+            result.put("totalPaidAmount", BigDecimal.valueOf(totalPaidCents)); // VND trực tiếp, không chia 100
             result.put("filterStatus", status != null ? status.name() : "ALL");
 
             return ResponseEntity.ok(ApiResponse.success("Payments retrieved successfully", result));
@@ -1051,7 +1051,7 @@ public class AdminController {
                 t.put("publishedCourses", publishedCourses);
                 t.put("totalEnrollments", totalEnrollments);
                 t.put("totalRevenueCents", totalRevenueCents);
-                t.put("totalRevenue", BigDecimal.valueOf(totalRevenueCents).movePointLeft(2));
+                t.put("totalRevenue", BigDecimal.valueOf(totalRevenueCents)); // VND trực tiếp, không chia 100
                 t.put("walletBalance", teacher.getWalletBalance() != null ? teacher.getWalletBalance() : 0L);
                 t.put("createdAt", teacher.getCreatedAt());
                 return t;

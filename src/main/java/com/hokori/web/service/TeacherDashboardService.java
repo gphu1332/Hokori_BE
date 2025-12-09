@@ -72,9 +72,8 @@ public class TeacherDashboardService {
         );
         if (revenueCents == null) revenueCents = 0L;
 
-        // chuyển từ cents -> tiền (VD dùng VND thì bạn có thể để nguyên cents hoặc chia 100)
-        BigDecimal monthlyRevenue = BigDecimal.valueOf(revenueCents)
-                .movePointLeft(2); // 100 cents = 1 đơn vị tiền
+        // VND trực tiếp, không chia 100
+        BigDecimal monthlyRevenue = BigDecimal.valueOf(revenueCents);
 
         // ===== 4. Ngày payout tiếp theo =====
         LocalDate nextPayoutDate = calculateNextPayoutDate(zone);
@@ -186,7 +185,7 @@ public class TeacherDashboardService {
             return TeacherRevenueRes.TransactionDetail.builder()
                     .id(tx.getId())
                     .amountCents(tx.getAmountCents())
-                    .amount(BigDecimal.valueOf(tx.getAmountCents()).movePointLeft(2))
+                    .amount(BigDecimal.valueOf(tx.getAmountCents())) // VND trực tiếp, không chia 100
                     .courseId(tx.getCourse() != null ? tx.getCourse().getId() : null)
                     .courseTitle(tx.getCourse() != null ? tx.getCourse().getTitle() : "N/A")
                     .description(tx.getDescription())
@@ -202,7 +201,7 @@ public class TeacherDashboardService {
         return TeacherRevenueRes.builder()
                 .period(targetMonth.toString())
                 .revenueCents(revenueCents)
-                .revenue(BigDecimal.valueOf(revenueCents).movePointLeft(2))
+                .revenue(BigDecimal.valueOf(revenueCents)) // VND trực tiếp, không chia 100
                 .transactionCount(transactions.size())
                 .walletBalance(walletBalance)
                 .transactions(transactionDetails)
@@ -254,7 +253,7 @@ public class TeacherDashboardService {
             return CourseRevenueRes.TransactionDetail.builder()
                     .id(tx.getId())
                     .amountCents(tx.getAmountCents())
-                    .amount(BigDecimal.valueOf(tx.getAmountCents()).movePointLeft(2))
+                    .amount(BigDecimal.valueOf(tx.getAmountCents())) // VND trực tiếp, không chia 100
                     .description(tx.getDescription())
                     .createdAt(tx.getCreatedAt())
                     .build();
@@ -274,7 +273,7 @@ public class TeacherDashboardService {
                 .courseTitle(course.getTitle())
                 .period(targetMonth.toString())
                 .revenueCents(revenueCents)
-                .revenue(BigDecimal.valueOf(revenueCents).movePointLeft(2))
+                .revenue(BigDecimal.valueOf(revenueCents)) // VND trực tiếp, không chia 100
                 .transactionCount(transactions.size())
                 .transactions(transactionDetails)
                 .build();
