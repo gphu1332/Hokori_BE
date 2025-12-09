@@ -43,4 +43,7 @@ public class CourseRes {
     private Instant flaggedAt;
     private Long flaggedByUserId;
     private String flaggedByUserName; // Tên moderator đã flag
+    
+    // Status message (thân thiện cho learner, không gây tiêu cực)
+    private String statusMessage; // Message hiển thị cho learner khi status = FLAGGED
 }

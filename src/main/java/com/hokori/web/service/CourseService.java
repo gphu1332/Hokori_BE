@@ -553,6 +553,8 @@ public class CourseService {
             if (flaggedByUserId != null) {
                 res.setFlaggedByUserName(getTeacherName(flaggedByUserId));
             }
+            // Message thân thiện cho learner (không gây tiêu cực) - chỉ hiển thị cho enrolled learners
+            res.setStatusMessage("Khóa học đang được cập nhật. Bạn vẫn có thể học tập bình thường.");
         }
 
         res.setChapters(Collections.emptyList());
@@ -1058,6 +1060,18 @@ public class CourseService {
             if (c.getRejectedByUserId() != null) {
                 res.setRejectedByUserName(getTeacherName(c.getRejectedByUserId()));
             }
+        }
+        
+        // Map flag info (chỉ có khi status = FLAGGED)
+        if (c.getStatus() == CourseStatus.FLAGGED) {
+            res.setFlaggedReason(c.getFlaggedReason());
+            res.setFlaggedAt(c.getFlaggedAt());
+            res.setFlaggedByUserId(c.getFlaggedByUserId());
+            if (c.getFlaggedByUserId() != null) {
+                res.setFlaggedByUserName(getTeacherName(c.getFlaggedByUserId()));
+            }
+            // Message thân thiện cho learner (không gây tiêu cực) - chỉ hiển thị cho enrolled learners
+            res.setStatusMessage("Khóa học đang được cập nhật. Bạn vẫn có thể học tập bình thường.");
         }
 
         res.setChapters(List.of());
