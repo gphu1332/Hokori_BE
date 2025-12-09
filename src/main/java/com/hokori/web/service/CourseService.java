@@ -37,6 +37,7 @@ public class CourseService {
     private final com.hokori.web.service.NotificationService notificationService;
     private final QuizRepository quizRepo;
     private final FileStorageService fileStorageService;
+    private final com.hokori.web.service.CourseFlagService courseFlagService;
 
     // =========================
     // COURSE
@@ -224,6 +225,15 @@ public class CourseService {
         c.setRejectionReason(null);
         c.setRejectedAt(null);
         c.setRejectedByUserId(null);
+        
+        // Clear flag info khi approve (course đã được review lại và approve)
+        c.setFlaggedReason(null);
+        c.setFlaggedAt(null);
+        c.setFlaggedByUserId(null);
+        
+        // Xóa tất cả CourseFlag records (flags từ users) khi approve lại
+        // Vì course đã được review và approve lại, không cần giữ flags cũ
+        courseFlagService.clearCourseFlags(id);
         
         // Tạo notification cho teacher
         notificationService.notifyCourseApproved(c.getUserId(), c.getId(), c.getTitle());

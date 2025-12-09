@@ -304,5 +304,17 @@ public class CourseFlagService {
         courseRepo.save(course);
         log.info("Course {} resubmitted by teacher {}", courseId, teacherUserId);
     }
+
+    /**
+     * Xóa tất cả CourseFlag records của một course
+     * Được gọi khi course được approve lại sau khi bị flag
+     */
+    public void clearCourseFlags(Long courseId) {
+        List<CourseFlag> flags = flagRepo.findByCourse_IdOrderByCreatedAtDesc(courseId);
+        if (!flags.isEmpty()) {
+            flagRepo.deleteAll(flags);
+            log.info("Cleared {} flags for course {}", flags.size(), courseId);
+        }
+    }
 }
 
