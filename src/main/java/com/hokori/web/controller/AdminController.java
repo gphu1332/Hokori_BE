@@ -7,9 +7,11 @@ import com.hokori.web.Enum.WalletTransactionSource;
 import com.hokori.web.Enum.WalletTransactionStatus;
 import com.hokori.web.constants.RoleConstants;
 import com.hokori.web.dto.*;
+import com.hokori.web.dto.revenue.CourseRevenueRes;
 import com.hokori.web.entity.Payment;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
+import com.hokori.web.entity.WalletTransaction;
 import com.hokori.web.repository.*;
 import com.hokori.web.service.CurrentUserService;
 import com.hokori.web.service.RoleService;
@@ -796,6 +798,98 @@ public class AdminController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error("Failed to retrieve teacher revenue: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/teachers/{teacherId}/courses/{courseId}/revenue")
+    @Operation(
+            summary = "Admin: Xem revenue của teacher từ một course cụ thể trong tháng",
+            description = "Admin xem teacher đó với course đó trong tháng đó đã thu được bao nhiêu tiền"
+    )
+    public ResponseEntity<ApiResponse<CourseRevenueRes>> getCourseRevenue(
+            @PathVariable Long teacherId,
+            @PathVariable Long courseId,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month
+    ) {
+        try {
+            User teacher = userService.getUserWithRole(teacherId)
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
+
+            if (teacher.getRole() == null || !RoleConstants.TEACHER.equalsIgnoreCase(teacher.getRole().getRoleName())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("User is not a teacher"));
+            }
+
+            // Verify course exists and belongs to teacher
+            com.hokori.web.entity.Course course = courseRepository.findByIdAndDeletedFlagFalse(courseId)
+                    .orElseThrow(() -> new RuntimeException("Course not found"));
+
+            if (!course.getUserId().equals(teacherId)) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Course does not belong to this teacher"));
+            }
+
+            ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
+            YearMonth targetMonth;
+            if (year != null && month != null) {
+                targetMonth = YearMonth.of(year, month);
+            } else {
+                targetMonth = YearMonth.now(zone);
+            }
+
+            ZonedDateTime fromZdt = targetMonth.atDay(1).atStartOfDay(zone);
+            ZonedDateTime toZdt = targetMonth.plusMonths(1).atDay(1).atStartOfDay(zone);
+
+            // Get all transactions for the period, filtered by course
+            List<WalletTransaction> transactions = walletTransactionRepository
+                    .findByUser_IdOrderByCreatedAtDesc(teacherId, PageRequest.of(0, 1000))
+                    .getContent()
+                    .stream()
+                    .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                            && tx.getSource() == WalletTransactionSource.COURSE_SALE
+                            && tx.getCourse() != null
+                            && tx.getCourse().getId().equals(courseId)
+                            && tx.getCreatedAt().isAfter(fromZdt.toInstant())
+                            && tx.getCreatedAt().isBefore(toZdt.toInstant()))
+                    .collect(Collectors.toList());
+
+            Long revenueCents = transactions.stream()
+                    .mapToLong(WalletTransaction::getAmountCents)
+                    .sum();
+
+            List<CourseRevenueRes.TransactionDetail> transactionDetails = transactions.stream().map(tx -> {
+                return CourseRevenueRes.TransactionDetail.builder()
+                        .id(tx.getId())
+                        .amountCents(tx.getAmountCents())
+                        .amount(BigDecimal.valueOf(tx.getAmountCents()).movePointLeft(2))
+                        .description(tx.getDescription())
+                        .createdAt(tx.getCreatedAt())
+                        .build();
+            }).collect(Collectors.toList());
+
+            String teacherName = teacher.getDisplayName() != null && !teacher.getDisplayName().isEmpty()
+                    ? teacher.getDisplayName()
+                    : teacher.getUsername() != null ? teacher.getUsername() : teacher.getEmail();
+
+            CourseRevenueRes revenue = CourseRevenueRes.builder()
+                    .teacherId(teacherId)
+                    .teacherName(teacherName)
+                    .courseId(courseId)
+                    .courseTitle(course.getTitle())
+                    .period(targetMonth.toString())
+                    .revenueCents(revenueCents)
+                    .revenue(BigDecimal.valueOf(revenueCents).movePointLeft(2))
+                    .transactionCount(transactions.size())
+                    .transactions(transactionDetails)
+                    .build();
+
+            return ResponseEntity.ok(ApiResponse.success("Course revenue retrieved successfully", revenue));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(ApiResponse.error("Failed to retrieve course revenue: " + e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to retrieve course revenue: " + e.getMessage()));
         }
     }
 

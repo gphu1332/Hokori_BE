@@ -5,19 +5,26 @@ import com.hokori.web.Enum.WalletTransactionSource;
 import com.hokori.web.Enum.WalletTransactionStatus;
 import com.hokori.web.dto.dashboard.RecentCourseSummaryDto;
 import com.hokori.web.dto.dashboard.TeacherDashboardSummaryRes;
+import com.hokori.web.dto.revenue.CourseRevenueRes;
+import com.hokori.web.dto.revenue.TeacherRevenueRes;
 import com.hokori.web.entity.Course;
+import com.hokori.web.entity.WalletTransaction;
 import com.hokori.web.repository.CourseRepository;
 import com.hokori.web.repository.EnrollmentRepository;
+import com.hokori.web.repository.UserRepository;
 import com.hokori.web.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +35,7 @@ public class TeacherDashboardService {
     private final EnrollmentRepository enrollmentRepo;
     private final WalletTransactionRepository walletTxRepo;
     private final CurrentUserService currentUser;
+    private final UserRepository userRepo;
 
     public TeacherDashboardSummaryRes getOverview() {
         Long teacherId = currentUser.getUserIdOrThrow();
@@ -135,5 +143,142 @@ public class TeacherDashboardService {
         // After last payout day, jump to 15th of next month
         LocalDate nextMonth = today.plusMonths(1);
         return LocalDate.of(nextMonth.getYear(), nextMonth.getMonth(), 15);
+    }
+
+    /**
+     * Teacher xem revenue theo tháng cụ thể
+     */
+    public TeacherRevenueRes getRevenueByMonth(Integer year, Integer month) {
+        Long teacherId = currentUser.getUserIdOrThrow();
+        
+        ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
+        YearMonth targetMonth;
+        if (year != null && month != null) {
+            targetMonth = YearMonth.of(year, month);
+        } else {
+            targetMonth = YearMonth.now(zone);
+        }
+
+        ZonedDateTime fromZdt = targetMonth.atDay(1).atStartOfDay(zone);
+        ZonedDateTime toZdt = targetMonth.plusMonths(1).atDay(1).atStartOfDay(zone);
+
+        // Get revenue for the period
+        Long revenueCents = walletTxRepo.sumIncomeForPeriod(
+                teacherId,
+                WalletTransactionStatus.COMPLETED,
+                WalletTransactionSource.COURSE_SALE,
+                fromZdt.toInstant(),
+                toZdt.toInstant()
+        );
+        if (revenueCents == null) revenueCents = 0L;
+
+        // Get all transactions for the period
+        List<WalletTransaction> transactions = walletTxRepo
+                .findByUser_IdOrderByCreatedAtDesc(teacherId, PageRequest.of(0, 1000))
+                .getContent()
+                .stream()
+                .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                        && tx.getSource() == WalletTransactionSource.COURSE_SALE
+                        && tx.getCreatedAt().isAfter(fromZdt.toInstant())
+                        && tx.getCreatedAt().isBefore(toZdt.toInstant()))
+                .collect(Collectors.toList());
+
+        List<TeacherRevenueRes.TransactionDetail> transactionDetails = transactions.stream().map(tx -> {
+            return TeacherRevenueRes.TransactionDetail.builder()
+                    .id(tx.getId())
+                    .amountCents(tx.getAmountCents())
+                    .amount(BigDecimal.valueOf(tx.getAmountCents()).movePointLeft(2))
+                    .courseId(tx.getCourse() != null ? tx.getCourse().getId() : null)
+                    .courseTitle(tx.getCourse() != null ? tx.getCourse().getTitle() : "N/A")
+                    .description(tx.getDescription())
+                    .createdAt(tx.getCreatedAt())
+                    .build();
+        }).collect(Collectors.toList());
+
+        // Get wallet balance
+        Long walletBalance = userRepo.findById(teacherId)
+                .map(user -> user.getWalletBalance() != null ? user.getWalletBalance() : 0L)
+                .orElse(0L);
+
+        return TeacherRevenueRes.builder()
+                .period(targetMonth.toString())
+                .revenueCents(revenueCents)
+                .revenue(BigDecimal.valueOf(revenueCents).movePointLeft(2))
+                .transactionCount(transactions.size())
+                .walletBalance(walletBalance)
+                .transactions(transactionDetails)
+                .build();
+    }
+
+    /**
+     * Teacher xem revenue từ một course cụ thể trong tháng
+     */
+    public CourseRevenueRes getCourseRevenue(Long courseId, Integer year, Integer month) {
+        Long teacherId = currentUser.getUserIdOrThrow();
+        
+        // Verify course belongs to teacher
+        Course course = courseRepo.findByIdAndDeletedFlagFalse(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        if (!course.getUserId().equals(teacherId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not the owner of this course");
+        }
+
+        ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
+        YearMonth targetMonth;
+        if (year != null && month != null) {
+            targetMonth = YearMonth.of(year, month);
+        } else {
+            targetMonth = YearMonth.now(zone);
+        }
+
+        ZonedDateTime fromZdt = targetMonth.atDay(1).atStartOfDay(zone);
+        ZonedDateTime toZdt = targetMonth.plusMonths(1).atDay(1).atStartOfDay(zone);
+
+        // Get all transactions for the period, filtered by course
+        List<WalletTransaction> transactions = walletTxRepo
+                .findByUser_IdOrderByCreatedAtDesc(teacherId, PageRequest.of(0, 1000))
+                .getContent()
+                .stream()
+                .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                        && tx.getSource() == WalletTransactionSource.COURSE_SALE
+                        && tx.getCourse() != null
+                        && tx.getCourse().getId().equals(courseId)
+                        && tx.getCreatedAt().isAfter(fromZdt.toInstant())
+                        && tx.getCreatedAt().isBefore(toZdt.toInstant()))
+                .collect(Collectors.toList());
+
+        Long revenueCents = transactions.stream()
+                .mapToLong(WalletTransaction::getAmountCents)
+                .sum();
+
+        List<CourseRevenueRes.TransactionDetail> transactionDetails = transactions.stream().map(tx -> {
+            return CourseRevenueRes.TransactionDetail.builder()
+                    .id(tx.getId())
+                    .amountCents(tx.getAmountCents())
+                    .amount(BigDecimal.valueOf(tx.getAmountCents()).movePointLeft(2))
+                    .description(tx.getDescription())
+                    .createdAt(tx.getCreatedAt())
+                    .build();
+        }).collect(Collectors.toList());
+
+        // Get teacher name
+        String teacherName = userRepo.findById(teacherId)
+                .map(user -> user.getDisplayName() != null && !user.getDisplayName().isEmpty()
+                        ? user.getDisplayName()
+                        : user.getUsername() != null ? user.getUsername() : user.getEmail())
+                .orElse("N/A");
+
+        return CourseRevenueRes.builder()
+                .teacherId(teacherId)
+                .teacherName(teacherName)
+                .courseId(courseId)
+                .courseTitle(course.getTitle())
+                .period(targetMonth.toString())
+                .revenueCents(revenueCents)
+                .revenue(BigDecimal.valueOf(revenueCents).movePointLeft(2))
+                .transactionCount(transactions.size())
+                .transactions(transactionDetails)
+                .build();
     }
 }
