@@ -41,6 +41,8 @@ public class LearnerProgressService {
     private final com.hokori.web.repository.CourseCompletionCertificateRepository certificateRepo;
     private final com.hokori.web.service.NotificationService notificationService;
     private final com.hokori.web.repository.UserRepository userRepo;
+    private final CurrentUserService currentUserService;
+    private final CourseService courseService;
 
     // ================= Enrollment =================
     
@@ -736,6 +738,7 @@ public class LearnerProgressService {
     /**
      * Get flashcard set (COURSE_VOCAB) attached to a section content (PUBLIC - for trial chapter).
      * Only works for contents in trial chapters. No authentication required.
+     * MODERATOR: unlimited access to courses pending approval.
      */
     @Transactional(readOnly = true)
     public FlashcardSetResponse getTrialFlashcardSetForContent(Long sectionContentId) {
@@ -747,9 +750,23 @@ public class LearnerProgressService {
         Chapter chapter = chapterRepo.findById(chapterId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
         
+        // MODERATOR: Allow access if course is pending approval (even if not trial chapter)
         if (!chapter.isTrial()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                "This content is not part of trial chapter");
+            Long userId = currentUserService.getUserIdOrNull();
+            if (userId != null && currentUserService.hasRole("MODERATOR")) {
+                try {
+                    courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
+                    // Validated, moderator can access
+                } catch (ResponseStatusException e) {
+                    // Not pending approval, throw error
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                        "This content is not part of trial chapter");
+                }
+            } else {
+                // Not moderator or not authenticated, must be trial chapter
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                    "This content is not part of trial chapter");
+            }
         }
 
         // Get flashcard set with eager fetching to avoid LazyInitializationException
@@ -808,6 +825,7 @@ public class LearnerProgressService {
     /**
      * Get flashcard cards for trial content (PUBLIC - for trial chapter).
      * Only works for contents in trial chapters. No authentication required.
+     * MODERATOR: unlimited access to courses pending approval.
      */
     @Transactional(readOnly = true)
     public List<FlashcardResponse> getTrialFlashcardCards(Long sectionContentId) {
@@ -819,9 +837,23 @@ public class LearnerProgressService {
         Chapter chapter = chapterRepo.findById(chapterId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
         
+        // MODERATOR: Allow access if course is pending approval (even if not trial chapter)
         if (!chapter.isTrial()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                "This content is not part of trial chapter");
+            Long userId = currentUserService.getUserIdOrNull();
+            if (userId != null && currentUserService.hasRole("MODERATOR")) {
+                try {
+                    courseService.requireSectionContentBelongsToPendingApprovalCourse(sectionContentId);
+                    // Validated, moderator can access
+                } catch (ResponseStatusException e) {
+                    // Not pending approval, throw error
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                        "This content is not part of trial chapter");
+                }
+            } else {
+                // Not moderator or not authenticated, must be trial chapter
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                    "This content is not part of trial chapter");
+            }
         }
 
         // Get flashcard set

@@ -99,7 +99,7 @@ public class CoursePublicController {
 
     @Operation(
             summary = "Lấy flashcard set cho trial content (public - guest có thể xem)",
-            description = "Lấy flashcard set gắn với section content trong trial chapter. Không cần authentication hoặc enrollment."
+            description = "Lấy flashcard set gắn với section content trong trial chapter. Không cần authentication hoặc enrollment. MODERATOR: có thể xem flashcard của courses pending approval."
     )
     @ApiResponse(responseCode = "200",
             content = @Content(schema = @Schema(implementation = com.hokori.web.dto.flashcard.FlashcardSetResponse.class)))
@@ -110,7 +110,7 @@ public class CoursePublicController {
 
     @Operation(
             summary = "Lấy danh sách flashcard cards cho trial content (public - guest có thể xem)",
-            description = "Lấy danh sách flashcard cards trong flashcard set gắn với section content trong trial chapter. Không cần authentication hoặc enrollment."
+            description = "Lấy danh sách flashcard cards trong flashcard set gắn với section content trong trial chapter. Không cần authentication hoặc enrollment. MODERATOR: có thể xem flashcard của courses pending approval."
     )
     @ApiResponse(responseCode = "200",
             content = @Content(array = @ArraySchema(schema = @Schema(implementation = FlashcardResponse.class))))
