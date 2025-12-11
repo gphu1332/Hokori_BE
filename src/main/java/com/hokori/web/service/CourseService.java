@@ -91,6 +91,12 @@ public class CourseService {
     public CourseRes updateCourse(Long id, Long teacherUserId, @Valid CourseUpsertReq r) {
         Course c = getOwned(id, teacherUserId);
         String oldSlug = c.getSlug();
+        
+        // Lưu giá trị cũ để so sánh
+        Long oldPriceCents = c.getPriceCents();
+        Long oldDiscountedPriceCents = c.getDiscountedPriceCents();
+        CourseStatus oldStatus = c.getStatus();
+        
         applyCourse(c, r);
 
         // Only update slug if title changed
@@ -99,7 +105,8 @@ public class CourseService {
             newTitle = "Untitled Course";
         }
         String newSlugBase = SlugUtil.toSlug(newTitle);
-        if (!newSlugBase.equals(oldSlug)) {
+        boolean titleChanged = !newSlugBase.equals(oldSlug);
+        if (titleChanged) {
             // Generate unique slug (excluding current course from check)
             c.setSlug(generateUniqueSlugForUpdate(newTitle, id));
 
@@ -124,6 +131,18 @@ public class CourseService {
                 }
             }
         }
+        
+        // BR-03: Nếu course đang PUBLISHED và có thay đổi thông tin cốt lõi (title, price)
+        // thì tự động chuyển về PENDING_APPROVAL để moderator review lại
+        boolean priceChanged = !Objects.equals(oldPriceCents, c.getPriceCents()) 
+                || !Objects.equals(oldDiscountedPriceCents, c.getDiscountedPriceCents());
+        
+        if (oldStatus == CourseStatus.PUBLISHED && (titleChanged || priceChanged)) {
+            autoSubmitForApprovalIfPublished(c, teacherUserId, 
+                titleChanged ? "title" : null, 
+                priceChanged ? "price" : null);
+        }
+        
         return toCourseResLite(c);
     }
 
@@ -142,6 +161,62 @@ public class CourseService {
         getOwned(id, teacherUserId).setDeletedFlag(true);
     }
 
+    /**
+     * BR-03: Tự động submit course về PENDING_APPROVAL nếu course đang PUBLISHED
+     * và có thay đổi thông tin cốt lõi (title, price, syllabus structure, trial chapter)
+     * 
+     * @param course Course entity đã được update
+     * @param teacherUserId Teacher user ID
+     * @param changedFields Mô tả các field đã thay đổi (để log/notification)
+     */
+    private void autoSubmitForApprovalIfPublished(Course course, Long teacherUserId, String... changedFields) {
+        if (course.getStatus() != CourseStatus.PUBLISHED) {
+            return; // Chỉ áp dụng cho course đang PUBLISHED
+        }
+        
+        // Check teacher approval status - must be APPROVED
+        User teacher = userRepo.findById(teacherUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Teacher not found"));
+        
+        if (teacher.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            // Không throw error, chỉ log warning vì đây là auto-submit
+            // Teacher sẽ phải submit manually sau khi được approve
+            return;
+        }
+        
+        // Validate title is not empty
+        if (course.getTitle() == null || course.getTitle().trim().isEmpty()) {
+            return; // Không auto-submit nếu title rỗng
+        }
+        
+        // Validate có đúng 1 trial chapter
+        long trialCount = chapterRepo.countByCourse_IdAndIsTrialTrue(course.getId());
+        if (trialCount != 1) {
+            return; // Không auto-submit nếu không có đúng 1 trial chapter
+        }
+        
+        // Chuyển sang PENDING_APPROVAL
+        course.setStatus(CourseStatus.PENDING_APPROVAL);
+        // Clear rejection info khi auto-submit
+        course.setRejectionReason(null);
+        course.setRejectedAt(null);
+        course.setRejectedByUserId(null);
+        
+        // Clear flag info khi auto-submit (course đã được update)
+        course.setFlaggedReason(null);
+        course.setFlaggedAt(null);
+        course.setFlaggedByUserId(null);
+        
+        courseRepo.save(course);
+        
+        // Tạo notification cho teacher
+        String fieldsDesc = changedFields != null && changedFields.length > 0 
+                ? String.join(", ", Arrays.stream(changedFields).filter(Objects::nonNull).toArray(String[]::new))
+                : "core information";
+        notificationService.notifyCourseSubmitted(course.getUserId(), course.getId(), 
+            course.getTitle() + " (auto-submitted due to changes in: " + fieldsDesc + ")");
+    }
+    
     /**
      * Submit course for moderator approval (or resubmit after rejection)
      * 
@@ -643,10 +718,11 @@ public class CourseService {
     public ChapterRes createChapter(Long courseId, Long teacherUserId, ChapterUpsertReq r) {
         assertOwner(courseId, teacherUserId);
 
-        Course courseRef = courseRepo.getReferenceById(courseId);
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         Chapter ch = new Chapter();
-        ch.setCourse(courseRef);
+        ch.setCourse(course);
         ch.setTitle(r.getTitle());
         ch.setSummary(r.getSummary());
 
@@ -656,24 +732,37 @@ public class CourseService {
         ch.setOrderIndex(oi);
 
         // Chapter đầu tiên (orderIndex = 0) luôn phải là trial
+        boolean trialChanged = false;
         if (oi == 0) {
             // Nếu đã có trial chapter khác, bỏ trial của nó
             chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
                 old.setTrial(false);
             });
             ch.setTrial(true);
+            trialChanged = true; // Có thể đã thay đổi trial chapter
         } else if (Boolean.TRUE.equals(r.getIsTrial())) {
             // Nếu teacher muốn set trial cho chapter khác, kiểm tra đã có trial chưa
             if (chapterRepo.countByCourse_IdAndIsTrialTrue(courseId) > 0) {
                 throw bad("Course already has a trial chapter. The first chapter (orderIndex=0) is always the trial chapter.");
             }
             ch.setTrial(true);
+            trialChanged = true; // Có thể đã thay đổi trial chapter
         }
 
         Chapter saved = chapterRepo.save(ch);
         
         // Đảm bảo chapter đầu tiên luôn là trial (sau khi save để có ID)
         ensureFirstChapterIsTrial(courseId);
+        
+        // BR-03: Nếu course đang PUBLISHED và thêm chapter (thay đổi syllabus structure) → auto-submit
+        // Hoặc nếu trial chapter thay đổi → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            if (trialChanged) {
+                autoSubmitForApprovalIfPublished(course, teacherUserId, "trial chapter");
+            } else {
+                autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (chapter added)");
+            }
+        }
         
         return toChapterResShallow(saved);
     }
@@ -683,6 +772,9 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found"));
 
         assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         Lesson ls = new Lesson();
         ls.setChapter(chapterRepo.getReferenceById(chapterId));
@@ -695,6 +787,12 @@ public class CourseService {
         ls.setTotalDurationSec(r.getTotalDurationSec() == null ? 0L : r.getTotalDurationSec());
 
         Lesson saved = lessonRepo.save(ls);
+        
+        // BR-03: Nếu course đang PUBLISHED và thêm lesson (thay đổi syllabus structure) → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (lesson added)");
+        }
+        
         return toLessonResShallow(saved);
     }
 
@@ -703,6 +801,9 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
 
         assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         Section s = new Section();
         s.setLesson(lessonRepo.getReferenceById(lessonId));
@@ -718,6 +819,12 @@ public class CourseService {
         validateSectionByStudyType(s);
 
         Section saved = sectionRepo.save(s);
+        
+        // BR-03: Nếu course đang PUBLISHED và thêm section (thay đổi syllabus structure) → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (section added)");
+        }
+        
         return toSectionResShallow(saved);
     }
 
@@ -1282,6 +1389,12 @@ public class CourseService {
         assertOwner(ch.getCourse().getId(), teacherUserId);
 
         Long courseId = ch.getCourse().getId();
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Lưu giá trị cũ để detect trial chapter changes
+        boolean wasTrial = ch.isTrial();
+        boolean trialChanged = false;
 
         if (r.getTitle() != null) ch.setTitle(r.getTitle());
         ch.setSummary(r.getSummary());
@@ -1292,6 +1405,7 @@ public class CourseService {
             chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
                 if (!old.getId().equals(ch.getId())) old.setTrial(false);
             });
+            trialChanged = !wasTrial; // Detect nếu trial status thay đổi từ false → true
             ch.setTrial(true);
             ch.setOrderIndex(0);
         } else if (Boolean.TRUE.equals(r.getIsTrial())) {
@@ -1302,6 +1416,7 @@ public class CourseService {
             chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
                 if (!old.getId().equals(ch.getId())) old.setTrial(false);
             });
+            trialChanged = !wasTrial; // Detect nếu trial status thay đổi từ false → true
             ch.setTrial(true);
         }
         
@@ -1309,6 +1424,11 @@ public class CourseService {
         
         // Đảm bảo chapter đầu tiên luôn là trial
         ensureFirstChapterIsTrial(courseId);
+        
+        // BR-03: Nếu course đang PUBLISHED và có thay đổi trial chapter → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED && trialChanged) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "trial chapter");
+        }
         
         return toChapterResShallow(ch);
     }
@@ -1319,11 +1439,19 @@ public class CourseService {
         assertOwner(ch.getCourse().getId(), teacherUserId);
 
         Long courseId = ch.getCourse().getId();
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
         chapterRepo.delete(ch);
         renormalizeChapterOrder(courseId);
         
         // Đảm bảo chapter đầu tiên luôn là trial (sau khi xóa và renormalize)
         ensureFirstChapterIsTrial(courseId);
+        
+        // BR-03: Nếu course đang PUBLISHED và xóa chapter (thay đổi syllabus structure) → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (chapter deleted)");
+        }
     }
 
     public ChapterRes reorderChapter(Long chapterId, Long teacherUserId, int newIndex) {
@@ -1332,11 +1460,19 @@ public class CourseService {
         assertOwner(ch.getCourse().getId(), teacherUserId);
 
         Long courseId = ch.getCourse().getId();
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
         List<Chapter> list = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
         applyReorder(list, chapterId, newIndex, (it, idx) -> it.setOrderIndex(idx));
         
         // Đảm bảo chapter đầu tiên luôn là trial (sau khi reorder)
         ensureFirstChapterIsTrial(courseId);
+        
+        // BR-03: Nếu course đang PUBLISHED và reorder chapter (thay đổi syllabus structure) → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (chapter reordered)");
+        }
         
         return toChapterResShallow(ch);
     }
@@ -1359,19 +1495,37 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
         Long courseId = ls.getChapter().getCourse().getId();
         assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         Long chapterId = ls.getChapter().getId();
         lessonRepo.delete(ls);
         renormalizeLessonOrder(chapterId);
+        
+        // BR-03: Nếu course đang PUBLISHED và xóa lesson (thay đổi syllabus structure) → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (lesson deleted)");
+        }
     }
 
     public LessonRes reorderLesson(Long lessonId, Long teacherUserId, int newIndex) {
         Lesson ls = lessonRepo.findById(lessonId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
-        assertOwner(ls.getChapter().getCourse().getId(), teacherUserId);
+        Long courseId = ls.getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         List<Lesson> list = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(ls.getChapter().getId());
         applyReorder(list, lessonId, newIndex, (it, idx) -> it.setOrderIndex(idx));
+        
+        // BR-03: Nếu course đang PUBLISHED và reorder lesson (thay đổi syllabus structure) → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (lesson reordered)");
+        }
+        
         return toLessonResShallow(ls);
     }
 
@@ -1396,19 +1550,37 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
         Long courseId = s.getLesson().getChapter().getCourse().getId();
         assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         Long lessonId = s.getLesson().getId();
         sectionRepo.delete(s);
         renormalizeSectionOrder(lessonId);
+        
+        // BR-03: Nếu course đang PUBLISHED và xóa section (thay đổi syllabus structure) → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (section deleted)");
+        }
     }
 
     public SectionRes reorderSection(Long sectionId, Long teacherUserId, int newIndex) {
         Section s = sectionRepo.findById(sectionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
-        assertOwner(s.getLesson().getChapter().getCourse().getId(), teacherUserId);
+        Long courseId = s.getLesson().getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         List<Section> list = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(s.getLesson().getId());
         applyReorder(list, sectionId, newIndex, (it, idx) -> it.setOrderIndex(idx));
+        
+        // BR-03: Nếu course đang PUBLISHED và reorder section (thay đổi syllabus structure) → auto-submit
+        if (course.getStatus() == CourseStatus.PUBLISHED) {
+            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (section reordered)");
+        }
+        
         return toSectionResShallow(s);
     }
 

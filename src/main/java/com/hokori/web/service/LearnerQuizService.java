@@ -266,13 +266,22 @@ public class LearnerQuizService {
         Integer passScorePercent = quiz.getPassScorePercent();
         
         // If pass score is set, learner must achieve it to count towards progress
-        if (passScorePercent != null && score < passScorePercent) {
-            // Learner didn't pass, don't mark content as completed
-            return;
+        if (passScorePercent != null) {
+            if (score < passScorePercent) {
+                // Learner didn't pass, don't mark content as completed
+                return;
+            }
+            // Score >= passScorePercent, proceed to mark content complete
+        } else {
+            // If passScorePercent is null, teacher hasn't set a pass requirement
+            // In this case, we still require a minimum score > 0 to mark as completed
+            // This prevents marking content complete when score = 0% (no answers correct)
+            if (score <= 0) {
+                // Score is 0% or negative, don't mark content as completed
+                return;
+            }
+            // Score > 0, proceed to mark content complete
         }
-        
-        // If passScorePercent is null, we consider it as no requirement (always pass)
-        // Or if score >= passScorePercent, proceed to mark content complete
         // Get courseId and check if lesson belongs to trial chapter
         Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
                 .orElseThrow(() -> new EntityNotFoundException("Lesson not found"));
