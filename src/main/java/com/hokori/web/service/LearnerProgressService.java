@@ -228,6 +228,7 @@ public class LearnerProgressService {
     }
 
     // ================= Chapter % =================
+    // NOTE: Trial chapters progress is shown but NOT counted in course progress %
     @Transactional(readOnly = true)
     public List<ChapterProgressRes> getChaptersProgress(Long userId, Long courseId) {
         Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
@@ -245,7 +246,13 @@ public class LearnerProgressService {
                     .map(SectionsContent::getId).toList();
 
             long total = contentIds.size();
-            long completed = total == 0 ? 0 : ucpRepo.countCompletedInList(e.getId(), contentIds);
+            // For trial chapters, don't query progress (always 0% for course progress calculation)
+            // But still show progress if user has enrolled and accessed trial content
+            long completed = 0;
+            if (!Boolean.TRUE.equals(ch.isTrial())) {
+                // Only count progress for non-trial chapters
+                completed = total == 0 ? 0 : ucpRepo.countCompletedInList(e.getId(), contentIds);
+            }
             int percent = (total == 0) ? 100 : Math.toIntExact(Math.round(100.0 * completed / total));
 
             // stats (đơn giản: video/exercise/test); tùy enum bạn map
@@ -267,6 +274,7 @@ public class LearnerProgressService {
     }
 
     // ================= Lesson ✓ =================
+    // NOTE: Trial chapters lessons are shown but NOT counted in course progress
     @Transactional(readOnly = true)
     public List<LessonProgressRes> getLessonsProgress(Long userId, Long courseId) {
         Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
@@ -278,14 +286,24 @@ public class LearnerProgressService {
 
         List<LessonProgressRes> res = new ArrayList<>(lessons.size());
         for (Lesson ls : lessons) {
+            // Get chapter to check if it's trial
+            Long chapterId = lessonRepo.findChapterIdByLessonId(ls.getId()).orElse(null);
+            Chapter chapter = chapterId != null ? chapterRepo.findById(chapterId).orElse(null) : null;
+            boolean isTrialChapter = chapter != null && Boolean.TRUE.equals(chapter.isTrial());
+            
             List<Long> contentIds = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(ls.getId()).stream()
                     .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
                     .filter(c -> Boolean.TRUE.equals(c.getIsTrackable()))
                     .map(SectionsContent::getId).toList();
 
             long total = contentIds.size();
-            long completed = (total == 0) ? 0 : ucpRepo.countCompletedInList(e.getId(), contentIds);
-            boolean isCompleted = (total == 0) || (completed == total);
+            // For trial chapters, don't count progress (always false for course progress)
+            long completed = 0;
+            boolean isCompleted = false;
+            if (!isTrialChapter) {
+                completed = (total == 0) ? 0 : ucpRepo.countCompletedInList(e.getId(), contentIds);
+                isCompleted = (total == 0) || (completed == total);
+            }
 
             res.add(LessonProgressRes.builder()
                     .lessonId(ls.getId())
@@ -404,8 +422,10 @@ public class LearnerProgressService {
     }
 
     // ======= helper: recompute course percent across all trackable contents =======
+    // NOTE: Trial chapters are EXCLUDED from progress calculation
     private void recomputeCoursePercent(Enrollment e) {
         List<Long> allTrackableContentIds = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(e.getCourseId()).stream()
+                .filter(ch -> !Boolean.TRUE.equals(ch.isTrial())) // Exclude trial chapters
                 .flatMap(ch -> lessonRepo.findByChapter_IdOrderByOrderIndexAsc(ch.getId()).stream())
                 .flatMap(ls -> sectionRepo.findByLesson_IdOrderByOrderIndexAsc(ls.getId()).stream())
                 .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
