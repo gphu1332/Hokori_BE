@@ -424,7 +424,6 @@ public class LearnerQuizService {
         }).toList();
 
         // Get passScorePercent and calculate passed for detail view
-        Quiz quiz = a.getQuiz();
         Integer passScorePercent = quiz.getPassScorePercent();
         Boolean passed = null;
         if (passScorePercent != null && a.getScorePercent() != null) {
