@@ -15,7 +15,7 @@ public class Section extends BaseEntity {
     @Column(nullable=false) private Integer orderIndex = 0;
 
     @Enumerated(EnumType.STRING) @Column(nullable=false)
-    private ContentType studyType = ContentType.GRAMMAR; // GRAMMAR/VOCABULARY/KANJI
+    private ContentType studyType = ContentType.GRAMMAR; // GRAMMAR/VOCABULARY/KANJI/QUIZ
 
     // VOCAB: bắt buộc != null (phương án A)
     private Long flashcardSetId;

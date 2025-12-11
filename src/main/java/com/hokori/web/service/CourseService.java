@@ -887,6 +887,14 @@ public class CourseService {
     private void validateContentPayload(Section section, ContentUpsertReq r, Long excludeContentId) {
         ContentFormat fmt = r.getContentFormat();
 
+        // QUIZ section: chỉ cho phép RICH_TEXT (để giải thích quiz)
+        if (section.getStudyType() == ContentType.QUIZ) {
+            if (fmt != ContentFormat.RICH_TEXT) {
+                throw bad("QUIZ section only allows RICH_TEXT content (for quiz explanation)");
+            }
+            // RICH_TEXT validation sẽ được xử lý ở phần dưới
+        }
+
         // mặc định ASSET nếu null
         if (fmt == null || fmt == ContentFormat.ASSET) {
             // ASSET: require filePath
@@ -949,6 +957,17 @@ public class CourseService {
                     .count();
             if (primary < 1) {
                 throw bad("KANJI section requires at least ONE primary content (video or doc)");
+            }
+
+        } else if (s.getStudyType() == ContentType.QUIZ) {
+            // QUIZ section must have a quiz
+            Optional<Quiz> quizOpt = quizRepo.findBySection_Id(s.getId());
+            if (quizOpt.isEmpty() || quizOpt.get().getDeletedFlag() == Boolean.TRUE) {
+                throw bad("QUIZ section must have a quiz");
+            }
+            Quiz quiz = quizOpt.get();
+            if (quiz.getTotalQuestions() == null || quiz.getTotalQuestions() < 1) {
+                throw bad("QUIZ section must have at least one question");
             }
         }
     }
