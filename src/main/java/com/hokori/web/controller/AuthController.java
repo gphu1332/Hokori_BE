@@ -7,7 +7,11 @@ import com.hokori.web.dto.auth.FirebaseAuthRequest;
 import com.hokori.web.dto.auth.RegisterRequest;
 import com.hokori.web.dto.auth.RegisterLearnerRequest;
 import com.hokori.web.dto.auth.RegisterTeacherRequest;
+import com.hokori.web.dto.auth.ForgotPasswordRequest;
+import com.hokori.web.dto.auth.VerifyOtpRequest;
+import com.hokori.web.dto.auth.ResetPasswordRequest;
 import com.hokori.web.service.AuthService;
+import com.hokori.web.service.PasswordResetService;
 import com.hokori.web.constants.RoleConstants;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +34,9 @@ public class AuthController {
 
     @Autowired
     private AuthService authService;
+    
+    @Autowired
+    private PasswordResetService passwordResetService;
 
     // ===========================
     // NEW: Register Learner
@@ -340,6 +347,120 @@ public class AuthController {
             return ResponseEntity.ok(ApiResponse.success("Current user endpoint", response));
         } catch (Exception e) {
             return ResponseEntity.ok(ApiResponse.error("Failed to get current user: " + e.getMessage()));
+        }
+    }
+
+    // ===========================
+    // Password Reset với OTP
+    // ===========================
+
+    @PostMapping("/forgot-password/request-otp")
+    @Operation(
+            summary = "Request OTP for password reset",
+            description = """
+                    Yêu cầu gửi mã OTP qua email để reset password.
+                    
+                    Request body:
+                    - emailOrPhone: Email của user (ví dụ: user@example.com)
+                    
+                    Lưu ý: Chỉ hỗ trợ reset password qua email.
+                    """
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> requestOtp(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+        try {
+            String email = request.getEmailOrPhone().trim();
+            
+            // Chỉ hỗ trợ email, không hỗ trợ phone number
+            if (!email.contains("@")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("Only email is supported for password reset. Please provide a valid email address."));
+            }
+            
+            passwordResetService.requestOtpByEmail(email);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "OTP has been sent successfully to your email");
+            response.put("method", "email");
+            
+            return ResponseEntity.ok(ApiResponse.success("OTP sent successfully", response));
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Failed to send OTP";
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Failed to send OTP: " + msg));
+        }
+    }
+
+    @PostMapping("/forgot-password/verify-otp")
+    @Operation(
+            summary = "Verify OTP code",
+            description = """
+                    Verify mã OTP đã nhận được.
+                    
+                    Request body:
+                    - emailOrPhone: Email hoặc phone number đã dùng để request OTP
+                    - otpCode: Mã OTP 6 chữ số
+                    
+                    Response sẽ trả về success nếu OTP hợp lệ.
+                    """
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> verifyOtp(
+            @Valid @RequestBody VerifyOtpRequest request) {
+        try {
+            String resetToken = passwordResetService.verifyOtp(
+                    request.getEmailOrPhone().trim(),
+                    request.getOtpCode().trim()
+            );
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "OTP verified successfully");
+            response.put("verified", true);
+            
+            return ResponseEntity.ok(ApiResponse.success("OTP verified successfully", response));
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Invalid OTP";
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error(msg));
+        }
+    }
+
+    @PostMapping("/forgot-password/reset")
+    @Operation(
+            summary = "Reset password after OTP verification",
+            description = """
+                    Đặt lại mật khẩu sau khi đã verify OTP thành công.
+                    
+                    Request body:
+                    - emailOrPhone: Email hoặc phone number
+                    - otpCode: Mã OTP đã verify (cần verify trước)
+                    - newPassword: Mật khẩu mới (tối thiểu 6 ký tự)
+                    - confirmPassword: Xác nhận mật khẩu mới
+                    
+                    Lưu ý: Phải verify OTP trước khi reset password.
+                    """
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+        try {
+            if (!request.isPasswordConfirmed()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("Password and confirmation do not match"));
+            }
+
+            passwordResetService.resetPassword(
+                    request.getEmailOrPhone().trim(),
+                    request.getOtpCode(),
+                    request.getNewPassword()
+            );
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Password reset successfully");
+            
+            return ResponseEntity.ok(ApiResponse.success("Password reset successfully", response));
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Failed to reset password";
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Failed to reset password: " + msg));
         }
     }
 }

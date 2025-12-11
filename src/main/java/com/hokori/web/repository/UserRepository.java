@@ -17,6 +17,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByFirebaseUid(String firebaseUid);
     Optional<User> findByEmail(String email);
     
+    Optional<User> findByPhoneNumber(String phoneNumber);
+    
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.role WHERE u.email = :email")
     Optional<User> findByEmailWithRole(@Param("email") String email);
     

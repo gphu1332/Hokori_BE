@@ -152,6 +152,12 @@
             <artifactId>mssql-jdbc</artifactId>
             <scope>runtime</scope>
         </dependency>
+        
+        <!-- JavaMail for sending emails -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
         <!-- H2 Database for development -->
         <dependency>
             <groupId>com.h2database</groupId>

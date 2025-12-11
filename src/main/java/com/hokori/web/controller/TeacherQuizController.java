@@ -48,8 +48,8 @@ public class TeacherQuizController {
             Mỗi lesson chỉ có 1 quiz; nếu đã có → 409.
             Fields:
             - title, description
-            - timeLimitSec (null = không giới hạn)
-            - passScorePercent [0..100]
+            - timeLimitSec: Thời gian làm bài (đơn vị: GIÂY). Ví dụ: 30 phút = 1800 giây. null = không giới hạn thời gian
+            - passScorePercent [0..100]: Điểm % tối thiểu để pass quiz
             """
     )
     @PostMapping
@@ -63,6 +63,8 @@ public class TeacherQuizController {
             summary = "Cập nhật quiz",
             description = """
             Sửa title/description/timeLimitSec/passScorePercent.
+            - timeLimitSec: Thời gian làm bài (đơn vị: GIÂY). Ví dụ: 30 phút = 1800 giây. null = không giới hạn
+            - passScorePercent: Điểm % tối thiểu để pass quiz [0..100]
             404 nếu quiz không thuộc lessonId.
             """
     )
