@@ -27,6 +27,8 @@ public class LearnerQuizService {
     private final QuestionRepository questionRepo;
     private final OptionRepository optionRepo;
     private final LearnerProgressService learnerProgressService;
+    private final SectionRepository sectionRepo;
+    private final SectionsContentRepository contentRepo;
 
     /**
      * Helper method to check enrollment and get courseId from lessonId.
@@ -235,7 +237,85 @@ public class LearnerQuizService {
         a.setStatus(QuizAttempt.Status.SUBMITTED);
         attemptRepo.save(a);
 
+        // Auto-mark last trackable content in lesson as completed when quiz is submitted AND passed
+        // This makes quiz completion count towards progress % only if learner achieves pass score
+        if (lesson != null) {
+            try {
+                markLastContentCompleteForQuiz(lesson.getId(), userId, quiz, score);
+            } catch (Exception e) {
+                // Log error but don't fail quiz submission
+                // Quiz submission should succeed even if progress update fails
+                System.err.println("Failed to mark content complete after quiz submission: " + e.getMessage());
+            }
+        }
+
         return toDto(a, a.getQuiz().getTitle());
+    }
+    
+    /**
+     * Mark the last trackable content in lesson as completed when quiz is submitted AND passed.
+     * This makes quiz completion count towards progress percentage only if learner achieves pass score.
+     * 
+     * @param lessonId The lesson ID
+     * @param userId The user ID
+     * @param quiz The quiz entity (to check passScorePercent)
+     * @param score The score achieved by the learner (0-100)
+     */
+    private void markLastContentCompleteForQuiz(Long lessonId, Long userId, Quiz quiz, int score) {
+        // Check if quiz has pass score requirement
+        Integer passScorePercent = quiz.getPassScorePercent();
+        
+        // If pass score is set, learner must achieve it to count towards progress
+        if (passScorePercent != null && score < passScorePercent) {
+            // Learner didn't pass, don't mark content as completed
+            return;
+        }
+        
+        // If passScorePercent is null, we consider it as no requirement (always pass)
+        // Or if score >= passScorePercent, proceed to mark content complete
+        // Get courseId and check if lesson belongs to trial chapter
+        Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
+                .orElseThrow(() -> new EntityNotFoundException("Lesson not found"));
+        
+        Long chapterId = lessonRepo.findChapterIdByLessonId(lessonId)
+                .orElseThrow(() -> new EntityNotFoundException("Chapter not found for lesson"));
+        
+        Chapter chapter = chapterRepo.findById(chapterId)
+                .orElseThrow(() -> new EntityNotFoundException("Chapter not found"));
+        
+        // Skip if trial chapter (trial chapters don't count towards progress)
+        if (Boolean.TRUE.equals(chapter.isTrial())) {
+            return;
+        }
+        
+        // Check enrollment
+        if (!enrollRepo.existsByUserIdAndCourseId(userId, courseId)) {
+            return; // Not enrolled, skip
+        }
+        
+        // Get all trackable contents in lesson, ordered by orderIndex descending
+        List<SectionsContent> contents = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId).stream()
+                .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
+                .filter(c -> Boolean.TRUE.equals(c.getIsTrackable()))
+                .sorted((c1, c2) -> Integer.compare(
+                        c2.getOrderIndex() != null ? c2.getOrderIndex() : 0,
+                        c1.getOrderIndex() != null ? c1.getOrderIndex() : 0
+                ))
+                .collect(java.util.stream.Collectors.toList());
+        
+        // Mark the last content (highest orderIndex) as completed
+        if (!contents.isEmpty()) {
+            SectionsContent lastContent = contents.get(0);
+            Long contentId = lastContent.getId();
+            
+            // Use LearnerProgressService to update content progress
+            // This will automatically recompute course percent
+            com.hokori.web.dto.progress.ContentProgressUpsertReq req = 
+                    new com.hokori.web.dto.progress.ContentProgressUpsertReq();
+            req.setIsCompleted(true);
+            
+            learnerProgressService.updateContentProgress(userId, contentId, req);
+        }
     }
 
     @Transactional(readOnly = true)
