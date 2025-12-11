@@ -78,7 +78,7 @@ public class SentenceAnalysisService {
         logger.info("Analyzing sentence: sentenceLength={}, level={}", sentence.length(), normalizedLevel);
 
         try {
-            // Step 0: Detect language and translate if Vietnamese
+            // Step 0: Detect language and translate if Vietnamese (only support Vietnamese ↔ Japanese)
             String japaneseSentence = sentence;
             String originalSentence = null;
             boolean isTranslated = false;
@@ -87,7 +87,15 @@ public class SentenceAnalysisService {
             String detectedLanguage = detectLanguage(sentence);
             logger.info("Detected language: {}", detectedLanguage);
             
+            // Only support Vietnamese and Japanese - reject other languages
+            if (!"vi".equals(detectedLanguage) && !"ja".equals(detectedLanguage)) {
+                throw new AIServiceException("Sentence Analysis",
+                    "Chỉ hỗ trợ tiếng Việt và tiếng Nhật. Vui lòng nhập câu tiếng Việt hoặc tiếng Nhật.",
+                    "UNSUPPORTED_LANGUAGE");
+            }
+            
             if ("vi".equals(detectedLanguage)) {
+                // Input is Vietnamese → Translate to Japanese
                 logger.info("Vietnamese detected! Translating to Japanese for level: {}", normalizedLevel);
                 originalSentence = sentence;
                 try {
@@ -95,14 +103,13 @@ public class SentenceAnalysisService {
                     isTranslated = true;
                     logger.info("✅ Successfully translated Vietnamese to Japanese: '{}' -> '{}'", originalSentence, japaneseSentence);
                 } catch (Exception e) {
-                    logger.error("❌ Translation failed, using original sentence: {}", e.getMessage(), e);
-                    // If translation fails, keep original sentence but mark as not translated
-                    isTranslated = false;
-                    originalSentence = null;
-                    // Still proceed with analysis (might be mixed language or translation error)
+                    logger.error("❌ Translation failed: {}", e.getMessage(), e);
+                    throw new AIServiceException("Sentence Analysis",
+                        "Không thể dịch câu tiếng Việt sang tiếng Nhật: " + e.getMessage(), e);
                 }
             } else {
-                logger.info("Input is not Vietnamese (detected: {}), proceeding with Japanese analysis", detectedLanguage);
+                // Input is Japanese → Use directly (no translation needed)
+                logger.info("Japanese detected! Proceeding with analysis");
             }
 
             // Step 1: Analyze vocabulary
@@ -676,25 +683,34 @@ public class SentenceAnalysisService {
 
         String normalizedText = text.toLowerCase().trim();
 
-        // Priority 1: If AIService is available, use Google Translate API to detect language
+        // Priority 1: Check for Japanese characters FIRST (most reliable indicator)
+        // This must come BEFORE Google Translate API to avoid false positives
+        boolean hasJapanese = text.matches(".*[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF].*");
+        if (hasJapanese) {
+            logger.debug("Detected Japanese by character check - skipping translation API");
+            return "ja";
+        }
+
+        // Priority 2: If AIService is available and no Japanese characters, use Google Translate API to detect language
+        // This helps distinguish Vietnamese from English and other languages
         if (aiService != null && googleCloudEnabled) {
             try {
                 Map<String, Object> translationResult = aiService.translateText(text, null, "ja");
                 String detectedLang = (String) translationResult.get("detectedSourceLanguage");
                 if (detectedLang != null && !detectedLang.isEmpty()) {
                     logger.info("Detected language using Translation API: {}", detectedLang);
-                    return detectedLang;
+                    // Only accept Vietnamese or Japanese - reject other languages
+                    if ("vi".equals(detectedLang) || "ja".equals(detectedLang)) {
+                        return detectedLang;
+                    } else {
+                        // Reject English and other languages
+                        logger.warn("Unsupported language detected: {} (only Vietnamese and Japanese are supported)", detectedLang);
+                        return "unsupported";
+                    }
                 }
             } catch (Exception e) {
                 logger.warn("Failed to detect language using Translation API, falling back to heuristic: {}", e.getMessage());
             }
-        }
-
-        // Priority 2: Check for Japanese characters (Hiragana, Katakana, Kanji)
-        boolean hasJapanese = text.matches(".*[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF].*");
-        if (hasJapanese) {
-            logger.debug("Detected Japanese by character check");
-            return "ja";
         }
 
         // Priority 3: Check for Vietnamese characters (with diacritics)
@@ -706,15 +722,30 @@ public class SentenceAnalysisService {
 
         // Priority 4: Check for common Vietnamese words (with or without diacritics)
         // Common Vietnamese words/phrases that indicate Vietnamese language
+        // Expanded list to better detect Vietnamese without diacritics
         String[] vietnameseIndicators = {
+            // Pronouns
             "toi", "tôi", "tui", "minh", "mình", "ban", "bạn", "anh", "chi", "chị", "em", "co", "cô", "ong", "ông", "ba", "bà",
+            "chung", "chúng", "ta", "chung ta", "chúng ta", "may", "mày", "no", "nó", "ho", "họ",
+            // Verbs - common actions
             "dang", "đang", "se", "sẽ", "da", "đã", "sap", "sắp", "vua", "vừa",
-            "la", "là", "lam", "làm", "hoc", "học", "hoc", "học", "doc", "đọc", "viet", "viết", "noi", "nói", "nghe", "xem",
+            "la", "là", "lam", "làm", "hoc", "học", "doc", "đọc", "viet", "viết", "noi", "nói", "nghe", "xem",
+            "di", "đi", "den", "đến", "ve", "về", "o", "ở", "co", "có", "khong", "không",
+            "an", "ăn", "uong", "uống", "ngu", "ngủ", "thuc", "thức", "day", "dậy",
+            // Nouns - common topics
             "tieng", "tiếng", "nhat", "nhật", "viet", "việt", "anh", "anh", "phap", "pháp", "han", "hàn",
+            "nguoi", "người", "nha", "nhà", "truong", "trường", "lop", "lớp", "ban", "bạn", "thay", "thầy", "co", "cô",
+            // Prepositions/Conjunctions
             "cua", "của", "voi", "với", "va", "và", "hoac", "hoặc", "neu", "nếu", "thi", "thì",
+            "trong", "ngoai", "ngoài", "tren", "trên", "duoi", "dưới", "truoc", "trước", "sau",
+            // Numbers
             "mot", "một", "hai", "ba", "bon", "bốn", "nam", "năm", "sau", "sáu", "bay", "bảy", "tam", "tám", "chin", "chín", "muoi", "mười",
+            // Time words
             "ngay", "ngày", "thang", "tháng", "nam", "năm", "gio", "giờ", "phut", "phút", "giay", "giây",
-            "hom", "hôm", "nay", "nay", "mai", "ngay", "ngày", "qua", "qua"
+            "hom", "hôm", "nay", "nay", "mai", "ngay mai", "ngày mai", "qua", "qua", "sang", "sáng", "trua", "trưa", "chieu", "chiều", "toi", "tối",
+            // Common phrases
+            "xin chao", "xin chào", "cam on", "cảm ơn", "xin loi", "xin lỗi", "khong sao", "không sao",
+            "rat", "rất", "rat la", "rất là", "cung", "cũng", "rat tot", "rất tốt"
         };
 
         for (String indicator : vietnameseIndicators) {
@@ -752,14 +783,30 @@ public class SentenceAnalysisService {
             }
         }
 
-        // Default: If no clear indicators and no Japanese characters, assume Vietnamese
-        // (since this is for Vietnamese users learning Japanese, they're more likely to input Vietnamese)
+        // Default: If no clear indicators and no Japanese characters, check if it looks like Vietnamese
+        // Only assume Vietnamese if there are clear Vietnamese indicators (words, patterns)
+        // If no Vietnamese indicators found, reject as unsupported (likely English or other language)
         if (!hasJapanese) {
-            logger.info("No clear language indicators, assuming Vietnamese (for Vietnamese users learning Japanese)");
-            return "vi";
+            // Check if text contains any Vietnamese-like words or patterns
+            boolean hasVietnameseWords = false;
+            for (String indicator : vietnameseIndicators) {
+                if (normalizedText.contains(indicator)) {
+                    hasVietnameseWords = true;
+                    break;
+                }
+            }
+            
+            if (hasVietnameseWords) {
+                logger.info("No Japanese characters but has Vietnamese words, assuming Vietnamese");
+                return "vi";
+            } else {
+                // If no clear indicators and no Vietnamese words, likely English or unsupported language
+                logger.warn("No clear Vietnamese or Japanese indicators found - likely unsupported language (e.g., English)");
+                return "unsupported";
+            }
         }
 
-        // Final fallback: assume Japanese
+        // Final fallback: assume Japanese (should not reach here if hasJapanese is true)
         logger.warn("Could not detect language, defaulting to Japanese");
         return "ja";
     }
@@ -785,7 +832,27 @@ public class SentenceAnalysisService {
         try {
             logger.debug("Parsing Gemini translation response...");
             Map<String, Object> responseMap = objectMapper.readValue(jsonResponse, new TypeReference<Map<String, Object>>() {});
-            String translatedSentence = (String) responseMap.get("japanese_sentence");
+            Object japaneseSentenceObj = responseMap.get("japanese_sentence");
+            
+            // Handle case where Gemini returns Map instead of String
+            String translatedSentence = null;
+            if (japaneseSentenceObj instanceof String) {
+                translatedSentence = (String) japaneseSentenceObj;
+            } else if (japaneseSentenceObj instanceof Map) {
+                // If it's a Map, try to extract text from it
+                @SuppressWarnings("unchecked")
+                Map<String, Object> sentenceMap = (Map<String, Object>) japaneseSentenceObj;
+                Object textObj = sentenceMap.get("text") != null ? sentenceMap.get("text") : 
+                                sentenceMap.get("sentence") != null ? sentenceMap.get("sentence") :
+                                sentenceMap.values().stream().findFirst().orElse(null);
+                if (textObj instanceof String) {
+                    translatedSentence = (String) textObj;
+                } else if (textObj != null) {
+                    translatedSentence = textObj.toString();
+                }
+            } else if (japaneseSentenceObj != null) {
+                translatedSentence = japaneseSentenceObj.toString();
+            }
             
             if (translatedSentence == null || translatedSentence.trim().isEmpty()) {
                 logger.warn("⚠️ Gemini translation returned empty result, falling back to Google Translate");
