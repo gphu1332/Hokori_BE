@@ -26,18 +26,6 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
     Optional<PasswordResetOtp> findLatestValidByEmail(@Param("email") String email, @Param("now") LocalDateTime now);
 
     /**
-     * Tìm OTP chưa hết hạn và chưa sử dụng theo phone number
-     */
-    @Query("""
-            SELECT o FROM PasswordResetOtp o
-            WHERE o.phoneNumber = :phoneNumber
-            AND o.isUsed = false
-            AND o.expiresAt > :now
-            ORDER BY o.createdAt DESC
-            """)
-    Optional<PasswordResetOtp> findLatestValidByPhoneNumber(@Param("phoneNumber") String phoneNumber, @Param("now") LocalDateTime now);
-
-    /**
      * Đánh dấu OTP đã sử dụng
      */
     @Modifying

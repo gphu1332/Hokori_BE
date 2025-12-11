@@ -398,7 +398,7 @@ public class AuthController {
                     Verify mã OTP đã nhận được.
                     
                     Request body:
-                    - emailOrPhone: Email hoặc phone number đã dùng để request OTP
+                    - emailOrPhone: Email đã dùng để request OTP
                     - otpCode: Mã OTP 6 chữ số
                     
                     Response sẽ trả về success nếu OTP hợp lệ.
@@ -407,8 +407,16 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> verifyOtp(
             @Valid @RequestBody VerifyOtpRequest request) {
         try {
+            String email = request.getEmailOrPhone().trim();
+            
+            // Chỉ hỗ trợ email
+            if (!email.contains("@")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("Only email is supported. Please provide a valid email address."));
+            }
+            
             String resetToken = passwordResetService.verifyOtp(
-                    request.getEmailOrPhone().trim(),
+                    email,
                     request.getOtpCode().trim()
             );
 
@@ -431,7 +439,7 @@ public class AuthController {
                     Đặt lại mật khẩu sau khi đã verify OTP thành công.
                     
                     Request body:
-                    - emailOrPhone: Email hoặc phone number
+                    - emailOrPhone: Email của user
                     - otpCode: Mã OTP đã verify (cần verify trước)
                     - newPassword: Mật khẩu mới (tối thiểu 6 ký tự)
                     - confirmPassword: Xác nhận mật khẩu mới
@@ -447,8 +455,16 @@ public class AuthController {
                         .body(ApiResponse.error("Password and confirmation do not match"));
             }
 
+            String email = request.getEmailOrPhone().trim();
+            
+            // Chỉ hỗ trợ email
+            if (!email.contains("@")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("Only email is supported. Please provide a valid email address."));
+            }
+
             passwordResetService.resetPassword(
-                    request.getEmailOrPhone().trim(),
+                    email,
                     request.getOtpCode(),
                     request.getNewPassword()
             );

@@ -7,14 +7,13 @@ import java.time.LocalDateTime;
 
 /**
  * Entity để lưu mã OTP cho password reset
- * Hỗ trợ cả email và phone number
+ * Chỉ hỗ trợ email
  */
 @Data
 @Entity
 @Table(name = "password_reset_otp",
         indexes = {
                 @Index(name = "idx_otp_email", columnList = "email"),
-                @Index(name = "idx_otp_phone", columnList = "phone_number"),
                 @Index(name = "idx_otp_code", columnList = "otp_code")
         })
 public class PasswordResetOtp {
@@ -24,16 +23,10 @@ public class PasswordResetOtp {
     private Long id;
 
     /**
-     * Email của user (nếu reset qua email)
+     * Email của user để reset password
      */
-    @Column(name = "email", length = 255)
+    @Column(name = "email", length = 255, nullable = false)
     private String email;
-
-    /**
-     * Số điện thoại của user (nếu reset qua SMS)
-     */
-    @Column(name = "phone_number", length = 20)
-    private String phoneNumber;
 
     /**
      * Mã OTP (6 chữ số)

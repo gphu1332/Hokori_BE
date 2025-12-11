@@ -28,7 +28,6 @@ public class PasswordResetService {
     private final UserRepository userRepository;
     private final PasswordResetOtpRepository otpRepository;
     private final EmailService emailService;
-    private final SmsService smsService;
     private final PasswordEncoder passwordEncoder;
 
     private static final int OTP_LENGTH = 6;
@@ -72,56 +71,13 @@ public class PasswordResetService {
     }
 
     /**
-     * Tạo và gửi OTP qua SMS
-     */
-    public void requestOtpByPhone(String phoneNumber) {
-        // Kiểm tra user tồn tại
-        Optional<User> userOpt = userRepository.findByPhoneNumber(phoneNumber);
-        if (userOpt.isEmpty()) {
-            // Không tiết lộ user không tồn tại (security best practice)
-            log.warn("Password reset requested for non-existent phone: {}", phoneNumber);
-            return; // Return success để không tiết lộ thông tin
-        }
-
-        User user = userOpt.get();
-        if (Boolean.FALSE.equals(user.getIsActive())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is deactivated");
-        }
-
-        // Tạo OTP
-        String otpCode = generateOtp();
-        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
-
-        // Lưu OTP vào database
-        PasswordResetOtp otp = new PasswordResetOtp();
-        otp.setPhoneNumber(phoneNumber);
-        otp.setOtpCode(otpCode);
-        otp.setExpiresAt(expiresAt);
-        otp.setIsUsed(false);
-        otp.setFailedAttempts(0);
-        otpRepository.save(otp);
-
-        // Gửi SMS
-        smsService.sendOtpSms(phoneNumber, otpCode);
-
-        log.info("OTP requested for phone: {}", phoneNumber);
-    }
-
-    /**
      * Verify OTP và trả về token để reset password
      */
-    public String verifyOtp(String emailOrPhone, String otpCode) {
+    public String verifyOtp(String email, String otpCode) {
         LocalDateTime now = LocalDateTime.now();
 
-        // Tìm OTP hợp lệ
-        Optional<PasswordResetOtp> otpOpt;
-        if (emailOrPhone.contains("@")) {
-            // Email
-            otpOpt = otpRepository.findLatestValidByEmail(emailOrPhone, now);
-        } else {
-            // Phone number
-            otpOpt = otpRepository.findLatestValidByPhoneNumber(emailOrPhone, now);
-        }
+        // Tìm OTP hợp lệ theo email
+        Optional<PasswordResetOtp> otpOpt = otpRepository.findLatestValidByEmail(email, now);
 
         if (otpOpt.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired OTP");
@@ -143,26 +99,20 @@ public class PasswordResetService {
         // Đánh dấu OTP đã sử dụng
         otpRepository.markAsUsed(otp.getId());
 
-        // Tạo reset token (có thể dùng JWT hoặc random string)
-        // Đơn giản: return email/phone để dùng trong reset password
-        return emailOrPhone;
+        // Return email để dùng trong reset password
+        return email;
     }
 
     /**
      * Reset password sau khi verify OTP thành công
      * Cần verify OTP trước khi gọi method này
      */
-    public void resetPassword(String emailOrPhone, String otpCode, String newPassword) {
+    public void resetPassword(String email, String otpCode, String newPassword) {
         // Verify OTP trước khi reset password
-        verifyOtp(emailOrPhone, otpCode);
+        verifyOtp(email, otpCode);
         
-        // Tìm user
-        Optional<User> userOpt;
-        if (emailOrPhone.contains("@")) {
-            userOpt = userRepository.findByEmail(emailOrPhone);
-        } else {
-            userOpt = userRepository.findByPhoneNumber(emailOrPhone);
-        }
+        // Tìm user theo email
+        Optional<User> userOpt = userRepository.findByEmail(email);
 
         if (userOpt.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
@@ -174,7 +124,7 @@ public class PasswordResetService {
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
 
-        log.info("Password reset successful for: {}", emailOrPhone);
+        log.info("Password reset successful for: {}", email);
     }
 
     /**
