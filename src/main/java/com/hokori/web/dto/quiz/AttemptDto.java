@@ -10,6 +10,8 @@ public record AttemptDto(
         Integer totalQuestions,
         Integer correctCount,
         Integer scorePercent,
+        Integer passScorePercent,  // Điểm % tối thiểu để pass (null = không yêu cầu)
+        Boolean passed,            // true = đã pass, false = chưa pass, null = chưa có passScorePercent
         LocalDateTime startedAt,
         LocalDateTime submittedAt
 ) {}
