@@ -18,6 +18,9 @@ public class SentenceAnalysisResponse {
     @Schema(description = "Whether the sentence was translated from Vietnamese", example = "true")
     private Boolean isTranslated; // Whether the sentence was translated from Vietnamese
     
+    @Schema(description = "Vietnamese translation of the Japanese sentence (if input was Japanese)", example = "Tôi đang học tiếng Nhật")
+    private String vietnameseTranslation; // Vietnamese translation (if input was Japanese)
+    
     @Schema(description = "User's JLPT level", example = "N5")
     private String level; // User's JLPT level
     
@@ -104,6 +107,14 @@ public class SentenceAnalysisResponse {
 
     public void setIsTranslated(Boolean isTranslated) {
         this.isTranslated = isTranslated;
+    }
+
+    public String getVietnameseTranslation() {
+        return vietnameseTranslation;
+    }
+
+    public void setVietnameseTranslation(String vietnameseTranslation) {
+        this.vietnameseTranslation = vietnameseTranslation;
     }
 
     /**

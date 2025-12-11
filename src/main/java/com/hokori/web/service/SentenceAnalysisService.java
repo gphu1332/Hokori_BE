@@ -78,9 +78,10 @@ public class SentenceAnalysisService {
         logger.info("Analyzing sentence: sentenceLength={}, level={}", sentence.length(), normalizedLevel);
 
         try {
-            // Step 0: Detect language and translate if Vietnamese (only support Vietnamese ↔ Japanese)
+            // Step 0: Detect language and translate accordingly
             String japaneseSentence = sentence;
             String originalSentence = null;
+            String vietnameseTranslation = null;
             boolean isTranslated = false;
             
             logger.info("Detecting language for input: '{}'", sentence);
@@ -108,11 +109,21 @@ public class SentenceAnalysisService {
                         "Không thể dịch câu tiếng Việt sang tiếng Nhật: " + e.getMessage(), e);
                 }
             } else {
-                // Input is Japanese → Use directly (no translation needed)
-                logger.info("Japanese detected! Proceeding with analysis");
+                // Input is Japanese → Translate to Vietnamese for display
+                // May contain Latin characters (e.g., "JLPT", "N5", abbreviations) - that's OK
+                logger.info("Japanese detected! Translating to Vietnamese for better understanding");
+                try {
+                    vietnameseTranslation = translateJapaneseToVietnamese(japaneseSentence);
+                    logger.info("✅ Successfully translated Japanese to Vietnamese: '{}' -> '{}'", japaneseSentence, vietnameseTranslation);
+                } catch (Exception e) {
+                    logger.warn("⚠️ Failed to translate Japanese to Vietnamese (non-critical): {}", e.getMessage());
+                    // Translation to Vietnamese is optional, continue without it
+                    vietnameseTranslation = null;
+                }
             }
 
-            // Step 1: Analyze vocabulary
+            // Step 1: Analyze vocabulary (handles mixed Japanese + Latin characters)
+            // Note: Latin characters like "JLPT", "N5" are common in Japanese learning context
             List<VocabularyItem> vocabulary = analyzeVocabulary(japaneseSentence, normalizedLevel);
 
             // Step 2: Analyze grammar
@@ -129,6 +140,7 @@ public class SentenceAnalysisService {
             response.setSentence(japaneseSentence);
             response.setOriginalSentence(isTranslated ? originalSentence : null);
             response.setIsTranslated(isTranslated);
+            response.setVietnameseTranslation(vietnameseTranslation);
             response.setLevel(normalizedLevel);
             response.setVocabulary(vocabulary);
             response.setGrammar(grammar);
@@ -685,9 +697,11 @@ public class SentenceAnalysisService {
 
         // Priority 1: Check for Japanese characters FIRST (most reliable indicator)
         // This must come BEFORE Google Translate API to avoid false positives
+        // If text contains Japanese characters, it's Japanese (even if mixed with Latin characters)
+        // Common cases: "ありがとうございますHI" (typo/spam) or "私は JLPT の試験..." (common abbreviations)
         boolean hasJapanese = text.matches(".*[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF].*");
         if (hasJapanese) {
-            logger.debug("Detected Japanese by character check - skipping translation API");
+            logger.debug("Detected Japanese by character check (may contain Latin characters like JLPT, N5, etc.)");
             return "ja";
         }
 
@@ -893,6 +907,33 @@ public class SentenceAnalysisService {
             "}\n\n" +
             "Return ONLY valid JSON, no additional text",
             vietnameseSentence, level, level, level);
+    }
+
+    /**
+     * Translate Japanese sentence to Vietnamese
+     * Uses Google Translate API (simpler than Vietnamese→Japanese, no level consideration needed)
+     */
+    private String translateJapaneseToVietnamese(String japaneseSentence) {
+        if (aiService == null || !googleCloudEnabled) {
+            logger.warn("Translation service not available for Japanese→Vietnamese translation");
+            return null; // Return null instead of throwing exception (non-critical)
+        }
+
+        try {
+            logger.info("Translating Japanese to Vietnamese: '{}'", japaneseSentence);
+            Map<String, Object> translationResult = aiService.translateText(japaneseSentence, "ja", "vi");
+            String translatedText = (String) translationResult.get("translatedText");
+            if (translatedText == null || translatedText.trim().isEmpty()) {
+                logger.warn("Google Translate returned empty result for Japanese→Vietnamese");
+                return null;
+            }
+            String result = translatedText.trim();
+            logger.info("✅ Japanese→Vietnamese translation successful: '{}' -> '{}'", japaneseSentence, result);
+            return result;
+        } catch (Exception e) {
+            logger.warn("Failed to translate Japanese to Vietnamese (non-critical): {}", e.getMessage());
+            return null; // Return null instead of throwing exception (non-critical)
+        }
     }
 
     /**
