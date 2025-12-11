@@ -117,6 +117,24 @@ public class UserProfileController {
                 currentUser.setPhoneNumber(profileData.getPhoneNumber());
             }
             
+            // Update email if provided (with validation)
+            if (profileData.getEmail() != null && !profileData.getEmail().isBlank()) {
+                String newEmail = profileData.getEmail().trim().toLowerCase();
+                
+                // Check if email is different from current email
+                if (!newEmail.equals(currentUser.getEmail())) {
+                    // Check if email already exists (excluding current user)
+                    if (userRepository.findByEmail(newEmail).isPresent()) {
+                        return ResponseEntity.ok(ApiResponse.error("Email already exists"));
+                    }
+                    
+                    // Update email and set isVerified to false (user needs to verify new email)
+                    currentUser.setEmail(newEmail);
+                    currentUser.setIsVerified(false);
+                    // Note: In production, you might want to send verification email here
+                }
+            }
+            
             userService.updateUser(currentUser);
             
             // Use native query to avoid LOB stream error when returning response

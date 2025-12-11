@@ -130,17 +130,25 @@ public class FlashcardSetService {
     }
 
 
+    @Transactional
     public FlashcardSet updateSet(Long setId,
                                   String title,
                                   String description,
                                   String level) {
         FlashcardSet set = getSetOrThrow(setId);
-        set.setTitle(title);
-        set.setDescription(description);
-        set.setLevel(level);
-        return set; // entity managed, auto flush
+        if (title != null) {
+            set.setTitle(title);
+        }
+        if (description != null) {
+            set.setDescription(description);
+        }
+        if (level != null) {
+            set.setLevel(level);
+        }
+        return setRepo.save(set); // Save to persist changes
     }
 
+    @Transactional
     public Flashcard updateCardInSet(Long setId,
                                      Long cardId,
                                      String frontText,
@@ -158,13 +166,26 @@ public class FlashcardSetService {
             throw new IllegalArgumentException("Flashcard does not belong to this set");
         }
 
-        card.setFrontText(frontText);
-        card.setBackText(backText);
-        card.setReading(reading);
-        card.setExampleSentence(exampleSentence);
-        card.setOrderIndex(orderIndex);
+        if (frontText != null) {
+            card.setFrontText(frontText);
+        }
+        if (backText != null) {
+            card.setBackText(backText);
+        }
+        if (reading != null) {
+            card.setReading(reading);
+        }
+        if (exampleSentence != null) {
+            card.setExampleSentence(exampleSentence);
+        }
+        if (orderIndex != null) {
+            card.setOrderIndex(orderIndex);
+        }
 
-        return card;
+        Flashcard saved = cardRepo.save(card);
+        // Reload with eager fetching to avoid LazyInitializationException when serializing response
+        return cardRepo.findByIdWithSetAndCreatedBy(saved.getId())
+                .orElse(saved);
     }
 
     @Transactional
@@ -298,6 +319,5 @@ public class FlashcardSetService {
         }
 
         return progressRepo.save(p);
-    }
     }
 }
