@@ -48,6 +48,9 @@ public class AIPackage extends BaseEntity {
     @Column(name = "pronun_quota")
     private Integer pronunQuota;  // null = unlimited
 
+    @Column(name = "conversation_quota")
+    private Integer conversationQuota;  // null = unlimited
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 

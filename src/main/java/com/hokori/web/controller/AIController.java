@@ -9,12 +9,16 @@ import com.hokori.web.dto.TextToSpeechRequest;
 import com.hokori.web.dto.KaiwaPracticeRequest;
 import com.hokori.web.dto.SentenceAnalysisRequest;
 import com.hokori.web.dto.SentenceAnalysisResponse;
+import com.hokori.web.dto.ConversationStartRequest;
+import com.hokori.web.dto.ConversationRespondRequest;
+import com.hokori.web.dto.ConversationEndRequest;
 import com.hokori.web.service.AIService;
 import com.hokori.web.service.SpeakingPracticeService;
 import com.hokori.web.service.KaiwaSentenceService;
 import com.hokori.web.service.SentenceAnalysisService;
 import com.hokori.web.service.AIPackageService;
 import com.hokori.web.service.CurrentUserService;
+import com.hokori.web.service.ConversationPracticeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -58,6 +62,9 @@ public class AIController {
     
     @Autowired(required = false)
     private CurrentUserService currentUserService;
+    
+    @Autowired(required = false)
+    private ConversationPracticeService conversationPracticeService;
 
     @PostMapping("/translate")
     @Operation(
@@ -788,5 +795,192 @@ public class AIController {
         String upperLevel = level.toUpperCase();
         return upperLevel.equals("N5") || upperLevel.equals("N4") || 
                upperLevel.equals("N3") || upperLevel.equals("N2") || upperLevel.equals("N1");
+    }
+
+    // =================================================================================
+    // CONVERSATION PRACTICE ENDPOINTS
+    // =================================================================================
+
+    @PostMapping("/conversation/start")
+    @Operation(
+        summary = "Start conversation practice session",
+        description = "Start a new conversation practice session. AI will ask the first question based on scenario and level.",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Level and scenario for conversation practice",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ConversationStartRequest.class),
+                examples = @ExampleObject(
+                    name = "Example Request",
+                    value = "{\n" +
+                            "  \"level\": \"N5\",\n" +
+                            "  \"scenario\": \"restaurant\"\n" +
+                            "}"
+                )
+            )
+        ),
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Conversation started successfully",
+                content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(
+                        name = "Success Response",
+                        value = "{\n" +
+                                "  \"success\": true,\n" +
+                                "  \"message\": \"Conversation started\",\n" +
+                                "  \"data\": {\n" +
+                                "    \"conversationId\": \"conv-abc123\",\n" +
+                                "    \"level\": \"N5\",\n" +
+                                "    \"scenario\": \"restaurant\",\n" +
+                                "    \"aiQuestion\": \"こんにちは、いらっしゃいませ\",\n" +
+                                "    \"aiQuestionVi\": \"Xin chào, chào mừng quý khách\",\n" +
+                                "    \"audioUrl\": \"base64...\",\n" +
+                                "    \"conversationHistory\": [...],\n" +
+                                "    \"turnNumber\": 1,\n" +
+                                "    \"maxTurns\": 7\n" +
+                                "  }\n" +
+                                "}"
+                    )
+                )
+            )
+        }
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> startConversation(
+            @Valid @RequestBody ConversationStartRequest request) {
+        logger.info("Conversation start request: level={}, scenario={}", request.getLevel(), request.getScenario());
+        
+        try {
+            // Check quota
+            if (currentUserService != null && aiPackageService != null) {
+                Long userId = currentUserService.getUserIdOrThrow();
+                if (!aiPackageService.canUseAIService(userId, com.hokori.web.Enum.AIServiceType.CONVERSATION)) {
+                    return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                            .body(ApiResponse.error("You have used all free tier quota (5 conversations/month). Please purchase an AI package to continue using this feature."));
+                }
+            }
+            
+            if (!request.isValidLevel()) {
+                return ResponseEntity.ok(ApiResponse.error("Invalid JLPT level. Valid levels: N5, N4, N3, N2, N1"));
+            }
+            
+            if (conversationPracticeService == null) {
+                return ResponseEntity.ok(ApiResponse.error("Conversation practice service is not available"));
+            }
+            
+            Map<String, Object> result = conversationPracticeService.startConversation(
+                request.getLevel(),
+                request.getScenario()
+            );
+            
+            // Deduct quota
+            if (currentUserService != null && aiPackageService != null) {
+                Long userId = currentUserService.getUserIdOrThrow();
+                aiPackageService.useAIService(userId, com.hokori.web.Enum.AIServiceType.CONVERSATION, 1);
+            }
+            
+            logger.debug("Conversation started successfully: conversationId={}", result.get("conversationId"));
+            return ResponseEntity.ok(ApiResponse.success("Conversation started", result));
+        } catch (Exception e) {
+            logger.error("Conversation start failed", e);
+            return ResponseEntity.ok(ApiResponse.error("Conversation start failed: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/conversation/respond")
+    @Operation(
+        summary = "Respond to conversation",
+        description = "Respond to AI's question and get next question. FE maintains conversation history.",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Conversation ID, history, and user audio",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ConversationRespondRequest.class)
+            )
+        )
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> respondToConversation(
+            @Valid @RequestBody ConversationRespondRequest request) {
+        logger.info("Conversation respond request: conversationId={}, historySize={}", 
+            request.getConversationId(), 
+            request.getConversationHistory() != null ? request.getConversationHistory().size() : 0);
+        
+        try {
+            if (!request.isValidAudioFormat()) {
+                return ResponseEntity.ok(ApiResponse.error("Invalid audio format. Valid formats: wav, mp3, flac, ogg, webm"));
+            }
+            
+            if (conversationPracticeService == null) {
+                return ResponseEntity.ok(ApiResponse.error("Conversation practice service is not available"));
+            }
+            
+            String level = (request.getLevel() != null && !request.getLevel().isEmpty()) 
+                ? request.getLevel() : "N5";
+            String scenario = (request.getScenario() != null && !request.getScenario().isEmpty()) 
+                ? request.getScenario() : "greeting";
+            
+            Map<String, Object> result = conversationPracticeService.respondToConversation(
+                request.getConversationId(),
+                request.getConversationHistory(),
+                request.getAudioData(),
+                request.getAudioFormat(),
+                request.getLanguage(),
+                level,
+                scenario
+            );
+            
+            logger.debug("Conversation response processed: turnNumber={}", result.get("turnNumber"));
+            return ResponseEntity.ok(ApiResponse.success("Conversation response processed", result));
+        } catch (Exception e) {
+            logger.error("Conversation respond failed", e);
+            return ResponseEntity.ok(ApiResponse.error("Conversation respond failed: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/conversation/end")
+    @Operation(
+        summary = "End conversation and get evaluation",
+        description = "End conversation practice session and receive AI evaluation and feedback.",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Conversation ID and final history",
+            required = true,
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ConversationEndRequest.class)
+            )
+        )
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> endConversation(
+            @Valid @RequestBody ConversationEndRequest request) {
+        logger.info("Conversation end request: conversationId={}, historySize={}", 
+            request.getConversationId(),
+            request.getConversationHistory() != null ? request.getConversationHistory().size() : 0);
+        
+        try {
+            if (conversationPracticeService == null) {
+                return ResponseEntity.ok(ApiResponse.error("Conversation practice service is not available"));
+            }
+            
+            String level = (request.getLevel() != null && !request.getLevel().isEmpty()) 
+                ? request.getLevel() : "N5";
+            String scenario = (request.getScenario() != null && !request.getScenario().isEmpty()) 
+                ? request.getScenario() : "greeting";
+            
+            Map<String, Object> result = conversationPracticeService.endConversation(
+                request.getConversationId(),
+                request.getConversationHistory(),
+                level,
+                scenario
+            );
+            
+            logger.debug("Conversation ended successfully: conversationId={}", request.getConversationId());
+            return ResponseEntity.ok(ApiResponse.success("Conversation ended", result));
+        } catch (Exception e) {
+            logger.error("Conversation end failed", e);
+            return ResponseEntity.ok(ApiResponse.error("Conversation end failed: " + e.getMessage()));
+        }
     }
 }

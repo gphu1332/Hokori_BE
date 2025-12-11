@@ -222,12 +222,13 @@ public class AIPackageService {
     }
     
     /**
-     * Check free tier quota for user (10 uses per month per service type)
-     * Free tier: 10 Kaiwa, 10 Grammar, 10 Pronunciation per month
+     * Check free tier quota for user
+     * Free tier: 10 Grammar, 10 Kaiwa, 10 Pronunciation, 5 Conversation per month
      */
     private boolean checkFreeTierQuota(Long userId, AIServiceType serviceType) {
         // Free tier limits per service type
-        int freeTierLimit = 10; // 10 uses per month per service type
+        // Conversation has lower limit because it uses more API calls
+        int freeTierLimit = (serviceType == AIServiceType.CONVERSATION) ? 5 : 10;
         
         Optional<AIQuota> quotaOpt = quotaRepo.findByUser_IdAndServiceType(userId, serviceType);
         
@@ -262,6 +263,7 @@ public class AIPackageService {
             case GRAMMAR -> aiPackage.getGrammarQuota();
             case KAIWA -> aiPackage.getKaiwaQuota();
             case PRONUN -> aiPackage.getPronunQuota();
+            case CONVERSATION -> aiPackage.getConversationQuota();
         };
     }
     

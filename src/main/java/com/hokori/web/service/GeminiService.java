@@ -236,6 +236,151 @@ public class GeminiService {
     }
 
     /**
+     * Generate conversation response with history context
+     * Supports multi-turn conversations by maintaining conversation history
+     * 
+     * @param systemPrompt System prompt describing the conversation scenario and rules
+     * @param conversationHistory List of messages in format: [{"role": "user"|"ai", "text": "..."}, ...]
+     * @return AI's response text
+     */
+    public String generateConversationResponse(String systemPrompt, List<Map<String, String>> conversationHistory) {
+        return generateConversationResponseWithRetry(systemPrompt, conversationHistory, 3);
+    }
+
+    /**
+     * Generate conversation response with retry logic
+     */
+    private String generateConversationResponseWithRetry(String systemPrompt, List<Map<String, String>> conversationHistory, int maxRetries) {
+        if (!googleCloudEnabled) {
+            throw new RuntimeException("Google Cloud AI is not enabled");
+        }
+
+        int retryCount = 0;
+        long baseDelayMs = 7000; // 7 seconds
+
+        while (retryCount <= maxRetries) {
+            try {
+                return callGeminiConversationAPI(systemPrompt, conversationHistory);
+            } catch (IOException e) {
+                log.error("IO error calling Gemini API", e);
+                throw new RuntimeException("Failed to call Gemini API: " + e.getMessage(), e);
+            } catch (org.springframework.web.client.HttpClientErrorException e) {
+                if (e.getStatusCode() != null && e.getStatusCode().value() == 429) {
+                    if (retryCount < maxRetries) {
+                        long delayMs = baseDelayMs * (1L << retryCount);
+                        log.warn("Gemini API rate limit exceeded (429). Retrying in {}ms (attempt {}/{})", 
+                            delayMs, retryCount + 1, maxRetries + 1);
+                        try {
+                            Thread.sleep(delayMs);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException("Retry interrupted", ie);
+                        }
+                        retryCount++;
+                        continue;
+                    } else {
+                        log.error("Gemini API rate limit exceeded (429). Max retries ({}) exceeded.", maxRetries);
+                        throw new RuntimeException(
+                            "Gemini API rate limit exceeded after " + maxRetries + " retries. " +
+                            "Free tier limit: 15 requests/minute (gemini-1.5-flash). Please try again later.", e);
+                    }
+                }
+                log.error("Error calling Gemini API: HTTP {}", e.getStatusCode(), e);
+                throw new RuntimeException("Failed to call Gemini API: " + e.getMessage(), e);
+            } catch (Exception e) {
+                log.error("Error calling Gemini API", e);
+                throw new RuntimeException("Failed to call Gemini API: " + e.getMessage(), e);
+            }
+        }
+
+        throw new RuntimeException("Failed to call Gemini API after " + maxRetries + " retries");
+    }
+
+    /**
+     * Call Gemini API with conversation history
+     * Gemini API format: contents array with alternating user/model messages
+     */
+    private String callGeminiConversationAPI(String systemPrompt, List<Map<String, String>> conversationHistory) throws IOException {
+        String url = String.format(GEMINI_API_URL, modelName);
+        
+        if (apiKey != null && !apiKey.isEmpty()) {
+            url += "?key=" + apiKey;
+        }
+        
+        Map<String, Object> requestBody = new HashMap<>();
+        List<Map<String, Object>> contents = new ArrayList<>();
+        
+        // Build full prompt with system instructions and conversation history
+        StringBuilder fullPrompt = new StringBuilder();
+        fullPrompt.append(systemPrompt).append("\n\n");
+        
+        // Add conversation history to prompt
+        for (Map<String, String> message : conversationHistory) {
+            String role = message.get("role");
+            String text = message.get("text");
+            if ("user".equals(role)) {
+                fullPrompt.append("User: ").append(text).append("\n");
+            } else if ("ai".equals(role) || "model".equals(role)) {
+                fullPrompt.append("AI: ").append(text).append("\n");
+            }
+        }
+        
+        // Add instruction for AI to respond
+        fullPrompt.append("AI: ");
+        
+        // Create single content with full prompt
+        Map<String, Object> content = new HashMap<>();
+        List<Map<String, Object>> parts = new ArrayList<>();
+        Map<String, Object> part = new HashMap<>();
+        part.put("text", fullPrompt.toString());
+        parts.add(part);
+        content.put("parts", parts);
+        contents.add(content);
+        
+        requestBody.put("contents", contents);
+
+        // Generation config
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("temperature", 0.8); // Higher temperature for more natural conversation
+        generationConfig.put("topK", 40);
+        generationConfig.put("topP", 0.95);
+        generationConfig.put("maxOutputTokens", 1024); // Shorter responses for conversation
+        requestBody.put("generationConfig", generationConfig);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        
+        if (apiKey == null || apiKey.isEmpty()) {
+            String accessToken = getAccessToken();
+            headers.setBearerAuth(accessToken);
+        }
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+
+        log.debug("Calling Gemini Conversation API with {} messages", conversationHistory.size());
+        ResponseEntity<GeminiResponse> response = restTemplate.exchange(
+                url,
+                HttpMethod.POST,
+                request,
+                GeminiResponse.class
+        );
+
+        if (response.getBody() != null && response.getBody().getCandidates() != null 
+                && !response.getBody().getCandidates().isEmpty()) {
+            GeminiResponse.Candidate candidate = response.getBody().getCandidates().get(0);
+            if (candidate.getContent() != null && candidate.getContent().getParts() != null
+                    && !candidate.getContent().getParts().isEmpty()) {
+                String text = candidate.getContent().getParts().get(0).getText();
+                log.debug("Gemini conversation response received, length: {}", text.length());
+                return text;
+            }
+        }
+
+        log.warn("Gemini API returned empty response");
+        return null;
+    }
+
+    /**
      * Get access token from Google Cloud service account credentials
      * Uses OAuth2 scopes required for Gemini API
      * Note: Ensure Generative Language API is enabled in Google Cloud Console
