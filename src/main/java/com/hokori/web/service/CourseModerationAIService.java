@@ -330,89 +330,89 @@ public class CourseModerationAIService {
                                     }
                                 });
                     }
-                }
 
-                // Quiz
-                quizRepo.findQuizMetadataByLessonId(lesson.getId()).ifPresent(quizMetadata -> {
-                    // Validate quizMetadata array
-                    if (quizMetadata == null || quizMetadata.length == 0) {
-                        log.warn("Quiz metadata is null or empty for lesson ID: {}", lesson.getId());
-                        return;
-                    }
+                    // Quiz (now belongs to section, not lesson)
+                    quizRepo.findQuizMetadataBySectionId(section.getId()).ifPresent(quizMetadata -> {
+                        // Validate quizMetadata array
+                        if (quizMetadata == null || quizMetadata.length == 0) {
+                            log.warn("Quiz metadata is null or empty for section ID: {}", section.getId());
+                            return;
+                        }
 
-                    // Handle nested array case (PostgreSQL)
-                    Object[] actualQuizMetadata = quizMetadata;
-                    if (quizMetadata.length == 1 && quizMetadata[0] instanceof Object[]) {
-                        actualQuizMetadata = (Object[]) quizMetadata[0];
-                    }
+                        // Handle nested array case (PostgreSQL)
+                        Object[] actualQuizMetadata = quizMetadata;
+                        if (quizMetadata.length == 1 && quizMetadata[0] instanceof Object[]) {
+                            actualQuizMetadata = (Object[]) quizMetadata[0];
+                        }
 
-                    if (actualQuizMetadata.length > 2 && actualQuizMetadata[2] != null) {
-                        textBuilder.append(actualQuizMetadata[2].toString()).append(" "); // title
-                    }
-                    if (actualQuizMetadata.length > 3 && actualQuizMetadata[3] != null) {
-                        textBuilder.append(actualQuizMetadata[3].toString()).append(" "); // description
-                    }
+                        if (actualQuizMetadata.length > 2 && actualQuizMetadata[2] != null) {
+                            textBuilder.append(actualQuizMetadata[2].toString()).append(" "); // title
+                        }
+                        if (actualQuizMetadata.length > 3 && actualQuizMetadata[3] != null) {
+                            textBuilder.append(actualQuizMetadata[3].toString()).append(" "); // description
+                        }
 
-                    // Validate quizId exists
-                    if (actualQuizMetadata.length > 0 && actualQuizMetadata[0] != null) {
-                        try {
-                            Long quizId = ((Number) actualQuizMetadata[0]).longValue();
-                            
-                            // Questions
-                            List<Object[]> questions = questionRepo.findQuestionMetadataByQuizId(quizId);
-                            for (Object[] questionMeta : questions) {
-                                // Validate questionMeta array
-                                if (questionMeta == null || questionMeta.length == 0) {
-                                    log.warn("Question metadata is null or empty for quiz ID: {}", quizId);
-                                    continue;
-                                }
+                        // Validate quizId exists
+                        if (actualQuizMetadata.length > 0 && actualQuizMetadata[0] != null) {
+                            try {
+                                Long quizId = ((Number) actualQuizMetadata[0]).longValue();
+                                
+                                // Questions
+                                List<Object[]> questions = questionRepo.findQuestionMetadataByQuizId(quizId);
+                                for (Object[] questionMeta : questions) {
+                                    // Validate questionMeta array
+                                    if (questionMeta == null || questionMeta.length == 0) {
+                                        log.warn("Question metadata is null or empty for quiz ID: {}", quizId);
+                                        continue;
+                                    }
 
-                                // Handle nested array case (PostgreSQL)
-                                Object[] actualQuestionMeta = questionMeta;
-                                if (questionMeta.length == 1 && questionMeta[0] instanceof Object[]) {
-                                    actualQuestionMeta = (Object[]) questionMeta[0];
-                                }
+                                    // Handle nested array case (PostgreSQL)
+                                    Object[] actualQuestionMeta = questionMeta;
+                                    if (questionMeta.length == 1 && questionMeta[0] instanceof Object[]) {
+                                        actualQuestionMeta = (Object[]) questionMeta[0];
+                                    }
 
-                                if (actualQuestionMeta.length > 2 && actualQuestionMeta[2] != null) {
-                                    textBuilder.append(actualQuestionMeta[2].toString()).append(" "); // content
-                                }
-                                if (actualQuestionMeta.length > 4 && actualQuestionMeta[4] != null) {
-                                    textBuilder.append(actualQuestionMeta[4].toString()).append(" "); // explanation
-                                }
+                                    if (actualQuestionMeta.length > 2 && actualQuestionMeta[2] != null) {
+                                        textBuilder.append(actualQuestionMeta[2].toString()).append(" "); // content
+                                    }
+                                    if (actualQuestionMeta.length > 4 && actualQuestionMeta[4] != null) {
+                                        textBuilder.append(actualQuestionMeta[4].toString()).append(" "); // explanation
+                                    }
 
-                                // Validate questionId exists
-                                if (actualQuestionMeta.length > 0 && actualQuestionMeta[0] != null) {
-                                    try {
-                                        Long questionId = ((Number) actualQuestionMeta[0]).longValue();
-                                        
-                                        // Options
-                                        List<Object[]> options = optionRepo.findOptionMetadataByQuestionId(questionId);
-                                        for (Object[] optionMeta : options) {
-                                            // Validate optionMeta array
-                                            if (optionMeta == null || optionMeta.length == 0) {
-                                                continue;
+                                    // Validate questionId exists
+                                    if (actualQuestionMeta.length > 0 && actualQuestionMeta[0] != null) {
+                                        try {
+                                            Long questionId = ((Number) actualQuestionMeta[0]).longValue();
+                                            
+                                            // Options
+                                            List<Object[]> options = optionRepo.findOptionMetadataByQuestionId(questionId);
+                                            for (Object[] optionMeta : options) {
+                                                // Validate optionMeta array
+                                                if (optionMeta == null || optionMeta.length == 0) {
+                                                    continue;
+                                                }
+
+                                                // Handle nested array case (PostgreSQL)
+                                                Object[] actualOptionMeta = optionMeta;
+                                                if (optionMeta.length == 1 && optionMeta[0] instanceof Object[]) {
+                                                    actualOptionMeta = (Object[]) optionMeta[0];
+                                                }
+
+                                                if (actualOptionMeta.length > 2 && actualOptionMeta[2] != null) {
+                                                    textBuilder.append(actualOptionMeta[2].toString()).append(" "); // content
+                                                }
                                             }
-
-                                            // Handle nested array case (PostgreSQL)
-                                            Object[] actualOptionMeta = optionMeta;
-                                            if (optionMeta.length == 1 && optionMeta[0] instanceof Object[]) {
-                                                actualOptionMeta = (Object[]) optionMeta[0];
-                                            }
-
-                                            if (actualOptionMeta.length > 2 && actualOptionMeta[2] != null) {
-                                                textBuilder.append(actualOptionMeta[2].toString()).append(" "); // content
-                                            }
+                                        } catch (Exception e) {
+                                            log.warn("Error extracting question ID from metadata: {}", e.getMessage());
                                         }
-                                    } catch (Exception e) {
-                                        log.warn("Error extracting question ID from metadata: {}", e.getMessage());
                                     }
                                 }
+                            } catch (Exception e) {
+                                log.warn("Error extracting quiz ID from metadata: {}", e.getMessage());
                             }
-                        } catch (Exception e) {
-                            log.warn("Error extracting quiz ID from metadata: {}", e.getMessage());
                         }
-                    }
-                });
+                    });
+                }
             }
         }
 

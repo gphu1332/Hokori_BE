@@ -14,7 +14,7 @@ public class TeacherQuizMapper {
     public QuizDto toDto(Quiz q){
         return new QuizDto(
                 q.getId(),
-                q.getLesson().getId(),
+                q.getSection().getId(),
                 q.getTitle(),
                 q.getDescription(),
                 q.getTotalQuestions(),

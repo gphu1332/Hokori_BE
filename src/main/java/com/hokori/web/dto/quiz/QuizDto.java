@@ -2,7 +2,7 @@ package com.hokori.web.dto.quiz;
 
 public record QuizDto(
         Long id,
-        Long lessonId,
+        Long sectionId,
         String title,
         String description,
         Integer totalQuestions,
