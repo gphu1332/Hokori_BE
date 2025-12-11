@@ -3,10 +3,22 @@
 -- Railway/Flyway will automatically run this migration on deploy
 
 -- Step 1: Add new column section_id (nullable first)
-ALTER TABLE quizzes ADD COLUMN section_id BIGINT NULL;
+-- Handle case where Hibernate might have created it already
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'quizzes' AND column_name = 'section_id'
+    ) THEN
+        ALTER TABLE quizzes ADD COLUMN section_id BIGINT NULL;
+    ELSE
+        -- Column exists, make sure it's nullable (in case Hibernate created it as NOT NULL)
+        ALTER TABLE quizzes ALTER COLUMN section_id DROP NOT NULL;
+    END IF;
+END $$;
 
--- Step 2: Create index for section_id
-CREATE INDEX idx_quizzes_section_id ON quizzes(section_id);
+-- Step 2: Create index for section_id (if not exists)
+CREATE INDEX IF NOT EXISTS idx_quizzes_section_id ON quizzes(section_id);
 
 -- Step 3: Migrate existing data (if any)
 -- For each quiz, find the first section of its lesson and assign it
@@ -61,13 +73,29 @@ BEGIN
     END IF;
 END $$;
 
--- Step 4: Add foreign key constraint for section_id
-ALTER TABLE quizzes
-ADD CONSTRAINT fk_quizzes_section
-FOREIGN KEY (section_id) REFERENCES sections(id);
+-- Step 4: Add foreign key constraint for section_id (if not exists)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'fk_quizzes_section' AND table_name = 'quizzes'
+    ) THEN
+        ALTER TABLE quizzes
+        ADD CONSTRAINT fk_quizzes_section
+        FOREIGN KEY (section_id) REFERENCES sections(id);
+    END IF;
+END $$;
 
 -- Step 5: Make section_id NOT NULL (after data migration)
-ALTER TABLE quizzes ALTER COLUMN section_id SET NOT NULL;
+-- Only set NOT NULL if all rows have been migrated (no NULL values)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM quizzes WHERE section_id IS NULL) THEN
+        ALTER TABLE quizzes ALTER COLUMN section_id SET NOT NULL;
+    ELSE
+        RAISE WARNING 'Cannot set section_id NOT NULL: some quizzes still have NULL section_id. Migration will continue but column remains nullable.';
+    END IF;
+END $$;
 
 -- Step 6: Drop old foreign key constraint and index
 ALTER TABLE quizzes DROP CONSTRAINT IF EXISTS fk_quizzes_lesson;
