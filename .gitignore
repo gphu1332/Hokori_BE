@@ -49,6 +49,9 @@ Thumbs.db
 ### AIGUIDE ###
 AIGUIDE/
 
+### Draw.io Files ###
+*.drawio
+
 ### FE Source Guide (local only, don't commit to master) ###
 FEsrcGuide/
 FEsrcGuide.zip
