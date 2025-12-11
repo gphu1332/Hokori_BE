@@ -257,29 +257,37 @@ public class PaymentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AI Package is not active");
         }
         
-        // Check if user already has an active purchase
+        // Check if user already has an active purchase (must be PAID and active)
         var existingPurchase = aiPackagePurchaseRepo.findByUser_IdAndIsActiveTrue(userId);
         if (existingPurchase.isPresent()) {
             var purchase = existingPurchase.get();
-            Instant now = Instant.now();
             
-            // Check if package is expired
-            boolean isExpired = purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now);
-            
-            // Check if all quotas are exhausted
-            boolean allQuotasExhausted = checkAllQuotasExhausted(userId);
-            
-            if (!isExpired && !allQuotasExhausted) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                        "User already has an active AI package. Please wait for it to expire or quota to be exhausted before purchasing a new package.");
-            }
-            
-            // If expired or all quotas exhausted, allow purchase
-            if (isExpired) {
-                log.info("User {} has expired package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
-            }
-            if (allQuotasExhausted) {
-                log.info("User {} has exhausted all quotas for package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
+            // Only block if purchase is PAID and active (defensive check)
+            if (purchase.getPaymentStatus() != com.hokori.web.Enum.PaymentStatus.PAID) {
+                log.warn("User {} has purchase {} with isActive=true but paymentStatus={}, allowing new purchase", 
+                        userId, purchase.getId(), purchase.getPaymentStatus());
+                // Don't block - purchase is not fully paid, allow new purchase
+            } else {
+                Instant now = Instant.now();
+                
+                // Check if package is expired
+                boolean isExpired = purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now);
+                
+                // Check if all quotas are exhausted
+                boolean allQuotasExhausted = checkAllQuotasExhausted(userId);
+                
+                if (!isExpired && !allQuotasExhausted) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "User already has an active AI package. Please wait for it to expire or quota to be exhausted before purchasing a new package.");
+                }
+                
+                // If expired or all quotas exhausted, allow purchase
+                if (isExpired) {
+                    log.info("User {} has expired package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
+                }
+                if (allQuotasExhausted) {
+                    log.info("User {} has exhausted all quotas for package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
+                }
             }
         }
         
@@ -458,8 +466,18 @@ public class PaymentService {
             // Check payment status from PayOS
             if ("00".equals(data.getCode())) {
                 // Payment successful
+                // Idempotency check: If payment is already PAID, skip processing to avoid duplicate enrollment/transactions
+                if (payment.getStatus() == PaymentStatus.PAID) {
+                    log.info("Payment {} (orderCode: {}) is already PAID, skipping duplicate webhook processing", 
+                            payment.getId(), orderCode);
+                    paymentRepo.save(payment); // Save webhook data update
+                    return; // Exit early to avoid duplicate processing
+                }
+                
                 payment.setStatus(PaymentStatus.PAID);
-                payment.setPaidAt(Instant.now());
+                if (payment.getPaidAt() == null) {
+                    payment.setPaidAt(Instant.now());
+                }
                 
                 // Handle AI Package purchase or course enrollment
                 if (payment.getAiPackageId() != null) {
