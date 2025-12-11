@@ -141,6 +141,11 @@
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Flyway for database migrations -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
         <!-- Railway PostgreSQL URL parser -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
