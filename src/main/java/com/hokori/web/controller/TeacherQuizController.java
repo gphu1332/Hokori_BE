@@ -19,7 +19,7 @@ import java.util.List;
 
 @PreAuthorize("hasAnyRole('TEACHER', 'STAFF', 'ADMIN', 'MODERATOR')")
 @RestController
-@RequestMapping("/api/teacher/lessons/{lessonId}/quizzes")
+@RequestMapping("/api/teacher/sections/{sectionId}/quizzes")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 @Tag(name = "Teacher: Quiz Authoring")
@@ -29,23 +29,23 @@ public class TeacherQuizController {
     private final TeacherQuizService service;
 
     @Operation(
-            summary = "Lấy quiz của lesson",
+            summary = "Lấy quiz của section",
             description = """
-            Trả về quiz hiện có của lesson.
-            404 nếu lesson chưa có quiz.
+            Trả về quiz hiện có của section.
+            404 nếu section chưa có quiz.
             """
     )
     @GetMapping
-    public ResponseEntity<ApiResponse<QuizDto>> getByLesson(
-            @Parameter(description = "ID Lesson", example = "101")
-            @PathVariable Long lessonId) {
-        return ResponseEntity.ok(ApiResponse.success("OK", service.getQuizByLesson(lessonId)));
+    public ResponseEntity<ApiResponse<QuizDto>> getBySection(
+            @Parameter(description = "ID Section", example = "101")
+            @PathVariable Long sectionId) {
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getQuizBySection(sectionId)));
     }
 
     @Operation(
-            summary = "Tạo quiz cho lesson",
+            summary = "Tạo quiz cho section",
             description = """
-            Mỗi lesson chỉ có 1 quiz; nếu đã có → 409.
+            Mỗi section chỉ có 1 quiz; nếu đã có → 409.
             Fields:
             - title, description
             - timeLimitSec: Thời gian làm bài (đơn vị: GIÂY). Ví dụ: 30 phút = 1800 giây. null = không giới hạn thời gian
@@ -54,9 +54,9 @@ public class TeacherQuizController {
     )
     @PostMapping
     public ResponseEntity<ApiResponse<QuizDto>> create(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @Valid @RequestBody QuizUpsertReq req) {
-        return ResponseEntity.ok(ApiResponse.success("Created", service.createQuiz(lessonId, req)));
+        return ResponseEntity.ok(ApiResponse.success("Created", service.createQuiz(sectionId, req)));
     }
 
     @Operation(
@@ -65,15 +65,15 @@ public class TeacherQuizController {
             Sửa title/description/timeLimitSec/passScorePercent.
             - timeLimitSec: Thời gian làm bài (đơn vị: GIÂY). Ví dụ: 30 phút = 1800 giây. null = không giới hạn
             - passScorePercent: Điểm % tối thiểu để pass quiz [0..100]
-            404 nếu quiz không thuộc lessonId.
+            404 nếu quiz không thuộc sectionId.
             """
     )
     @PutMapping("/{quizId}")
     public ResponseEntity<ApiResponse<QuizDto>> update(
-            @Parameter(description = "ID Lesson", example = "101") @PathVariable Long lessonId,
+            @Parameter(description = "ID Section", example = "101") @PathVariable Long sectionId,
             @Parameter(description = "ID Quiz", example = "555")  @PathVariable Long quizId,
             @Valid @RequestBody QuizUpsertReq req) {
-        return ResponseEntity.ok(ApiResponse.success("Updated", service.updateQuiz(lessonId, quizId, req)));
+        return ResponseEntity.ok(ApiResponse.success("Updated", service.updateQuiz(sectionId, quizId, req)));
     }
 
     @Operation(
@@ -84,9 +84,9 @@ public class TeacherQuizController {
     )
     @GetMapping("/{quizId}/questions")
     public ResponseEntity<ApiResponse<List<QuestionWithOptionsDto>>> listQuestions(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @PathVariable Long quizId) {
-        return ResponseEntity.ok(ApiResponse.success("OK", service.listQuestions(lessonId, quizId)));
+        return ResponseEntity.ok(ApiResponse.success("OK", service.listQuestions(sectionId, quizId)));
     }
 
     @Operation(
@@ -98,10 +98,10 @@ public class TeacherQuizController {
     )
     @PostMapping("/{quizId}/questions")
     public ResponseEntity<ApiResponse<QuestionWithOptionsDto>> createQuestion(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @PathVariable Long quizId,
             @Valid @RequestBody QuestionUpsertReq req) {
-        return ResponseEntity.ok(ApiResponse.success("Created", service.createQuestion(lessonId, quizId, req)));
+        return ResponseEntity.ok(ApiResponse.success("Created", service.createQuestion(sectionId, quizId, req)));
     }
 
     @Operation(
@@ -110,18 +110,18 @@ public class TeacherQuizController {
     )
     @PutMapping("/questions/{questionId}")
     public ResponseEntity<ApiResponse<QuestionWithOptionsDto>> updateQuestion(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @PathVariable Long questionId,
             @Valid @RequestBody QuestionUpsertReq req) {
-        return ResponseEntity.ok(ApiResponse.success("Updated", service.updateQuestion(lessonId, questionId, req)));
+        return ResponseEntity.ok(ApiResponse.success("Updated", service.updateQuestion(sectionId, questionId, req)));
     }
 
     @Operation(summary = "Xoá câu hỏi", description = "Cascade xoá options; cập nhật lại tổng số câu.")
     @DeleteMapping("/questions/{questionId}")
     public ResponseEntity<ApiResponse<Void>> deleteQuestion(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @PathVariable Long questionId) {
-        service.deleteQuestion(lessonId, questionId);
+        service.deleteQuestion(sectionId, questionId);
         return ResponseEntity.ok(ApiResponse.success("Deleted", null));
     }
 
@@ -135,10 +135,10 @@ public class TeacherQuizController {
     )
     @PostMapping("/questions/{questionId}/options")
     public ResponseEntity<ApiResponse<List<OptionDto>>> addOptions(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @PathVariable Long questionId,
             @RequestBody List<@Valid OptionUpsertReq> reqs) {
-        return ResponseEntity.ok(ApiResponse.success("Created", service.addOptions(lessonId, questionId, reqs)));
+        return ResponseEntity.ok(ApiResponse.success("Created", service.addOptions(sectionId, questionId, reqs)));
     }
 
     @Operation(
@@ -147,10 +147,10 @@ public class TeacherQuizController {
     )
     @PutMapping("/options/{optionId}")
     public ResponseEntity<ApiResponse<OptionDto>> updateOption(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @PathVariable Long optionId,
             @Valid @RequestBody OptionUpsertReq req) {
-        return ResponseEntity.ok(ApiResponse.success("Updated", service.updateOption(lessonId, optionId, req)));
+        return ResponseEntity.ok(ApiResponse.success("Updated", service.updateOption(sectionId, optionId, req)));
     }
 
     @Operation(
@@ -159,9 +159,9 @@ public class TeacherQuizController {
     )
     @DeleteMapping("/options/{optionId}")
     public ResponseEntity<ApiResponse<Void>> deleteOption(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @PathVariable Long optionId) {
-        service.deleteOption(lessonId, optionId);
+        service.deleteOption(sectionId, optionId);
         return ResponseEntity.ok(ApiResponse.success("Deleted", null));
     }
 }

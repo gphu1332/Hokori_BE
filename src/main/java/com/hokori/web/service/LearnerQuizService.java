@@ -32,19 +32,26 @@ public class LearnerQuizService {
     private final UserContentProgressRepository ucpRepo; // To check if content already completed
 
     /**
-     * Helper method to check enrollment and get courseId from lessonId.
-     * Allows access if enrolled OR if lesson belongs to trial chapter.
+     * Helper method to check enrollment and get courseId from sectionId.
+     * Allows access if enrolled OR if section's lesson belongs to trial chapter.
      */
-    private Long checkEnrollmentAndGetCourseId(Long lessonId, Long userId) {
-        Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
-                .orElseThrow(() -> new EntityNotFoundException("Lesson not found"));
+    private Long checkEnrollmentAndGetCourseId(Long sectionId, Long userId) {
+        Long courseId = sectionRepo.findCourseIdBySectionId(sectionId)
+                .orElseThrow(() -> new EntityNotFoundException("Section not found"));
         
-        // Check if lesson belongs to trial chapter
-        Long chapterId = lessonRepo.findChapterIdByLessonId(lessonId)
-                .orElseThrow(() -> new EntityNotFoundException("Chapter not found for lesson"));
+        // Get section to check trial chapter
+        Section section = sectionRepo.findById(sectionId)
+                .orElseThrow(() -> new EntityNotFoundException("Section not found"));
         
-        Chapter chapter = chapterRepo.findById(chapterId)
-                .orElseThrow(() -> new EntityNotFoundException("Chapter not found"));
+        Lesson lesson = section.getLesson();
+        if (lesson == null) {
+            throw new EntityNotFoundException("Lesson not found for section");
+        }
+        
+        Chapter chapter = lesson.getChapter();
+        if (chapter == null) {
+            throw new EntityNotFoundException("Chapter not found for lesson");
+        }
         
         boolean isTrialChapter = chapter.isTrial();
         
@@ -60,14 +67,14 @@ public class LearnerQuizService {
         return courseId;
     }
 
-    public AttemptDto startAttempt(Long lessonId, Long userId, StartAttemptReq req) {
+    public AttemptDto startAttempt(Long sectionId, Long userId, StartAttemptReq req) {
         // Check enrollment first
-        checkEnrollmentAndGetCourseId(lessonId, userId);
+        checkEnrollmentAndGetCourseId(sectionId, userId);
         
         // Use native query to avoid LOB stream error
-        var quizMetadataOpt = quizRepo.findQuizMetadataByLessonId(lessonId);
+        var quizMetadataOpt = quizRepo.findQuizMetadataBySectionId(sectionId);
         if (quizMetadataOpt.isEmpty()) {
-            throw new EntityNotFoundException("Quiz not found for lesson " + lessonId);
+            throw new EntityNotFoundException("Quiz not found for section " + sectionId);
         }
         
         Object[] qMeta = quizMetadataOpt.get();
@@ -105,10 +112,10 @@ public class LearnerQuizService {
         QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
         
-        // Check enrollment via quiz's lesson
+        // Check enrollment via quiz's section
         Quiz quiz = a.getQuiz();
-        if (quiz.getLesson() != null) {
-            checkEnrollmentAndGetCourseId(quiz.getLesson().getId(), userId);
+        if (quiz.getSection() != null) {
+            checkEnrollmentAndGetCourseId(quiz.getSection().getId(), userId);
         }
         
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
@@ -168,11 +175,11 @@ public class LearnerQuizService {
         QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
         
-        // Check enrollment via quiz's lesson
+        // Check enrollment via quiz's section
         Quiz quiz = a.getQuiz();
-        Lesson lesson = quiz.getLesson();
-        if (lesson != null) {
-            checkEnrollmentAndGetCourseId(lesson.getId(), userId);
+        Section section = quiz.getSection();
+        if (section != null) {
+            checkEnrollmentAndGetCourseId(section.getId(), userId);
         }
         
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
@@ -200,11 +207,11 @@ public class LearnerQuizService {
         QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
         
-        // Check enrollment via quiz's lesson
+        // Check enrollment via quiz's section
         Quiz quiz = a.getQuiz();
-        Lesson lesson = quiz.getLesson();
-        if (lesson != null) {
-            checkEnrollmentAndGetCourseId(lesson.getId(), userId);
+        Section section = quiz.getSection();
+        if (section != null) {
+            checkEnrollmentAndGetCourseId(section.getId(), userId);
         }
         
         if (a.getStatus() != QuizAttempt.Status.IN_PROGRESS)
@@ -238,12 +245,12 @@ public class LearnerQuizService {
         a.setStatus(QuizAttempt.Status.SUBMITTED);
         attemptRepo.save(a);
 
-        // Auto-mark last trackable content in lesson as completed when quiz is submitted AND passed
+        // Auto-mark last trackable content in section as completed when quiz is submitted AND passed
         // This makes quiz completion count towards progress % only if learner achieves pass score
         // Only mark if this is the latest attempt (to avoid marking based on old attempts)
-        if (lesson != null) {
+        if (section != null) {
             try {
-                markLastContentCompleteForQuiz(lesson.getId(), userId, quiz, score, a.getId());
+                markLastContentCompleteForQuiz(section.getId(), userId, quiz, score, a.getId());
             } catch (Exception e) {
                 // Log error but don't fail quiz submission
                 // Quiz submission should succeed even if progress update fails
@@ -265,17 +272,17 @@ public class LearnerQuizService {
     }
     
     /**
-     * Mark the last trackable content in lesson as completed when quiz is submitted AND passed.
+     * Mark the last trackable content in section as completed when quiz is submitted AND passed.
      * This makes quiz completion count towards progress percentage only if learner achieves pass score.
      * Only marks if this is the latest submitted attempt (to avoid marking based on old attempts).
      * 
-     * @param lessonId The lesson ID
+     * @param sectionId The section ID
      * @param userId The user ID
      * @param quiz The quiz entity (to check passScorePercent)
      * @param score The score achieved by the learner (0-100)
      * @param attemptId The current attempt ID (to check if it's the latest)
      */
-    private void markLastContentCompleteForQuiz(Long lessonId, Long userId, Quiz quiz, int score, Long attemptId) {
+    private void markLastContentCompleteForQuiz(Long sectionId, Long userId, Quiz quiz, int score, Long attemptId) {
         // Check if this is the highest scoring attempt
         // Only mark content completed based on the highest scoring attempt to ensure progress reflects best performance
         var allAttempts = attemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quiz.getId());
@@ -326,15 +333,21 @@ public class LearnerQuizService {
             }
             // Score > 0, proceed to mark content complete
         }
-        // Get courseId and check if lesson belongs to trial chapter
-        Long courseId = lessonRepo.findCourseIdByLessonId(lessonId)
-                .orElseThrow(() -> new EntityNotFoundException("Lesson not found"));
+        // Get section and check if it belongs to trial chapter
+        Section section = sectionRepo.findById(sectionId)
+                .orElseThrow(() -> new EntityNotFoundException("Section not found"));
         
-        Long chapterId = lessonRepo.findChapterIdByLessonId(lessonId)
-                .orElseThrow(() -> new EntityNotFoundException("Chapter not found for lesson"));
+        Lesson lesson = section.getLesson();
+        if (lesson == null) {
+            throw new EntityNotFoundException("Lesson not found for section");
+        }
         
-        Chapter chapter = chapterRepo.findById(chapterId)
-                .orElseThrow(() -> new EntityNotFoundException("Chapter not found"));
+        Chapter chapter = lesson.getChapter();
+        if (chapter == null) {
+            throw new EntityNotFoundException("Chapter not found for lesson");
+        }
+        
+        Long courseId = chapter.getCourse().getId();
         
         // Skip if trial chapter (trial chapters don't count towards progress)
         if (Boolean.TRUE.equals(chapter.isTrial())) {
@@ -346,9 +359,8 @@ public class LearnerQuizService {
             return; // Not enrolled, skip
         }
         
-        // Get all trackable contents in lesson, ordered by orderIndex descending
-        List<SectionsContent> contents = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId).stream()
-                .flatMap(s -> contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId()).stream())
+        // Get all trackable contents in section, ordered by orderIndex descending
+        List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId).stream()
                 .filter(c -> Boolean.TRUE.equals(c.getIsTrackable()))
                 .sorted((c1, c2) -> Integer.compare(
                         c2.getOrderIndex() != null ? c2.getOrderIndex() : 0,
@@ -390,11 +402,11 @@ public class LearnerQuizService {
         QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
         
-        // Check enrollment via quiz's lesson
+        // Check enrollment via quiz's section
         Quiz quiz = a.getQuiz();
-        Lesson lesson = quiz.getLesson();
-        if (lesson != null) {
-            checkEnrollmentAndGetCourseId(lesson.getId(), userId);
+        Section section = quiz.getSection();
+        if (section != null) {
+            checkEnrollmentAndGetCourseId(section.getId(), userId);
         }
 
         // Load answers with Option and Question to avoid LazyInitializationException
@@ -436,11 +448,11 @@ public class LearnerQuizService {
     }
 
     @Transactional(readOnly = true)
-    public List<AttemptDto> history(Long lessonId, Long userId) {
+    public List<AttemptDto> history(Long sectionId, Long userId) {
         // Check enrollment first
-        checkEnrollmentAndGetCourseId(lessonId, userId);
+        checkEnrollmentAndGetCourseId(sectionId, userId);
         
-        Quiz quiz = quizRepo.findByLesson_Id(lessonId)
+        Quiz quiz = quizRepo.findBySection_Id(sectionId)
                 .orElseThrow(() -> new EntityNotFoundException("Quiz not found"));
         Integer passScorePercent = quiz.getPassScorePercent();
         
@@ -459,17 +471,17 @@ public class LearnerQuizService {
     }
     
     /**
-     * Get quiz info (metadata) for a lesson - requires enrollment
+     * Get quiz info (metadata) for a section - requires enrollment
      */
     @Transactional(readOnly = true)
-    public com.hokori.web.dto.quiz.QuizInfoDto getQuizInfo(Long lessonId, Long userId) {
+    public com.hokori.web.dto.quiz.QuizInfoDto getQuizInfo(Long sectionId, Long userId) {
         // Check enrollment first
-        checkEnrollmentAndGetCourseId(lessonId, userId);
+        checkEnrollmentAndGetCourseId(sectionId, userId);
         
         // Use native query to avoid LOB stream error
-        var quizMetadataOpt = quizRepo.findQuizMetadataByLessonId(lessonId);
+        var quizMetadataOpt = quizRepo.findQuizMetadataBySectionId(sectionId);
         if (quizMetadataOpt.isEmpty()) {
-            throw new EntityNotFoundException("Quiz not found for lesson " + lessonId);
+            throw new EntityNotFoundException("Quiz not found for section " + sectionId);
         }
         
         Object[] qMeta = quizMetadataOpt.get();
@@ -478,7 +490,7 @@ public class LearnerQuizService {
             actualQMeta = (Object[]) qMeta[0];
         }
         
-        // Metadata: [id, lessonId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
+        // Metadata: [id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
         Long quizId = ((Number) actualQMeta[0]).longValue();
         String title = actualQMeta[2] != null ? actualQMeta[2].toString() : null;
         String description = actualQMeta[3] != null ? actualQMeta[3].toString() : null;

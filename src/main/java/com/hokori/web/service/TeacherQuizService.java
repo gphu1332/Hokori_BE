@@ -2,6 +2,7 @@ package com.hokori.web.service;
 
 import com.hokori.web.dto.quiz.*;
 import com.hokori.web.entity.Lesson;
+import com.hokori.web.entity.Section;
 import com.hokori.web.entity.Option;
 import com.hokori.web.entity.Question;
 import com.hokori.web.entity.Quiz;
@@ -20,6 +21,7 @@ public class TeacherQuizService {
 
     private final CurrentUserService current;
     private final LessonRepository lessonRepo;
+    private final SectionRepository sectionRepo;
     private final QuizRepository quizRepo;
     private final QuestionRepository questionRepo;
     private final OptionRepository optionRepo;
@@ -56,6 +58,22 @@ public class TeacherQuizService {
             "You are not the owner of this lesson/course");
     }
 
+    private void requireOwnerBySection(Long sectionId){
+        // Get lessonId from section to check ownership
+        Section section = sectionRepo.findById(sectionId)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Section not found"));
+        
+        Lesson lesson = section.getLesson();
+        if (lesson == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.NOT_FOUND, "Lesson not found for section");
+        }
+        
+        // Use existing requireOwner method
+        requireOwner(lesson.getId());
+    }
+
     private Quiz getQuizOrThrow(Long quizId){
         return quizRepo.findById(quizId).orElseThrow(() -> new RuntimeException("Quiz not found"));
     }
@@ -68,12 +86,12 @@ public class TeacherQuizService {
 
     /* ---------- Quiz ---------- */
 
-    public QuizDto getQuizByLesson(Long lessonId){
-        requireOwner(lessonId);
+    public QuizDto getQuizBySection(Long sectionId){
+        requireOwnerBySection(sectionId);
         // Use native query to avoid LOB stream error
-        var quizMetadataOpt = quizRepo.findQuizMetadataByLessonId(lessonId);
+        var quizMetadataOpt = quizRepo.findQuizMetadataBySectionId(sectionId);
         if (quizMetadataOpt.isEmpty()) {
-            throw new RuntimeException("Quiz not found for this lesson");
+            throw new RuntimeException("Quiz not found for this section");
         }
         
         Object[] qMeta = quizMetadataOpt.get();
@@ -83,7 +101,7 @@ public class TeacherQuizService {
             actualQMeta = (Object[]) qMeta[0];
         }
         
-        // Metadata: [id, lessonId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
+        // Metadata: [id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
         return new QuizDto(
                 ((Number) actualQMeta[0]).longValue(),
                 ((Number) actualQMeta[1]).longValue(),
@@ -95,18 +113,18 @@ public class TeacherQuizService {
         );
     }
 
-    public QuizDto createQuiz(Long lessonId, QuizUpsertReq req){
-        requireOwner(lessonId);
+    public QuizDto createQuiz(Long sectionId, QuizUpsertReq req){
+        requireOwnerBySection(sectionId);
 
-        quizRepo.findByLesson_Id(lessonId).ifPresent(q -> {
-            throw new RuntimeException("Quiz for this lesson already exists");
+        quizRepo.findBySection_Id(sectionId).ifPresent(q -> {
+            throw new RuntimeException("Quiz for this section already exists");
         });
 
-        Lesson lesson = lessonRepo.findById(lessonId)
-                .orElseThrow(() -> new RuntimeException("Lesson not found: " + lessonId));
+        Section section = sectionRepo.findById(sectionId)
+                .orElseThrow(() -> new RuntimeException("Section not found: " + sectionId));
 
         Quiz q = new Quiz();
-        q.setLesson(lesson);
+        q.setSection(section);
         q.setTitle(req.title());
         q.setDescription(req.description());
         q.setTimeLimitSec(req.timeLimitSec());
@@ -127,7 +145,7 @@ public class TeacherQuizService {
             actualQMeta = (Object[]) qMeta[0];
         }
         
-        // Metadata: [id, lessonId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
+        // Metadata: [id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
         return new QuizDto(
                 ((Number) actualQMeta[0]).longValue(),
                 ((Number) actualQMeta[1]).longValue(),
@@ -139,11 +157,11 @@ public class TeacherQuizService {
         );
     }
 
-    public QuizDto updateQuiz(Long lessonId, Long quizId, QuizUpsertReq req){
-        requireOwner(lessonId);
+    public QuizDto updateQuiz(Long sectionId, Long quizId, QuizUpsertReq req){
+        requireOwnerBySection(sectionId);
         Quiz q = getQuizOrThrow(quizId);
-        if (!q.getLesson().getId().equals(lessonId))
-            throw new RuntimeException("Quiz doesn't belong to this lesson");
+        if (!q.getSection().getId().equals(sectionId))
+            throw new RuntimeException("Quiz doesn't belong to this section");
 
         if (req.title() != null) q.setTitle(req.title());
         if (req.description() != null) q.setDescription(req.description());
@@ -164,7 +182,7 @@ public class TeacherQuizService {
             actualQMeta = (Object[]) qMeta[0];
         }
         
-        // Metadata: [id, lessonId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
+        // Metadata: [id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
         return new QuizDto(
                 ((Number) actualQMeta[0]).longValue(),
                 ((Number) actualQMeta[1]).longValue(),
@@ -178,9 +196,9 @@ public class TeacherQuizService {
 
     /* ---------- Questions ---------- */
 
-    public List<QuestionWithOptionsDto> listQuestions(Long lessonId, Long quizId){
-        requireOwner(lessonId);
-        // Check quiz belongs to lesson using native query
+    public List<QuestionWithOptionsDto> listQuestions(Long sectionId, Long quizId){
+        requireOwnerBySection(sectionId);
+        // Check quiz belongs to section using native query
         var quizMetadataOpt = quizRepo.findQuizMetadataById(quizId);
         if (quizMetadataOpt.isEmpty()) {
             throw new RuntimeException("Quiz not found");
@@ -192,9 +210,9 @@ public class TeacherQuizService {
             actualQMeta = (Object[]) qMeta[0];
         }
         
-        Long lessonIdFromQuiz = ((Number) actualQMeta[1]).longValue();
-        if (!lessonIdFromQuiz.equals(lessonId)) {
-            throw new RuntimeException("Quiz doesn't belong to this lesson");
+        Long sectionIdFromQuiz = ((Number) actualQMeta[1]).longValue();
+        if (!sectionIdFromQuiz.equals(sectionId)) {
+            throw new RuntimeException("Quiz doesn't belong to this section");
         }
 
         // Use native query to avoid LOB stream error
@@ -239,11 +257,11 @@ public class TeacherQuizService {
     }
 
 
-    public QuestionWithOptionsDto createQuestion(Long lessonId, Long quizId, QuestionUpsertReq req){
-        requireOwner(lessonId);
+    public QuestionWithOptionsDto createQuestion(Long sectionId, Long quizId, QuestionUpsertReq req){
+        requireOwnerBySection(sectionId);
         Quiz quiz = getQuizOrThrow(quizId);
-        if (!quiz.getLesson().getId().equals(lessonId))
-            throw new RuntimeException("Quiz doesn't belong to this lesson");
+        if (!quiz.getSection().getId().equals(sectionId))
+            throw new RuntimeException("Quiz doesn't belong to this section");
 
         Question qu = new Question();
         qu.setQuiz(quiz);
@@ -279,11 +297,11 @@ public class TeacherQuizService {
         return new QuestionWithOptionsDto(qId, content, explanation, questionType, orderIndex, List.of());
     }
 
-    public QuestionWithOptionsDto updateQuestion(Long lessonId, Long questionId, QuestionUpsertReq req){
+    public QuestionWithOptionsDto updateQuestion(Long sectionId, Long questionId, QuestionUpsertReq req){
         Question qu = questionRepo.findById(questionId)
                 .orElseThrow(() -> new RuntimeException("Question not found"));
-        Long lessonIdFromDb = qu.getQuiz().getLesson().getId();
-        requireOwner(lessonIdFromDb);
+        Long sectionIdFromDb = qu.getQuiz().getSection().getId();
+        requireOwnerBySection(sectionIdFromDb);
 
         if (req.content() != null) qu.setContent(req.content());
         if (req.explanation() != null) qu.setExplanation(req.explanation());
@@ -333,11 +351,11 @@ public class TeacherQuizService {
         return new QuestionWithOptionsDto(qId, content, explanation, questionType, orderIndex, options);
     }
 
-    public void deleteQuestion(Long lessonId, Long questionId){
+    public void deleteQuestion(Long sectionId, Long questionId){
         Question qu = questionRepo.findById(questionId)
                 .orElseThrow(() -> new RuntimeException("Question not found"));
-        Long lessonIdFromDb = qu.getQuiz().getLesson().getId();
-        requireOwner(lessonIdFromDb);
+        Long sectionIdFromDb = qu.getQuiz().getSection().getId();
+        requireOwnerBySection(sectionIdFromDb);
 
         Quiz quiz = qu.getQuiz();
         optionRepo.findByQuestion_IdOrderByOrderIndexAsc(questionId).forEach(optionRepo::delete);
@@ -347,11 +365,11 @@ public class TeacherQuizService {
 
     /* ---------- Options ---------- */
 
-    public List<OptionDto> addOptions(Long lessonId, Long questionId, List<OptionUpsertReq> reqs){
+    public List<OptionDto> addOptions(Long sectionId, Long questionId, List<OptionUpsertReq> reqs){
         Question qu = questionRepo.findById(questionId)
                 .orElseThrow(() -> new RuntimeException("Question not found"));
-        Long lessonIdFromDb = qu.getQuiz().getLesson().getId();
-        requireOwner(lessonIdFromDb);
+        Long sectionIdFromDb = qu.getQuiz().getSection().getId();
+        requireOwnerBySection(sectionIdFromDb);
 
         if (reqs == null || reqs.isEmpty()) throw new RuntimeException("Options are required");
         long trueCount = reqs.stream().filter(r -> Boolean.TRUE.equals(r.isCorrect())).count();
@@ -386,11 +404,11 @@ public class TeacherQuizService {
                 .toList();
     }
 
-    public OptionDto updateOption(Long lessonId, Long optionId, OptionUpsertReq req){
+    public OptionDto updateOption(Long sectionId, Long optionId, OptionUpsertReq req){
         Option o = optionRepo.findById(optionId)
                 .orElseThrow(() -> new RuntimeException("Option not found"));
-        Long lessonIdFromDb = o.getQuestion().getQuiz().getLesson().getId();
-        requireOwner(lessonIdFromDb);
+        Long sectionIdFromDb = o.getQuestion().getQuiz().getSection().getId();
+        requireOwnerBySection(sectionIdFromDb);
 
         if (req.content() != null) o.setContent(req.content());
         if (req.orderIndex() != null) o.setOrderIndex(req.orderIndex());
@@ -440,11 +458,11 @@ public class TeacherQuizService {
         return new OptionDto(optId, optContent, isCorrect, optOrderIndex);
     }
 
-    public void deleteOption(Long lessonId, Long optionId){
+    public void deleteOption(Long sectionId, Long optionId){
         Option o = optionRepo.findById(optionId)
                 .orElseThrow(() -> new RuntimeException("Option not found"));
-        Long lessonIdFromDb = o.getQuestion().getQuiz().getLesson().getId();
-        requireOwner(lessonIdFromDb);
+        Long sectionIdFromDb = o.getQuestion().getQuiz().getSection().getId();
+        requireOwnerBySection(sectionIdFromDb);
 
         Long qid = o.getQuestion().getId();
         int total = optionRepo.findByQuestion_IdOrderByOrderIndexAsc(qid).size();

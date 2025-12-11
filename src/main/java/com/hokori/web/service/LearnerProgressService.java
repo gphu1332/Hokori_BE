@@ -636,10 +636,9 @@ public class LearnerProgressService {
             ));
         }
 
-        // Get quizId if exists
-        Long quizId = quizRepo.findByLesson_Id(lessonId)
-                .map(Quiz::getId)
-                .orElse(null);
+        // Quiz no longer belongs to lesson, it belongs to section now
+        // So quizId is null at lesson level (for backward compatibility)
+        Long quizId = null;
 
         // Build and return LessonRes
         return new LessonRes(
@@ -703,10 +702,9 @@ public class LearnerProgressService {
             ));
         }
 
-        // Get quizId if exists
-        Long quizId = quizRepo.findByLesson_Id(lessonId)
-                .map(Quiz::getId)
-                .orElse(null);
+        // Quiz no longer belongs to lesson, it belongs to section now
+        // So quizId is null at lesson level (for backward compatibility)
+        Long quizId = null;
 
         // Build and return LessonRes
         return new LessonRes(
@@ -1062,43 +1060,43 @@ public class LearnerProgressService {
                 LessonProgressRes lessonProgress = lessonProgressMap.get(lesson.getId());
                 boolean isCompleted = lessonProgress != null && Boolean.TRUE.equals(lessonProgress.getIsCompleted());
 
-                // Get quiz info if exists
-                Optional<Quiz> quizOpt = quizRepo.findByLesson_Id(lesson.getId());
-                Long quizId = quizOpt.map(Quiz::getId).orElse(null);
-                Integer quizPassScorePercent = null;
-                Boolean quizPassed = null;
-                Integer quizBestScore = null;
-                
-                if (quizId != null) {
-                    Quiz quiz = quizOpt.get();
-                    quizPassScorePercent = quiz.getPassScorePercent();
-                    
-                    // Get best score from all submitted attempts
-                    var allAttempts = quizAttemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quizId);
-                    Optional<QuizAttempt> bestAttempt = allAttempts.stream()
-                            .filter(att -> att.getStatus() == QuizAttempt.Status.SUBMITTED 
-                                    && att.getScorePercent() != null)
-                            .max((a1, a2) -> {
-                                int score1 = a1.getScorePercent() != null ? a1.getScorePercent() : 0;
-                                int score2 = a2.getScorePercent() != null ? a2.getScorePercent() : 0;
-                                return Integer.compare(score1, score2);
-                            });
-                    
-                    if (bestAttempt.isPresent()) {
-                        quizBestScore = bestAttempt.get().getScorePercent();
-                        // Calculate passed status
-                        if (quizPassScorePercent != null) {
-                            quizPassed = quizBestScore >= quizPassScorePercent;
-                        } else {
-                            quizPassed = quizBestScore > 0;
-                        }
-                    }
-                }
-
                 List<Section> sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lesson.getId());
                 List<SectionLearningTreeRes> sectionTrees = new ArrayList<>(sections.size());
 
                 for (Section section : sections) {
+                    // Get quiz info for this section (quiz now belongs to section, not lesson)
+                    Optional<Quiz> quizOpt = quizRepo.findBySection_Id(section.getId());
+                    Long quizId = quizOpt.map(Quiz::getId).orElse(null);
+                    Integer quizPassScorePercent = null;
+                    Boolean quizPassed = null;
+                    Integer quizBestScore = null;
+                    
+                    if (quizId != null) {
+                        Quiz quiz = quizOpt.get();
+                        quizPassScorePercent = quiz.getPassScorePercent();
+                        
+                        // Get best score from all submitted attempts
+                        var allAttempts = quizAttemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quizId);
+                        Optional<QuizAttempt> bestAttempt = allAttempts.stream()
+                                .filter(att -> att.getStatus() == QuizAttempt.Status.SUBMITTED 
+                                        && att.getScorePercent() != null)
+                                .max((a1, a2) -> {
+                                    int score1 = a1.getScorePercent() != null ? a1.getScorePercent() : 0;
+                                    int score2 = a2.getScorePercent() != null ? a2.getScorePercent() : 0;
+                                    return Integer.compare(score1, score2);
+                                });
+                        
+                        if (bestAttempt.isPresent()) {
+                            quizBestScore = bestAttempt.get().getScorePercent();
+                            // Calculate passed status
+                            if (quizPassScorePercent != null) {
+                                quizPassed = quizBestScore >= quizPassScorePercent;
+                            } else {
+                                quizPassed = quizBestScore > 0;
+                            }
+                        }
+                    }
+                    
                     List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(section.getId());
                     List<ContentLearningTreeRes> contentTrees = new ArrayList<>(contents.size());
 
@@ -1126,6 +1124,10 @@ public class LearnerProgressService {
                             .orderIndex(section.getOrderIndex())
                             .studyType(section.getStudyType())
                             .flashcardSetId(section.getFlashcardSetId())
+                            .quizId(quizId)
+                            .quizPassScorePercent(quizPassScorePercent)
+                            .quizPassed(quizPassed)
+                            .quizBestScore(quizBestScore)
                             .contents(contentTrees)
                             .build());
                 }
@@ -1136,10 +1138,10 @@ public class LearnerProgressService {
                         .orderIndex(lesson.getOrderIndex())
                         .totalDurationSec(lesson.getTotalDurationSec())
                         .isCompleted(isCompleted)
-                        .quizId(quizId)
-                        .quizPassScorePercent(quizPassScorePercent)
-                        .quizPassed(quizPassed)
-                        .quizBestScore(quizBestScore)
+                        .quizId(null) // Quiz no longer belongs to lesson, set to null for backward compatibility
+                        .quizPassScorePercent(null)
+                        .quizPassed(null)
+                        .quizBestScore(null)
                         .sections(sectionTrees)
                         .build());
             }

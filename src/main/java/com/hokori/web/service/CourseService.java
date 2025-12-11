@@ -1336,10 +1336,9 @@ public class CourseService {
                 .map(this::toSectionResFull)
                 .collect(Collectors.toList());
         
-        // Get quizId if exists
-        Long quizId = quizRepo.findByLesson_Id(ls.getId())
-                .map(Quiz::getId)
-                .orElse(null);
+        // Quiz no longer belongs to lesson, it belongs to section now
+        // So quizId is null at lesson level (for backward compatibility)
+        Long quizId = null;
         
         LessonRes lessonRes = new LessonRes(
                 ls.getId(),

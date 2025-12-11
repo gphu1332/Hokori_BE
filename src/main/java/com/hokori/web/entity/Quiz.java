@@ -1,7 +1,7 @@
 package com.hokori.web.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.hokori.web.entity.Lesson;
+import com.hokori.web.entity.Section;
 import jakarta.persistence.*;
 import lombok.Getter; import lombok.Setter;
 
@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "quizzes",
         indexes = {
-                @Index(name="idx_quizzes_lesson_id", columnList="lesson_id")
+                @Index(name="idx_quizzes_section_id", columnList="section_id")
         })
 @Getter @Setter
 public class Quiz {
@@ -19,9 +19,9 @@ public class Quiz {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "lesson_id", nullable = false,
-            foreignKey = @ForeignKey(name = "fk_quizzes_lesson"))
-    private Lesson lesson;
+    @JoinColumn(name = "section_id", nullable = false,
+            foreignKey = @ForeignKey(name = "fk_quizzes_section"))
+    private Section section;
 
     @Column(nullable=false) private String title;
     @Column(columnDefinition = "TEXT")

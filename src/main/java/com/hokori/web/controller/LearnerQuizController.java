@@ -19,7 +19,7 @@ import java.util.List;
 
 @PreAuthorize("hasRole('LEARNER')")
 @RestController
-@RequestMapping("/api/learner/lessons/{lessonId}/quiz")
+@RequestMapping("/api/learner/sections/{sectionId}/quiz")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 @Tag(name = "Learner: Quiz Play")
@@ -40,22 +40,22 @@ public class LearnerQuizController {
     )
     @PostMapping("/attempts/start")
     public ResponseEntity<ApiResponse<AttemptDto>> start(
-            @PathVariable Long lessonId,
+            @PathVariable Long sectionId,
             @RequestBody(required = false) StartAttemptReq req){
-        return ResponseEntity.ok(ApiResponse.success("OK", service.startAttempt(lessonId, me(), req)));
+        return ResponseEntity.ok(ApiResponse.success("OK", service.startAttempt(sectionId, me(), req)));
     }
 
     @Operation(summary = "Lấy câu hỏi kế tiếp chưa làm (null = hết câu)")
     @GetMapping("/attempts/{attemptId}/next")
     public ResponseEntity<ApiResponse<PlayQuestionDto>> next(
-            @PathVariable Long lessonId, @PathVariable Long attemptId){
+            @PathVariable Long sectionId, @PathVariable Long attemptId){
         return ResponseEntity.ok(ApiResponse.success("OK", service.nextQuestion(attemptId, me())));
     }
 
     @Operation(summary = "Trả lời một câu (SINGLE_CHOICE)")
     @PostMapping("/attempts/{attemptId}/questions/{questionId}/answer")
     public ResponseEntity<ApiResponse<Void>> answer(
-            @PathVariable Long lessonId, @PathVariable Long attemptId, @PathVariable Long questionId,
+            @PathVariable Long sectionId, @PathVariable Long attemptId, @PathVariable Long questionId,
             @Valid @RequestBody AnswerReq req){
         service.answer(attemptId, me(), questionId, req);
         return ResponseEntity.ok(ApiResponse.success("Saved", null));
@@ -64,21 +64,21 @@ public class LearnerQuizController {
     @Operation(summary = "Nộp bài và chấm điểm")
     @PostMapping("/attempts/{attemptId}/submit")
     public ResponseEntity<ApiResponse<AttemptDto>> submit(
-            @PathVariable Long lessonId, @PathVariable Long attemptId){
+            @PathVariable Long sectionId, @PathVariable Long attemptId){
         return ResponseEntity.ok(ApiResponse.success("Submitted", service.submit(attemptId, me())));
     }
 
     @Operation(summary = "Xem chi tiết 1 attempt (đáp án đã chọn, đúng/sai)")
     @GetMapping("/attempts/{attemptId}")
     public ResponseEntity<ApiResponse<LearnerQuizService.AttemptDetailDto>> detail(
-            @PathVariable Long lessonId, @PathVariable Long attemptId){
+            @PathVariable Long sectionId, @PathVariable Long attemptId){
         return ResponseEntity.ok(ApiResponse.success("OK", service.detail(attemptId, me())));
     }
 
-    @Operation(summary = "Lịch sử làm bài theo lesson")
+    @Operation(summary = "Lịch sử làm bài theo section")
     @GetMapping("/attempts")
-    public ResponseEntity<ApiResponse<List<AttemptDto>>> history(@PathVariable Long lessonId){
-        return ResponseEntity.ok(ApiResponse.success("OK", service.history(lessonId, me())));
+    public ResponseEntity<ApiResponse<List<AttemptDto>>> history(@PathVariable Long sectionId){
+        return ResponseEntity.ok(ApiResponse.success("OK", service.history(sectionId, me())));
     }
 
     @Operation(
@@ -86,7 +86,7 @@ public class LearnerQuizController {
             description = "Lấy metadata của quiz (title, description, số câu hỏi, thời gian, điểm đậu). Yêu cầu đã enroll vào course."
     )
     @GetMapping("/info")
-    public ResponseEntity<ApiResponse<com.hokori.web.dto.quiz.QuizInfoDto>> getQuizInfo(@PathVariable Long lessonId){
-        return ResponseEntity.ok(ApiResponse.success("OK", service.getQuizInfo(lessonId, me())));
+    public ResponseEntity<ApiResponse<com.hokori.web.dto.quiz.QuizInfoDto>> getQuizInfo(@PathVariable Long sectionId){
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getQuizInfo(sectionId, me())));
     }
 }
