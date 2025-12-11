@@ -9,8 +9,14 @@ import java.util.List;
  */
 @Schema(description = "Response containing vocabulary and grammar analysis results")
 public class SentenceAnalysisResponse {
-    @Schema(description = "Original Japanese sentence", example = "私は日本語を勉強しています")
-    private String sentence; // Original sentence
+    @Schema(description = "Japanese sentence to analyze (may be translated from Vietnamese)", example = "私は日本語を勉強しています")
+    private String sentence; // Japanese sentence to analyze
+    
+    @Schema(description = "Original input sentence (if translated, this is the Vietnamese input)", example = "Tôi đang học tiếng Nhật")
+    private String originalSentence; // Original input sentence (if translated from Vietnamese)
+    
+    @Schema(description = "Whether the sentence was translated from Vietnamese", example = "true")
+    private Boolean isTranslated; // Whether the sentence was translated from Vietnamese
     
     @Schema(description = "User's JLPT level", example = "N5")
     private String level; // User's JLPT level
@@ -82,6 +88,22 @@ public class SentenceAnalysisResponse {
 
     public void setRelatedSentences(List<String> relatedSentences) {
         this.relatedSentences = relatedSentences;
+    }
+
+    public String getOriginalSentence() {
+        return originalSentence;
+    }
+
+    public void setOriginalSentence(String originalSentence) {
+        this.originalSentence = originalSentence;
+    }
+
+    public Boolean getIsTranslated() {
+        return isTranslated;
+    }
+
+    public void setIsTranslated(Boolean isTranslated) {
+        this.isTranslated = isTranslated;
     }
 
     /**
