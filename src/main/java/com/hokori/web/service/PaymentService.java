@@ -848,6 +848,11 @@ public class PaymentService {
             allocateQuota(user.getId(), AIServiceType.PRONUN, aiPackage.getPronunQuota());
         }
         
+        // Allocate conversation quota
+        if (aiPackage.getConversationQuota() != null) {
+            allocateQuota(user.getId(), AIServiceType.CONVERSATION, aiPackage.getConversationQuota());
+        }
+        
         log.info("Activated AI package purchase: userId={}, packageId={}, purchaseId={}", 
                 user.getId(), aiPackage.getId(), purchase.getId());
     }
@@ -938,6 +943,7 @@ public class PaymentService {
             case GRAMMAR -> aiPackage.getGrammarQuota();
             case KAIWA -> aiPackage.getKaiwaQuota();
             case PRONUN -> aiPackage.getPronunQuota();
+            case CONVERSATION -> aiPackage.getConversationQuota();
         };
     }
     
