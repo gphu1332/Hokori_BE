@@ -21,9 +21,10 @@ public class AIPackageResponse {
     private String currency;
     private Integer durationDays;
     
-    private Integer grammarQuota;  // null = unlimited
-    private Integer kaiwaQuota;    // null = unlimited
-    private Integer pronunQuota;   // null = unlimited
+    private Integer grammarQuota;      // null = unlimited
+    private Integer kaiwaQuota;        // null = unlimited
+    private Integer pronunQuota;       // null = unlimited
+    private Integer conversationQuota; // null = unlimited
     
     private Boolean isActive;
     private Integer displayOrder;

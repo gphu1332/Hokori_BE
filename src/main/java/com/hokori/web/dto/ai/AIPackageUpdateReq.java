@@ -33,6 +33,7 @@ public class AIPackageUpdateReq {
     private Integer grammarQuota;
     private Integer kaiwaQuota;
     private Integer pronunQuota;
+    private Integer conversationQuota;
 
     private Boolean isActive;
     private Integer displayOrder;

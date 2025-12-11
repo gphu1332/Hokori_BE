@@ -413,6 +413,7 @@ public class AIPackageService {
         aiPackage.setGrammarQuota(req.getGrammarQuota());
         aiPackage.setKaiwaQuota(req.getKaiwaQuota());
         aiPackage.setPronunQuota(req.getPronunQuota());
+        aiPackage.setConversationQuota(req.getConversationQuota());
         aiPackage.setIsActive(req.getIsActive() != null ? req.getIsActive() : true);
         aiPackage.setDisplayOrder(req.getDisplayOrder() != null ? req.getDisplayOrder() : 0);
         
@@ -454,6 +455,9 @@ public class AIPackageService {
         }
         if (req.getPronunQuota() != null) {
             aiPackage.setPronunQuota(req.getPronunQuota());
+        }
+        if (req.getConversationQuota() != null) {
+            aiPackage.setConversationQuota(req.getConversationQuota());
         }
         if (req.getIsActive() != null) {
             aiPackage.setIsActive(req.getIsActive());
@@ -528,6 +532,7 @@ public class AIPackageService {
                 .grammarQuota(pkg.getGrammarQuota())
                 .kaiwaQuota(pkg.getKaiwaQuota())
                 .pronunQuota(pkg.getPronunQuota())
+                .conversationQuota(pkg.getConversationQuota())
                 .isActive(pkg.getIsActive())
                 .displayOrder(pkg.getDisplayOrder())
                 .build();

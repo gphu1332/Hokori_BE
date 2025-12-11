@@ -35,9 +35,10 @@ public class AIPackageCreateReq {
     @Min(value = 1, message = "Duration must be at least 1 day")
     private Integer durationDays;  // e.g., 30 = 1 month
 
-    private Integer grammarQuota;  // null = unlimited
-    private Integer kaiwaQuota;    // null = unlimited
-    private Integer pronunQuota;   // null = unlimited
+    private Integer grammarQuota;      // null = unlimited
+    private Integer kaiwaQuota;        // null = unlimited
+    private Integer pronunQuota;       // null = unlimited
+    private Integer conversationQuota; // null = unlimited
 
     @Builder.Default
     private Boolean isActive = true;
