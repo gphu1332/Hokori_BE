@@ -78,5 +78,35 @@ public class DatabaseConstraintService {
                     e.getMessage());
         }
     }
+    
+    /**
+     * Fix sections_content_content_format_check constraint on startup to ensure it allows QUIZ.
+     * This is idempotent - safe to run multiple times.
+     */
+    @PostConstruct
+    public void fixSectionsContentFormatConstraint() {
+        try {
+            log.info("Checking sections_content_content_format_check constraint...");
+            
+            // Drop existing constraint if exists
+            jdbcTemplate.execute("ALTER TABLE sections_content DROP CONSTRAINT IF EXISTS sections_content_content_format_check");
+            log.info("Dropped existing sections_content_content_format_check constraint (if existed)");
+            
+            // Add new constraint with QUIZ included
+            jdbcTemplate.execute(
+                "ALTER TABLE sections_content " +
+                "ADD CONSTRAINT sections_content_content_format_check " +
+                "CHECK (content_format IN ('ASSET', 'RICH_TEXT', 'FLASHCARD_SET', 'QUIZ'))"
+            );
+            
+            log.info("Sections content_format constraint fixed successfully. " +
+                    "Constraint now allows: ASSET, RICH_TEXT, FLASHCARD_SET, QUIZ");
+        } catch (Exception e) {
+            // Log error but don't fail startup - constraint might not exist or might be in different format
+            log.warn("Failed to fix sections_content_content_format_check constraint on startup: {}. " +
+                    "Migration script will handle it on next deploy", 
+                    e.getMessage());
+        }
+    }
 }
 
