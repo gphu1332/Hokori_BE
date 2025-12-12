@@ -101,3 +101,6 @@ railway.env.clean
 !google-cloud-service-account.json.template
 !firebase-service-account.json.template
 !SETUP_GUIDE.md
+
+### Log Files ###
+message.txt
