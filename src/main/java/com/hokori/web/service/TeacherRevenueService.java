@@ -360,7 +360,9 @@ public class TeacherRevenueService {
                         .courseTitle(courseTitle)
                         .revenueCents(courseRevenueCents)
                         .salesCount(courseRevenues.size())
-                        .isPaid(isPaid)
+                        .isPaid(isPaid) // For backward compatibility
+                        .isFullyPaid(isPaid)
+                        .payoutStatus(isPaid ? "FULLY_PAID" : "PENDING")
                         .build());
             }
             
