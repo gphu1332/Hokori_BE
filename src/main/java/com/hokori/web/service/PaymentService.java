@@ -261,7 +261,7 @@ public class PaymentService {
         }
         
         // Check if user already has an active purchase (must be PAID and active)
-        var existingPurchase = aiPackagePurchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        var existingPurchase = aiPackagePurchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         if (existingPurchase.isPresent()) {
             var purchase = existingPurchase.get();
             
@@ -905,7 +905,7 @@ public class PaymentService {
      * - Unlimited services (null quota) are not considered exhausted
      */
     private boolean checkAllQuotasExhausted(Long userId) {
-        var purchaseOpt = aiPackagePurchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        var purchaseOpt = aiPackagePurchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         if (purchaseOpt.isEmpty()) {
             return false; // No active package, not exhausted
         }

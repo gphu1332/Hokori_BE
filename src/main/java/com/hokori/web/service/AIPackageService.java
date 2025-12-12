@@ -51,7 +51,7 @@ public class AIPackageService {
     
     @Transactional(readOnly = true)
     public MyAIPackageResponse getMyPackage(Long userId) {
-        Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         
         if (purchaseOpt.isEmpty()) {
             return MyAIPackageResponse.builder()
@@ -124,7 +124,7 @@ public class AIPackageService {
         }
 
         // Check if user already has an active purchase
-        Optional<AIPackagePurchase> existingPurchase = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        Optional<AIPackagePurchase> existingPurchase = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         if (existingPurchase.isPresent()) {
             var purchase = existingPurchase.get();
             Instant now = Instant.now();
@@ -185,7 +185,7 @@ public class AIPackageService {
         }
         
         // Check if user has active package purchase
-        Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         
         if (purchaseOpt.isPresent()) {
             // User has active package - check package quota
@@ -275,7 +275,7 @@ public class AIPackageService {
      * - Unlimited services (null quota) are not considered exhausted
      */
     private boolean checkAllQuotasExhausted(Long userId) {
-        Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+        Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         if (purchaseOpt.isEmpty()) {
             return false; // No active package, not exhausted
         }
@@ -331,7 +331,7 @@ public class AIPackageService {
         
         if (quotaOpt.isEmpty()) {
             // No quota record - check if user has active package or use free tier
-            Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+            Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
             
             if (purchaseOpt.isPresent() && purchaseOpt.get().getPaymentStatus() == PaymentStatus.PAID) {
                 // User has paid package - allocate quota from package
@@ -383,7 +383,7 @@ public class AIPackageService {
         
         if (!quota.hasQuota()) {
             // Check if user has active package
-            Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findByUser_IdAndIsActiveTrue(userId);
+            Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
             if (purchaseOpt.isEmpty() || purchaseOpt.get().getPaymentStatus() != PaymentStatus.PAID) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
                         "Free tier quota exhausted. Please purchase an AI package to continue using this feature.");
