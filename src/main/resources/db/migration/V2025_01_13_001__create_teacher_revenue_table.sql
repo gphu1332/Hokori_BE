@@ -1,8 +1,14 @@
 -- Migration: Create teacher_revenue table for tracking revenue and payouts
 -- This table tracks revenue from course sales, split between teacher (80%) and admin (20%)
 
--- Step 1: Create teacher_revenue table
-CREATE TABLE IF NOT EXISTS teacher_revenue (
+-- Step 1: Create teacher_revenue table (only if it doesn't exist)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_name = 'teacher_revenue'
+    ) THEN
+        CREATE TABLE teacher_revenue (
     id BIGSERIAL PRIMARY KEY,
     teacher_id BIGINT NOT NULL,
     course_id BIGINT NOT NULL,
@@ -47,8 +53,12 @@ CREATE TABLE IF NOT EXISTS teacher_revenue (
     ),
     CONSTRAINT chk_teacher_revenue_year_month CHECK (
         year_month ~ '^\d{4}-\d{2}$'
-    )
-);
+    );
+        RAISE NOTICE 'Created teacher_revenue table';
+    ELSE
+        RAISE NOTICE 'teacher_revenue table already exists, skipping creation';
+    END IF;
+END $$;
 
 -- Step 2: Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_teacher_revenue_teacher ON teacher_revenue(teacher_id);
