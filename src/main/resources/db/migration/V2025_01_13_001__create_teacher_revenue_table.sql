@@ -53,7 +53,8 @@ BEGIN
     ),
     CONSTRAINT chk_teacher_revenue_year_month CHECK (
         year_month ~ '^\d{4}-\d{2}$'
-    );
+    )
+        );
         RAISE NOTICE 'Created teacher_revenue table';
     ELSE
         RAISE NOTICE 'teacher_revenue table already exists, skipping creation';
