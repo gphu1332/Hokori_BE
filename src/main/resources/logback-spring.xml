@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <!-- Console Appender for Railway (stdout) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+    
+    <!-- Root Logger -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+    
+    <!-- Application Loggers -->
+    <logger name="com.hokori.web" level="INFO"/>
+    <logger name="com.hokori.web.controller" level="INFO"/>
+    <logger name="com.hokori.web.service" level="INFO"/>
+    
+    <!-- Spring Framework Loggers -->
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.springframework.security" level="WARN"/>
+    <logger name="org.springframework.web.servlet.DispatcherServlet" level="INFO"/>
+    
+    <!-- Hibernate/JPA Loggers -->
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="WARN"/>
+    
+    <!-- Flyway Logger -->
+    <logger name="org.flywaydb" level="INFO"/>
+    
+    <!-- HTTP Request Logging -->
+    <logger name="org.springframework.web.filter.CommonsRequestLoggingFilter" level="DEBUG"/>
+    
+    <!-- Tomcat Logger -->
+    <logger name="org.apache.catalina" level="WARN"/>
+    <logger name="org.apache.tomcat" level="WARN"/>
+    
+    <!-- Disable noisy loggers -->
+    <logger name="org.springframework.boot.autoconfigure" level="WARN"/>
+    <logger name="org.springframework.boot.context.embedded" level="WARN"/>
+</configuration>
+
