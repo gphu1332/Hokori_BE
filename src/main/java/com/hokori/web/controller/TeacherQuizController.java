@@ -27,6 +27,29 @@ import java.util.List;
 public class TeacherQuizController {
 
     private final TeacherQuizService service;
+    private final com.hokori.web.repository.SectionRepository sectionRepo;
+
+    /**
+     * DEPRECATED: Endpoint cũ dùng lessonId - đã chuyển sang sectionId
+     * Endpoint này để hỗ trợ migration và trả về error message rõ ràng
+     */
+    @Deprecated
+    @RequestMapping(value = "/api/teacher/lessons/{lessonId}/quizzes", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
+    public ResponseEntity<ApiResponse<Object>> deprecatedLessonEndpoint(@PathVariable Long lessonId) {
+        // Tìm section đầu tiên của lesson để gợi ý
+        var sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId);
+        String message = "Endpoint đã thay đổi: Quiz giờ thuộc về Section, không phải Lesson. " +
+                "Vui lòng dùng endpoint mới: /api/teacher/sections/{sectionId}/quizzes. ";
+        if (!sections.isEmpty()) {
+            Long firstSectionId = sections.get(0).getId();
+            message += "Lesson này có " + sections.size() + " section(s). Section đầu tiên: " + firstSectionId + 
+                    ". Nếu lesson có quiz, quiz sẽ nằm trong một section có studyType=QUIZ.";
+        } else {
+            message += "Lesson này chưa có section nào. Vui lòng tạo section với studyType=QUIZ trước khi tạo quiz.";
+        }
+        return ResponseEntity.status(410) // 410 Gone - resource no longer available
+                .body(ApiResponse.error(message, null));
+    }
 
     @Operation(
             summary = "Lấy quiz của section",
