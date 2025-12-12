@@ -48,5 +48,35 @@ public class DatabaseConstraintService {
                     e.getMessage());
         }
     }
+    
+    /**
+     * Fix sections_study_type_check constraint on startup to ensure it allows QUIZ.
+     * This is idempotent - safe to run multiple times.
+     */
+    @PostConstruct
+    public void fixSectionsStudyTypeConstraint() {
+        try {
+            log.info("Checking sections_study_type_check constraint...");
+            
+            // Drop existing constraint if exists
+            jdbcTemplate.execute("ALTER TABLE sections DROP CONSTRAINT IF EXISTS sections_study_type_check");
+            log.info("Dropped existing sections_study_type_check constraint (if existed)");
+            
+            // Add new constraint with QUIZ included
+            jdbcTemplate.execute(
+                "ALTER TABLE sections " +
+                "ADD CONSTRAINT sections_study_type_check " +
+                "CHECK (study_type IN ('GRAMMAR', 'VOCABULARY', 'KANJI', 'QUIZ'))"
+            );
+            
+            log.info("Sections study_type constraint fixed successfully. " +
+                    "Constraint now allows: GRAMMAR, VOCABULARY, KANJI, QUIZ");
+        } catch (Exception e) {
+            // Log error but don't fail startup - constraint might not exist or might be in different format
+            log.warn("Failed to fix sections_study_type_check constraint on startup: {}. " +
+                    "Migration script will handle it on next deploy", 
+                    e.getMessage());
+        }
+    }
 }
 
