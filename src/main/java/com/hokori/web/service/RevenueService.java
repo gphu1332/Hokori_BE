@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -60,11 +61,12 @@ public class RevenueService {
                 return;
             }
             
-            // Get year-month from payment paidAt
+            // Get year-month from payment paidAt (using Vietnam timezone)
+            ZoneId vietnamZone = ZoneId.of("Asia/Ho_Chi_Minh");
             String yearMonth = payment.getPaidAt() != null 
-                    ? YearMonth.from(payment.getPaidAt().atZone(java.time.ZoneId.systemDefault()))
+                    ? YearMonth.from(payment.getPaidAt().atZone(vietnamZone))
                             .format(YEAR_MONTH_FORMATTER)
-                    : YearMonth.now().format(YEAR_MONTH_FORMATTER);
+                    : YearMonth.now(vietnamZone).format(YEAR_MONTH_FORMATTER);
             
             // Calculate price per course
             long totalCoursePriceCents = 0L;
