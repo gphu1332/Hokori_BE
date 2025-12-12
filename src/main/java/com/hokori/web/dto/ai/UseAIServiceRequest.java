@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 public class UseAIServiceRequest {
     
     @NotNull(message = "Service type is required")
-    private String serviceType;  // GRAMMAR, KAIWA, PRONUN
+    private String serviceType;  // GRAMMAR, KAIWA, PRONUN, CONVERSATION
     
     @Min(value = 1, message = "Amount must be at least 1")
     private Integer amount = 1;  // Default: 1 quota unit

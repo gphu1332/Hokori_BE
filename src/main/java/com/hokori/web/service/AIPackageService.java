@@ -355,8 +355,9 @@ public class AIPackageService {
                 quota.setLastResetAt(Instant.now());
                 quota.setDeletedFlag(false); // Set deleted_flag explicitly
             } else {
-                // Use free tier - initialize with 10 uses/month
-                int freeTierLimit = 10;
+                // Use free tier - initialize with quota based on service type
+                // Conversation is more resource-intensive, so lower limit (5/month)
+                int freeTierLimit = (serviceType == AIServiceType.CONVERSATION) ? 5 : 10;
                 quota = new AIQuota();
                 quota.setUser(user);
                 quota.setServiceType(serviceType);
@@ -370,11 +371,12 @@ public class AIPackageService {
             
             // Check if free tier quota needs monthly reset
             Instant now = Instant.now();
-            if (quota.getTotalQuota() != null && quota.getTotalQuota() == 10 && 
+            int freeTierLimit = (serviceType == AIServiceType.CONVERSATION) ? 5 : 10;
+            if (quota.getTotalQuota() != null && quota.getTotalQuota() == freeTierLimit && 
                 quota.getLastResetAt() != null &&
                 quota.getLastResetAt().isBefore(now.minusSeconds(30L * 24 * 60 * 60))) {
                 // Reset free tier quota monthly
-                quota.setRemainingQuota(10);
+                quota.setRemainingQuota(freeTierLimit);
                 quota.setLastResetAt(now);
             }
         }

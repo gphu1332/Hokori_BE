@@ -136,7 +136,7 @@ public class AIPackageController {
     
     @Operation(
             summary = "Trừ quota mỗi lần user sử dụng AI",
-            description = "Trừ quota khi user sử dụng dịch vụ AI. Service type: GRAMMAR, KAIWA, PRONUN"
+            description = "Trừ quota khi user sử dụng dịch vụ AI. Service type: GRAMMAR, KAIWA, PRONUN, CONVERSATION"
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -150,7 +150,7 @@ public class AIPackageController {
     @PostMapping("/services/{serviceType}/use")
     public ResponseEntity<ApiResponse<String>> useAIService(
             @Parameter(name = "serviceType", in = ParameterIn.PATH, required = true, 
-                    description = "Service type: GRAMMAR, KAIWA, PRONUN", 
+                    description = "Service type: GRAMMAR, KAIWA, PRONUN, CONVERSATION", 
                     example = "GRAMMAR")
             @PathVariable String serviceType,
             @Valid @RequestBody UseAIServiceRequest request) {
