@@ -35,7 +35,11 @@ public class LearnerQuizController {
      * Endpoint này để hỗ trợ migration và trả về error message rõ ràng
      */
     @Deprecated
-    @RequestMapping(value = "/api/learner/lessons/{lessonId}/quiz/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
+    @RequestMapping(value = {"/api/learner/lessons/{lessonId}/quiz/**", 
+                              "/api/learner/lessons/{lessonId}/quiz/info",
+                              "/api/learner/lessons/{lessonId}/quiz/attempts",
+                              "/api/learner/lessons/{lessonId}/quiz/attempts/**"}, 
+                    method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
     public ResponseEntity<ApiResponse<Object>> deprecatedLessonEndpoint(@PathVariable Long lessonId) {
         // Tìm section đầu tiên của lesson để gợi ý
         var sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId);
