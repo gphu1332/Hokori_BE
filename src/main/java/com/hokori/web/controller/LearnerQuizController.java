@@ -35,14 +35,23 @@ public class LearnerQuizController {
      * Endpoint này để hỗ trợ migration và trả về error message rõ ràng
      */
     @Deprecated
-    @RequestMapping(value = "/api/learner/lessons/{lessonId}/quiz/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT})
+    @RequestMapping(value = "/api/learner/lessons/{lessonId}/quiz/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
     public ResponseEntity<ApiResponse<Object>> deprecatedLessonEndpoint(@PathVariable Long lessonId) {
         // Tìm section đầu tiên của lesson để gợi ý
         var sections = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(lessonId);
         String message = "Endpoint đã thay đổi: Quiz giờ thuộc về Section, không phải Lesson. " +
                 "Vui lòng dùng endpoint mới: /api/learner/sections/{sectionId}/quiz. ";
         if (!sections.isEmpty()) {
-            message += "Lesson này có " + sections.size() + " section(s). Để làm quiz, tìm section có studyType=QUIZ.";
+            // Tìm section có studyType = QUIZ
+            var quizSection = sections.stream()
+                    .filter(s -> s.getStudyType() == com.hokori.web.Enum.ContentType.QUIZ)
+                    .findFirst();
+            if (quizSection.isPresent()) {
+                message += "Lesson này có section quiz với ID: " + quizSection.get().getId() + 
+                        ". Dùng endpoint: /api/learner/sections/" + quizSection.get().getId() + "/quiz";
+            } else {
+                message += "Lesson này có " + sections.size() + " section(s) nhưng chưa có section nào có studyType=QUIZ.";
+            }
         } else {
             message += "Lesson này chưa có section nào.";
         }
