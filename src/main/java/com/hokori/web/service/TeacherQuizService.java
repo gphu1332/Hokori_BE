@@ -138,7 +138,9 @@ public class TeacherQuizService {
         
         // Automatically create QUIZ content format for progress tracking
         // Check if section already has QUIZ content (should not happen, but safety check)
-        boolean hasQuizContent = section.getContents().stream()
+        // Query contents directly to avoid lazy loading issues
+        List<SectionsContent> existingContents = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId);
+        boolean hasQuizContent = existingContents.stream()
                 .anyMatch(sc -> sc.getContentFormat() == ContentFormat.QUIZ);
         if (!hasQuizContent) {
             SectionsContent quizContent = new SectionsContent();
@@ -148,7 +150,7 @@ public class TeacherQuizService {
             quizContent.setPrimaryContent(false);
             quizContent.setIsTrackable(true);
             // Set orderIndex to be last in section
-            int nextOrderIndex = (int) contentRepo.countBySection_Id(sectionId);
+            int nextOrderIndex = existingContents.size();
             quizContent.setOrderIndex(nextOrderIndex);
             contentRepo.save(quizContent);
         }

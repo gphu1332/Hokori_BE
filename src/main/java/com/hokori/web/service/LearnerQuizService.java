@@ -359,20 +359,20 @@ public class LearnerQuizService {
             return; // Not enrolled, skip
         }
         
-        // Get all trackable contents in section, ordered by orderIndex descending
-        List<SectionsContent> contents = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId).stream()
-                .filter(c -> Boolean.TRUE.equals(c.getIsTrackable()))
-                .sorted((c1, c2) -> Integer.compare(
-                        c2.getOrderIndex() != null ? c2.getOrderIndex() : 0,
-                        c1.getOrderIndex() != null ? c1.getOrderIndex() : 0
-                ))
+        // Find the QUIZ content format for this quiz (should be exactly one)
+        // This is the content that was auto-created when quiz was created
+        List<SectionsContent> quizContents = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId).stream()
+                .filter(c -> c.getContentFormat() == ContentFormat.QUIZ 
+                        && c.getQuizId() != null 
+                        && c.getQuizId().equals(quiz.getId())
+                        && Boolean.TRUE.equals(c.getIsTrackable()))
                 .collect(java.util.stream.Collectors.toList());
         
-        // Mark the last content (highest orderIndex) as completed
+        // Mark the QUIZ content as completed
         // Only mark if content is not already completed (one-time mark based on highest score)
-        if (!contents.isEmpty()) {
-            SectionsContent lastContent = contents.get(0);
-            Long contentId = lastContent.getId();
+        if (!quizContents.isEmpty()) {
+            SectionsContent quizContent = quizContents.get(0);
+            Long contentId = quizContent.getId();
             
             // Check if content is already completed
             // If already completed, skip marking (one-time completion based on highest score attempt)
