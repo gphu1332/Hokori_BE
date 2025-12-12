@@ -35,6 +35,9 @@ public class SectionsContent extends BaseEntity {
     // chỉ dùng nếu bạn chọn phương án B cho VOCAB (section riêng dùng flashcardSetId)
     private Long flashcardSetId;
 
+    // dùng khi contentFormat = QUIZ, reference đến Quiz entity
+    private Long quizId;
+
     @Column(name = "is_trackable", nullable = false)
     private Boolean isTrackable = true;
 }

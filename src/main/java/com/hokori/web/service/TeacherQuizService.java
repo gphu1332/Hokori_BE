@@ -6,6 +6,8 @@ import com.hokori.web.entity.Section;
 import com.hokori.web.entity.Option;
 import com.hokori.web.entity.Question;
 import com.hokori.web.entity.Quiz;
+import com.hokori.web.entity.SectionsContent;
+import com.hokori.web.Enum.ContentFormat;
 import com.hokori.web.mapper.TeacherQuizMapper;
 import com.hokori.web.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class TeacherQuizService {
     private final QuizRepository quizRepo;
     private final QuestionRepository questionRepo;
     private final OptionRepository optionRepo;
+    private final SectionsContentRepository contentRepo;
     private final TeacherQuizMapper mapper;
     private final CourseService courseService;
 
@@ -132,6 +135,23 @@ public class TeacherQuizService {
         q.setTotalQuestions(0);
 
         Quiz saved = quizRepo.save(q);
+        
+        // Automatically create QUIZ content format for progress tracking
+        // Check if section already has QUIZ content (should not happen, but safety check)
+        boolean hasQuizContent = section.getContents().stream()
+                .anyMatch(sc -> sc.getContentFormat() == ContentFormat.QUIZ);
+        if (!hasQuizContent) {
+            SectionsContent quizContent = new SectionsContent();
+            quizContent.setSection(section);
+            quizContent.setContentFormat(ContentFormat.QUIZ);
+            quizContent.setQuizId(saved.getId());
+            quizContent.setPrimaryContent(false);
+            quizContent.setIsTrackable(true);
+            // Set orderIndex to be last in section
+            int nextOrderIndex = (int) contentRepo.countBySection_Id(sectionId);
+            quizContent.setOrderIndex(nextOrderIndex);
+            contentRepo.save(quizContent);
+        }
         
         // Use native query to avoid LOB stream error when returning response
         var quizMetadataOpt = quizRepo.findQuizMetadataById(saved.getId());

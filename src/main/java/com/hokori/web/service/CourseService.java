@@ -390,7 +390,8 @@ public class CourseService {
                                 ct.isPrimaryContent(),
                                 ct.getFilePath(),
                                 ct.getRichText(),
-                                ct.getFlashcardSetId()
+                                ct.getFlashcardSetId(),
+                                ct.getQuizId()
                         ));
                     }
                     sectionDtos.add(new SectionRes(
@@ -849,6 +850,7 @@ public class CourseService {
         ct.setFilePath(r.getFilePath());
         ct.setRichText(r.getRichText());
         ct.setFlashcardSetId(r.getFlashcardSetId());
+        ct.setQuizId(r.getQuizId());
 
         SectionsContent saved = contentRepo.save(ct);
         return toContentRes(saved);
@@ -887,14 +889,6 @@ public class CourseService {
     private void validateContentPayload(Section section, ContentUpsertReq r, Long excludeContentId) {
         ContentFormat fmt = r.getContentFormat();
 
-        // QUIZ section: chỉ cho phép RICH_TEXT (để giải thích quiz)
-        if (section.getStudyType() == ContentType.QUIZ) {
-            if (fmt != ContentFormat.RICH_TEXT) {
-                throw bad("QUIZ section only allows RICH_TEXT content (for quiz explanation)");
-            }
-            // RICH_TEXT validation sẽ được xử lý ở phần dưới
-        }
-
         // mặc định ASSET nếu null
         if (fmt == null || fmt == ContentFormat.ASSET) {
             // ASSET: require filePath
@@ -931,8 +925,35 @@ public class CourseService {
             // cho phép tạo content FLASHCARD_SET "placeholder" với flashcardSetId = null
             // flashcardSetId sẽ được gán sau khi tạo flashcard set ở module flashcards.
 
+        } else if (fmt == ContentFormat.QUIZ) {
+            // QUIZ: chỉ cho QUIZ section
+            if (section.getStudyType() != ContentType.QUIZ) {
+                throw bad("QUIZ content format only allowed in QUIZ sections");
+            }
+            // QUIZ content phải có quizId
+            if (r.getQuizId() == null) {
+                throw bad("quizId is required for QUIZ content format");
+            }
+            // Verify quiz exists and belongs to this section
+            Quiz quiz = quizRepo.findById(r.getQuizId())
+                    .orElseThrow(() -> bad("Quiz not found: " + r.getQuizId()));
+            if (!quiz.getSection().getId().equals(section.getId())) {
+                throw bad("Quiz does not belong to this section");
+            }
+            // QUIZ content không được primary
+            if (r.isPrimaryContent()) {
+                throw bad("primaryContent must be false for QUIZ content");
+            }
+            // Check if section already has a QUIZ content (only 1 QUIZ content per section)
+            long quizContentCount = section.getContents().stream()
+                    .filter(sc -> excludeContentId == null || !sc.getId().equals(excludeContentId))
+                    .filter(sc -> sc.getContentFormat() == ContentFormat.QUIZ)
+                    .count();
+            if (quizContentCount >= 1) {
+                throw bad("QUIZ section can only have ONE QUIZ content");
+            }
+
         } else {
-            // Không còn QUIZ_REF
             throw bad("Unsupported content format");
         }
     }
@@ -968,6 +989,12 @@ public class CourseService {
             Quiz quiz = quizOpt.get();
             if (quiz.getTotalQuestions() == null || quiz.getTotalQuestions() < 1) {
                 throw bad("QUIZ section must have at least one question");
+            }
+            // QUIZ section must have a QUIZ content format for progress tracking
+            boolean hasQuizContent = s.getContents().stream()
+                    .anyMatch(sc -> sc.getContentFormat() == ContentFormat.QUIZ && Boolean.TRUE.equals(sc.getIsTrackable()));
+            if (!hasQuizContent) {
+                throw bad("QUIZ section must have at least one QUIZ content format (for progress tracking)");
             }
         }
     }
@@ -1378,7 +1405,8 @@ public class CourseService {
                 c.isPrimaryContent(),
                 c.getFilePath(),
                 c.getRichText(),
-                c.getFlashcardSetId()
+                c.getFlashcardSetId(),
+                c.getQuizId()
         );
     }
 
@@ -1636,6 +1664,7 @@ public class CourseService {
         c.setFilePath(r.getFilePath());
         c.setRichText(r.getRichText());
         c.setFlashcardSetId(r.getFlashcardSetId());
+        c.setQuizId(r.getQuizId());
 
         return toContentRes(c);
     }

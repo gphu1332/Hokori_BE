@@ -621,6 +621,7 @@ public class LearnerProgressService {
                         content.getFilePath(),
                         content.getRichText(),
                         content.getFlashcardSetId(),
+                        content.getQuizId(),
                         lastPositionSec,
                         isCompleted
                 ));
@@ -688,7 +689,8 @@ public class LearnerProgressService {
                         content.isPrimaryContent(),
                         content.getFilePath(),
                         content.getRichText(),
-                        content.getFlashcardSetId()
+                        content.getFlashcardSetId(),
+                        content.getQuizId()
                 ));
             }
 
@@ -1111,6 +1113,7 @@ public class LearnerProgressService {
                                 .filePath(content.getFilePath())
                                 .richText(content.getRichText())
                                 .flashcardSetId(content.getFlashcardSetId())
+                                .quizId(content.getQuizId())
                                 .isTrackable(Boolean.TRUE.equals(content.getIsTrackable()))
                                 .lastPositionSec(contentProgress != null ? contentProgress.getLastPositionSec() : null)
                                 .isCompleted(contentProgress != null && Boolean.TRUE.equals(contentProgress.getIsCompleted()))

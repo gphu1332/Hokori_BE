@@ -16,6 +16,7 @@ public class ContentLearningTreeRes {
     private String filePath;
     private String richText;
     private Long flashcardSetId;
+    private Long quizId;
     
     // Progress info
     private Boolean isTrackable;

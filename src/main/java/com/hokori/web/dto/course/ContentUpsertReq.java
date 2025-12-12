@@ -20,4 +20,7 @@ public class ContentUpsertReq {
     private String richText;
 
     private Long flashcardSetId;
+
+    // QUIZ
+    private Long quizId;
 }
