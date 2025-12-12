@@ -90,7 +90,7 @@ public class AIPackageController {
     
     @Operation(
             summary = "Kiểm tra quota của từng dịch vụ",
-            description = "Lấy quota của user cho từng dịch vụ AI (GRAMMAR, KAIWA, PRONUN)"
+            description = "Lấy quota của user cho từng dịch vụ AI (GRAMMAR, KAIWA, PRONUN, CONVERSATION)"
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

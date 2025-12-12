@@ -18,7 +18,7 @@ public class AIQuotaResponse {
     
     /**
      * Map of service type to quota info
-     * Key: GRAMMAR, KAIWA, PRONUN
+     * Key: GRAMMAR, KAIWA, PRONUN, CONVERSATION
      * Value: QuotaInfo
      */
     private Map<String, QuotaInfo> quotas;
