@@ -41,6 +41,11 @@ public class EmailService {
             return;
         }
 
+        if (fromEmail == null || fromEmail.trim().isEmpty()) {
+            log.warn("Email service is not configured (missing username). OTP for {}: {}", toEmail, otpCode);
+            return;
+        }
+
         try {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
@@ -50,9 +55,29 @@ public class EmailService {
 
             mailSender.send(message);
             log.info("OTP email sent successfully to: {}", toEmail);
+        } catch (org.springframework.mail.MailException e) {
+            // Log error but don't throw - allow application to continue
+            // The OTP is still valid, user can request again if email fails
+            log.error("Failed to send OTP email to {}: {}. OTP code: {}", 
+                    toEmail, e.getMessage(), otpCode, e);
+            
+            // Check if it's a connection timeout issue
+            Throwable cause = e.getCause();
+            if (cause != null && (cause instanceof java.net.ConnectException || 
+                                 cause.getMessage() != null && 
+                                 cause.getMessage().contains("Connection timed out"))) {
+                log.error("SMTP connection timeout. Please check: " +
+                         "1) Network connectivity to smtp.gmail.com:587, " +
+                         "2) Firewall rules allowing outbound SMTP, " +
+                         "3) Gmail App Password is correct, " +
+                         "4) SPRING_MAIL_HOST and SPRING_MAIL_PORT environment variables");
+            }
+            
+            // Don't throw exception - allow user to retry or use alternative method
+            // The OTP is still valid in database
         } catch (Exception e) {
-            log.error("Failed to send OTP email to {}: {}", toEmail, e.getMessage(), e);
-            throw new RuntimeException("Failed to send OTP email: " + e.getMessage(), e);
+            log.error("Unexpected error sending OTP email to {}: {}", toEmail, e.getMessage(), e);
+            // Don't throw - allow application to continue
         }
     }
 

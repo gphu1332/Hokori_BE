@@ -44,6 +44,7 @@ public class PaymentService {
     private final ObjectMapper objectMapper;
     private final com.hokori.web.service.NotificationService notificationService;
     private final com.hokori.web.service.WalletService walletService;
+    private final RevenueService revenueService;
     
     public PaymentService(
             PayOSService payOSService,
@@ -60,7 +61,8 @@ public class PaymentService {
             UserRepository userRepo,
             @Qualifier("payOSObjectMapper") ObjectMapper objectMapper,
             com.hokori.web.service.NotificationService notificationService,
-            com.hokori.web.service.WalletService walletService) {
+            com.hokori.web.service.WalletService walletService,
+            RevenueService revenueService) {
         this.payOSService = payOSService;
         this.cartService = cartService;
         this.learnerProgressService = learnerProgressService;
@@ -76,6 +78,7 @@ public class PaymentService {
         this.objectMapper = objectMapper;
         this.notificationService = notificationService;
         this.walletService = walletService;
+        this.revenueService = revenueService;
     }
     
     /**
@@ -524,7 +527,7 @@ public class PaymentService {
                             }
                         }
                         
-                        // Create wallet transaction for each course
+                        // Create wallet transactions and revenue records for each course
                         for (Course course : courses) {
                             try {
                                 // Calculate teacher revenue for this course
@@ -536,16 +539,17 @@ public class PaymentService {
                                 // If multiple courses, calculate proportional amount
                                 long teacherRevenueCents;
                                 if (courses.size() == 1) {
-                                    // Single course: teacher gets full payment amount
-                                    teacherRevenueCents = payment.getAmountCents();
+                                    // Single course: teacher gets 80% of payment amount
+                                    teacherRevenueCents = Math.round(payment.getAmountCents() * 0.80);
                                 } else {
                                     // Multiple courses: calculate proportional amount based on course price
-                                    // Formula: (coursePrice / totalCoursePrice) * paymentAmount
+                                    // Formula: (coursePrice / totalCoursePrice) * paymentAmount * 0.80
                                     if (totalCoursePriceCents > 0) {
-                                        teacherRevenueCents = (coursePriceCents * payment.getAmountCents()) / totalCoursePriceCents;
+                                        long courseAmountCents = (coursePriceCents * payment.getAmountCents()) / totalCoursePriceCents;
+                                        teacherRevenueCents = Math.round(courseAmountCents * 0.80);
                                     } else {
                                         // Fallback: divide equally
-                                        teacherRevenueCents = payment.getAmountCents() / courses.size();
+                                        teacherRevenueCents = Math.round((payment.getAmountCents() / courses.size()) * 0.80);
                                     }
                                 }
                                 
@@ -565,6 +569,15 @@ public class PaymentService {
                                 log.error("Failed to create wallet transaction for course {} after payment {} (orderCode: {}), but enrollment was successful.", 
                                         course.getId(), payment.getId(), payment.getOrderCode(), walletException);
                             }
+                        }
+                        
+                        // Create revenue records for tracking and payout management
+                        try {
+                            revenueService.createRevenueFromPayment(payment);
+                        } catch (Exception revenueException) {
+                            // Log error but don't throw - payment and enrollment already succeeded
+                            log.error("Failed to create revenue records for payment {} (orderCode: {}), but payment was successful.", 
+                                    payment.getId(), payment.getOrderCode(), revenueException);
                         }
                         
                         // Create notification for each enrolled course
