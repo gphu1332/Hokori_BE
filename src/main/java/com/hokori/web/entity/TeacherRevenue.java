@@ -3,7 +3,6 @@ package com.hokori.web.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
-import java.time.YearMonth;
 
 /**
  * Entity để track revenue của teacher theo tháng và theo course

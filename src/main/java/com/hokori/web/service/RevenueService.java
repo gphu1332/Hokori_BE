@@ -1,7 +1,5 @@
 package com.hokori.web.service;
 
-import com.hokori.web.entity.Course;
-import com.hokori.web.entity.Enrollment;
 import com.hokori.web.entity.Payment;
 import com.hokori.web.entity.TeacherRevenue;
 import com.hokori.web.repository.CourseRepository;
@@ -29,8 +27,6 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 public class RevenueService {
-    
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RevenueService.class);
     
     private static final double TEACHER_REVENUE_PERCENT = 0.80; // 80%
     private static final double ADMIN_COMMISSION_PERCENT = 0.20; // 20%
