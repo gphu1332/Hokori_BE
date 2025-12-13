@@ -215,5 +215,58 @@ public class ModeratorCourseController {
         CourseRes course = courseService.getTree(id);
         return ResponseEntity.ok(ApiResponse.success("Course flagged", course));
     }
+
+    @Operation(
+            summary = "Danh sách courses có update đang chờ duyệt",
+            description = "Lấy tất cả courses có status PENDING_UPDATE (teacher đã submit update từ PUBLISHED course)"
+    )
+    @GetMapping("/pending-updates")
+    public ResponseEntity<ApiResponse<List<CourseRes>>> listPendingUpdates() {
+        List<CourseRes> courses = courseService.listPendingUpdateCourses();
+        return ResponseEntity.ok(ApiResponse.success("OK", courses));
+    }
+
+    @Operation(
+            summary = "Chi tiết course có update đang chờ (FULL TREE)",
+            description = "Xem toàn bộ nội dung course (chapters -> lessons -> sections -> contents) để review update trước khi approve/reject"
+    )
+    @GetMapping("/{id}/update-detail")
+    public ResponseEntity<ApiResponse<CourseRes>> getUpdateDetail(
+            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long id) {
+        CourseRes course = courseService.getTree(id);
+        // Verify it's actually PENDING_UPDATE
+        if (course.getStatus() != com.hokori.web.Enum.CourseStatus.PENDING_UPDATE) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Course is not in PENDING_UPDATE status"));
+        }
+        return ResponseEntity.ok(ApiResponse.success("OK", course));
+    }
+
+    @Operation(
+            summary = "Approve course update",
+            description = "Duyệt và áp dụng update cho course. Chuyển status từ PENDING_UPDATE về PUBLISHED và clear pendingUpdateAt."
+    )
+    @PutMapping("/{id}/approve-update")
+    public ResponseEntity<ApiResponse<CourseRes>> approveUpdate(
+            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long id) {
+        CourseRes course = courseService.approveUpdate(id, currentModeratorId());
+        return ResponseEntity.ok(ApiResponse.success("Course update approved", course));
+    }
+
+    @Operation(
+            summary = "Reject course update",
+            description = "Từ chối update. Revert course về PUBLISHED status và clear pendingUpdateAt. Teacher có thể sửa và submit update lại sau."
+    )
+    @PutMapping("/{id}/reject-update")
+    public ResponseEntity<ApiResponse<CourseRes>> rejectUpdate(
+            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long id,
+            @Parameter(name = "reason", in = ParameterIn.QUERY, description = "Lý do từ chối (optional)", example = "Nội dung không phù hợp")
+            @RequestParam(required = false) String reason) {
+        CourseRes course = courseService.rejectUpdate(id, currentModeratorId(), reason);
+        return ResponseEntity.ok(ApiResponse.success("Course update rejected", course));
+    }
 }
 

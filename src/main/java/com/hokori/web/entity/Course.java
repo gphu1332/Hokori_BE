@@ -35,6 +35,15 @@ public class Course extends BaseEntity {
     private CourseStatus status = CourseStatus.DRAFT;
     private Instant publishedAt;
     
+    // Pending update info (khi teacher submit update từ PUBLISHED course)
+    @Column(name = "pending_update_at")
+    private Instant pendingUpdateAt; // Timestamp khi teacher submit update
+    
+    // Snapshot data (JSON) để lưu nội dung cũ khi submit update
+    @Column(name = "snapshot_data", columnDefinition = "jsonb")
+    @JsonIgnore // Prevent serialization to avoid LOB stream errors
+    private String snapshotData; // JSON snapshot của course tree (chapters, lessons, sections, contents)
+    
     // Rejection info (khi moderator reject)
     @Column(name = "rejection_reason", columnDefinition="TEXT")
     private String rejectionReason;

@@ -82,7 +82,8 @@ public class CartService {
                     } catch (IllegalArgumentException e) {
                         return false;
                     }
-                    if (status != CourseStatus.PUBLISHED) return false;
+                    // Allow PUBLISHED and PENDING_UPDATE courses in cart
+                    if (status != CourseStatus.PUBLISHED && status != CourseStatus.PENDING_UPDATE) return false;
                     
                     // Check if user already enrolled (remove from cart if enrolled)
                     if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
@@ -162,7 +163,8 @@ public class CartService {
                     } catch (IllegalArgumentException e) {
                         return itemId;
                     }
-                    if (status != CourseStatus.PUBLISHED) return itemId;
+                    // Allow PUBLISHED and PENDING_UPDATE courses in cart
+                    if (status != CourseStatus.PUBLISHED && status != CourseStatus.PENDING_UPDATE) return itemId;
                     
                     if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
                         return itemId;
@@ -227,7 +229,8 @@ public class CartService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid course status");
         }
-        if (status != CourseStatus.PUBLISHED) {
+        // Allow PUBLISHED and PENDING_UPDATE courses to be added to cart
+        if (status != CourseStatus.PUBLISHED && status != CourseStatus.PENDING_UPDATE) {
             throw new IllegalStateException("COURSE_NOT_PUBLISHED");
         }
         
@@ -313,7 +316,8 @@ public class CartService {
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("Invalid course status");
             }
-            if (status != CourseStatus.PUBLISHED) {
+            // Allow PUBLISHED and PENDING_UPDATE courses
+            if (status != CourseStatus.PUBLISHED && status != CourseStatus.PENDING_UPDATE) {
                 throw new IllegalStateException("COURSE_NOT_PUBLISHED");
             }
             

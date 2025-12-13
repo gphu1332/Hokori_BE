@@ -32,15 +32,15 @@ public class DatabaseConstraintService {
             jdbcTemplate.execute("ALTER TABLE course DROP CONSTRAINT IF EXISTS course_status_check");
             log.info("Dropped existing course_status_check constraint (if existed)");
             
-            // Add new constraint with all CourseStatus values
+            // Add new constraint with all CourseStatus values including PENDING_UPDATE
             jdbcTemplate.execute(
                 "ALTER TABLE course " +
                 "ADD CONSTRAINT course_status_check " +
-                "CHECK (status IN ('DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'PUBLISHED', 'FLAGGED', 'ARCHIVED'))"
+                "CHECK (status IN ('DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'PUBLISHED', 'PENDING_UPDATE', 'FLAGGED', 'ARCHIVED'))"
             );
             
             log.info("Course status constraint fixed successfully. " +
-                    "Constraint now allows: DRAFT, PENDING_APPROVAL, REJECTED, PUBLISHED, FLAGGED, ARCHIVED");
+                    "Constraint now allows: DRAFT, PENDING_APPROVAL, REJECTED, PUBLISHED, PENDING_UPDATE, FLAGGED, ARCHIVED");
         } catch (Exception e) {
             // Log error but don't fail startup - constraint might not exist or might be in different format
             log.warn("Failed to fix course_status_check constraint on startup: {}. " +

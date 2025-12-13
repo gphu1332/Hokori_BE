@@ -9,6 +9,8 @@ import com.hokori.web.dto.course.*;
 import com.hokori.web.entity.*;
 import com.hokori.web.repository.*;
 import com.hokori.web.util.SlugUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -38,6 +40,7 @@ public class CourseService {
     private final QuizRepository quizRepo;
     private final FileStorageService fileStorageService;
     private final com.hokori.web.service.CourseFlagService courseFlagService;
+    private final ObjectMapper objectMapper;
 
     // =========================
     // COURSE
@@ -279,6 +282,73 @@ public class CourseService {
         
         // Tạo notification cho teacher
         notificationService.notifyCourseSubmitted(c.getUserId(), c.getId(), c.getTitle());
+        
+        return toCourseResLite(c);
+    }
+
+    /**
+     * Submit update for published course.
+     * Course remains PUBLISHED with old content visible to learners.
+     * Moderator can review and approve/reject the update.
+     * 
+     * Can only submit update from PUBLISHED status.
+     * Sets status to PENDING_UPDATE and pendingUpdateAt timestamp.
+     * 
+     * REQUIREMENT: Teacher must be APPROVED before submitting updates.
+     */
+    public CourseRes submitUpdate(Long id, Long teacherUserId) {
+        Course c = getOwned(id, teacherUserId);
+
+        // Check teacher approval status - must be APPROVED to submit update
+        User teacher = userRepo.findById(teacherUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Teacher not found"));
+        
+        if (teacher.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Teacher profile must be approved before submitting course updates. Current status: " + 
+                    (teacher.getApprovalStatus() != null ? teacher.getApprovalStatus() : "NONE") + 
+                    ". Please submit your teacher approval request first.");
+        }
+
+        if (c.getStatus() != CourseStatus.PUBLISHED) {
+            throw bad("Course must be in PUBLISHED status to submit update");
+        }
+
+        // Validate title is not empty
+        if (c.getTitle() == null || c.getTitle().trim().isEmpty()) {
+            throw bad("Course title is required");
+        }
+
+        // Đúng 1 chapter học thử
+        long trialCount = chapterRepo.countByCourse_IdAndIsTrialTrue(id);
+        if (trialCount != 1) {
+            throw bad("Course must have exactly ONE trial chapter");
+        }
+
+        // Create snapshot of current course tree (old content) before setting PENDING_UPDATE
+        CourseRes currentCourseTree = getTree(id);
+        String snapshotJson = createSnapshot(currentCourseTree);
+        
+        // Set status to PENDING_UPDATE and record timestamp
+        c.setStatus(CourseStatus.PENDING_UPDATE);
+        c.setPendingUpdateAt(Instant.now());
+        c.setSnapshotData(snapshotJson); // Save snapshot of old content
+        
+        // Clear rejection info if any
+        c.setRejectionReason(null);
+        c.setRejectedAt(null);
+        c.setRejectedByUserId(null);
+        
+        // Clear flag info if any
+        c.setFlaggedReason(null);
+        c.setFlaggedAt(null);
+        c.setFlaggedByUserId(null);
+        
+        courseRepo.save(c);
+        
+        // Tạo notification cho teacher
+        notificationService.notifyCourseSubmitted(c.getUserId(), c.getId(), 
+            c.getTitle() + " (update submitted)");
         
         return toCourseResLite(c);
     }
@@ -534,6 +604,7 @@ public class CourseService {
         // Validate array length (should have at least 14 elements: basic fields + teacherName)
         // Can have 17 elements if includes rejection fields (rejectionReason, rejectedAt, rejectedByUserId)
         // Can have 20 elements if includes flag fields (flaggedReason, flaggedAt, flaggedByUserId)
+        // Can have 21 elements if includes pendingUpdateAt
         if (actualMetadata.length < 14) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Course metadata array too short: expected at least 14 elements, got " + actualMetadata.length);
@@ -541,6 +612,7 @@ public class CourseService {
         
         boolean hasRejectionFields = actualMetadata.length >= 17;
         boolean hasFlagFields = actualMetadata.length >= 20;
+        boolean hasPendingUpdateAt = actualMetadata.length >= 21;
 
         // [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
         //  currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName,
@@ -600,6 +672,18 @@ public class CourseService {
                     : null;
             flaggedByUserId = actualMetadata[19] != null ? ((Number) actualMetadata[19]).longValue() : null;
         }
+        
+        // Pending update field (only if metadata includes it)
+        Instant pendingUpdateAt = null;
+        if (hasPendingUpdateAt && actualMetadata.length >= 21) {
+            pendingUpdateAt = actualMetadata[20] != null
+                    ? (actualMetadata[20] instanceof Instant
+                    ? (Instant) actualMetadata[20]
+                    : actualMetadata[20] instanceof java.sql.Timestamp
+                    ? Instant.ofEpochMilli(((java.sql.Timestamp) actualMetadata[20]).getTime())
+                    : null)
+                    : null;
+        }
 
         CourseRes res = new CourseRes();
         res.setId(id);
@@ -648,6 +732,11 @@ public class CourseService {
         
         // Set isModeratorFlagged: true nếu course đã được moderator flag (đã gửi thông báo cho teacher)
         res.setIsModeratorFlagged(courseStatus == CourseStatus.FLAGGED && flaggedByUserId != null);
+        
+        // Map pending update info (chỉ có khi status = PENDING_UPDATE)
+        if (courseStatus == CourseStatus.PENDING_UPDATE) {
+            res.setPendingUpdateAt(pendingUpdateAt);
+        }
 
         res.setChapters(Collections.emptyList());
         return res;
@@ -710,6 +799,98 @@ public class CourseService {
         return metadataList.stream()
                 .map(this::mapCourseMetadataToRes)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * List courses pending update (for moderator)
+     * Courses that are PENDING_UPDATE status (submitted update from PUBLISHED)
+     */
+    @Transactional(readOnly = true)
+    public List<CourseRes> listPendingUpdateCourses() {
+        List<Object[]> metadataList = courseRepo.findPendingUpdateCourses();
+        return metadataList.stream()
+                .map(this::mapCourseMetadataToRes)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Approve course update by moderator.
+     * Applies the update and changes status from PENDING_UPDATE back to PUBLISHED.
+     */
+    public CourseRes approveUpdate(Long id, Long moderatorUserId) {
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+
+        if (c.getStatus() != CourseStatus.PENDING_UPDATE) {
+            throw bad("Course must be in PENDING_UPDATE status to approve update");
+        }
+
+        // Apply update: change status back to PUBLISHED and clear pendingUpdateAt
+        c.setStatus(CourseStatus.PUBLISHED);
+        c.setPendingUpdateAt(null);
+        c.setSnapshotData(null); // Clear snapshot after approval
+        
+        // Clear any rejection/flag info if any
+        c.setRejectionReason(null);
+        c.setRejectedAt(null);
+        c.setRejectedByUserId(null);
+        c.setFlaggedReason(null);
+        c.setFlaggedAt(null);
+        c.setFlaggedByUserId(null);
+        
+        courseRepo.save(c);
+        
+        // Tạo notification cho teacher
+        notificationService.notifyCourseApproved(c.getUserId(), c.getId(), 
+            c.getTitle() + " (update approved)");
+        
+        return toCourseResLite(c);
+    }
+
+    /**
+     * Reject course update by moderator.
+     * Reverts course back to PUBLISHED status and clears pendingUpdateAt.
+     * Teacher can edit and submit update again after rejection.
+     * 
+     * @param id Course ID
+     * @param moderatorUserId Moderator user ID who rejects
+     * @param reason Rejection reason (optional, will be persisted)
+     * @return Course response with PUBLISHED status
+     */
+    public CourseRes rejectUpdate(Long id, Long moderatorUserId, String reason) {
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+
+        if (c.getStatus() != CourseStatus.PENDING_UPDATE) {
+            throw bad("Course must be in PENDING_UPDATE status to reject update");
+        }
+
+        // Restore course tree from snapshot (revert to old content)
+        if (c.getSnapshotData() != null && !c.getSnapshotData().trim().isEmpty()) {
+            restoreCourseEntitiesFromSnapshot(c, c.getSnapshotData());
+        }
+        
+        // Revert to PUBLISHED status and clear pendingUpdateAt
+        c.setStatus(CourseStatus.PUBLISHED);
+        c.setPendingUpdateAt(null);
+        c.setSnapshotData(null); // Clear snapshot after restore
+        
+        // Store rejection reason for teacher reference
+        c.setRejectionReason(reason);
+        c.setRejectedAt(Instant.now());
+        c.setRejectedByUserId(moderatorUserId);
+        
+        // Clear flag info if any
+        c.setFlaggedReason(null);
+        c.setFlaggedAt(null);
+        c.setFlaggedByUserId(null);
+        
+        courseRepo.save(c);
+        
+        // Tạo notification cho teacher
+        notificationService.notifyCourseRejected(c.getUserId(), c.getId(), c.getTitle(), reason);
+        
+        return toCourseResLite(c);
     }
 
     // =========================
@@ -1838,7 +2019,7 @@ public class CourseService {
         // Check if user is enrolled (for FLAGGED courses access)
         boolean isEnrolled = userId != null && enrollmentRepo.existsByUserIdAndCourseId(userId, courseId);
         
-        if (status != CourseStatus.PUBLISHED) {
+        if (status != CourseStatus.PUBLISHED && status != CourseStatus.PENDING_UPDATE) {
             // Nếu course bị FLAGGED: chỉ cho phép access nếu user đã enrolled
             if (status == CourseStatus.FLAGGED) {
                 if (!isEnrolled) {
@@ -1852,7 +2033,24 @@ public class CourseService {
             }
         }
         
-        CourseRes res = getTree(courseId);
+        // Nếu status = PENDING_UPDATE, dùng snapshot để hiển thị nội dung CŨ cho learners
+        CourseRes res;
+        if (status == CourseStatus.PENDING_UPDATE) {
+            // Load course entity to get snapshot
+            Course course = courseRepo.findByIdAndDeletedFlagFalse(courseId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+            
+            if (course.getSnapshotData() != null && !course.getSnapshotData().trim().isEmpty()) {
+                // Restore from snapshot (old content)
+                res = restoreCourseResFromSnapshot(course, course.getSnapshotData());
+            } else {
+                // Fallback: use current content if snapshot not available
+                res = getTree(courseId);
+            }
+        } else {
+            // PUBLISHED: use current content
+            res = getTree(courseId);
+        }
         long enrollCount = enrollmentRepo.countByCourseId(courseId);
         res.setEnrollCount(enrollCount);
         
@@ -1959,5 +2157,120 @@ public class CourseService {
         
         // Check course status via lesson
         requireLessonBelongsToPendingApprovalCourse(lesson.getId());
+    }
+
+    // =========================
+    // SNAPSHOT METHODS (for PENDING_UPDATE)
+    // =========================
+
+    /**
+     * Create snapshot of course tree (serialize to JSON).
+     * Used to preserve old content when course is in PENDING_UPDATE status.
+     */
+    private String createSnapshot(CourseRes courseRes) {
+        try {
+            return objectMapper.writeValueAsString(courseRes);
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Failed to create course snapshot: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Restore course tree from snapshot (deserialize from JSON).
+     * Used to display old content to learners when course is in PENDING_UPDATE status.
+     * 
+     * Note: This returns CourseRes for display purposes only.
+     * To actually restore course entities, use restoreCourseEntitiesFromSnapshot(Course, String).
+     */
+    private CourseRes restoreCourseResFromSnapshot(Course course, String snapshotJson) {
+        try {
+            CourseRes snapshot = objectMapper.readValue(snapshotJson, CourseRes.class);
+            // Update basic course info from current entity (status, metadata, etc.)
+            snapshot.setId(course.getId());
+            snapshot.setStatus(course.getStatus());
+            snapshot.setPublishedAt(course.getPublishedAt());
+            snapshot.setPendingUpdateAt(course.getPendingUpdateAt());
+            snapshot.setEnrollCount(enrollmentRepo.countByCourseId(course.getId()));
+            snapshot.setTeacherName(getTeacherName(course.getUserId()));
+            return snapshot;
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Failed to restore course from snapshot: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Restore course entities from snapshot (actually modify database).
+     * Used when moderator rejects update - revert course tree to old content.
+     * 
+     * This method deletes current content and recreates from snapshot.
+     */
+    private void restoreCourseEntitiesFromSnapshot(Course course, String snapshotJson) {
+        try {
+            CourseRes snapshot = objectMapper.readValue(snapshotJson, CourseRes.class);
+            Long courseId = course.getId();
+            
+            // Delete all current chapters (cascade will delete lessons, sections, contents)
+            List<Chapter> currentChapters = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
+            chapterRepo.deleteAll(currentChapters);
+            
+            // Recreate chapters from snapshot
+            if (snapshot.getChapters() != null) {
+                for (ChapterRes chapterRes : snapshot.getChapters()) {
+                    Chapter chapter = new Chapter();
+                    chapter.setCourse(course);
+                    chapter.setTitle(chapterRes.getTitle());
+                    chapter.setSummary(chapterRes.getSummary());
+                    chapter.setOrderIndex(chapterRes.getOrderIndex());
+                    chapter.setTrial(chapterRes.getIsTrial());
+                    chapter = chapterRepo.save(chapter);
+                    
+                    // Recreate lessons
+                    if (chapterRes.getLessons() != null) {
+                        for (LessonRes lessonRes : chapterRes.getLessons()) {
+                            Lesson lesson = new Lesson();
+                            lesson.setChapter(chapter);
+                            lesson.setTitle(lessonRes.getTitle());
+                            lesson.setOrderIndex(lessonRes.getOrderIndex());
+                            lesson.setTotalDurationSec(lessonRes.getTotalDurationSec());
+                            lesson = lessonRepo.save(lesson);
+                            
+                            // Recreate sections
+                            if (lessonRes.getSections() != null) {
+                                for (SectionRes sectionRes : lessonRes.getSections()) {
+                                    Section section = new Section();
+                                    section.setLesson(lesson);
+                                    section.setTitle(sectionRes.getTitle());
+                                    section.setOrderIndex(sectionRes.getOrderIndex());
+                                    section.setStudyType(sectionRes.getStudyType());
+                                    section.setFlashcardSetId(sectionRes.getFlashcardSetId());
+                                    section = sectionRepo.save(section);
+                                    
+                                    // Recreate contents
+                                    if (sectionRes.getContents() != null) {
+                                        for (ContentRes contentRes : sectionRes.getContents()) {
+                                            SectionsContent content = new SectionsContent();
+                                            content.setSection(section);
+                                            content.setOrderIndex(contentRes.getOrderIndex());
+                                            content.setContentFormat(contentRes.getContentFormat());
+                                            content.setPrimaryContent(contentRes.isPrimaryContent());
+                                            content.setFilePath(contentRes.getFilePath());
+                                            content.setRichText(contentRes.getRichText());
+                                            content.setFlashcardSetId(contentRes.getFlashcardSetId());
+                                            content.setQuizId(contentRes.getQuizId());
+                                            contentRepo.save(content);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Failed to restore course entities from snapshot: " + e.getMessage());
+        }
     }
 }

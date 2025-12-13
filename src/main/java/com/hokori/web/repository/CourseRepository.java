@@ -33,7 +33,7 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
        select c
        from Course c
        where c.deletedFlag = false
-         and c.status = 'PUBLISHED'
+         and (c.status = 'PUBLISHED' or c.status = 'PENDING_UPDATE')
          and (:lvl is null or c.level = :lvl)
     """)
     Page<Course> findPublishedByLevel(JLPTLevel lvl, Pageable pageable);
@@ -52,7 +52,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
                c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag,
                COALESCE(u.display_name, u.username) as teacher_name,
                c.rejection_reason, c.rejected_at, c.rejected_by_user_id,
-               c.flagged_reason, c.flagged_at, c.flagged_by_user_id
+               c.flagged_reason, c.flagged_at, c.flagged_by_user_id,
+               c.pending_update_at
         FROM course c
         LEFT JOIN users u ON c.user_id = u.id
         WHERE c.id = :id AND c.deleted_flag = :deleted
@@ -122,7 +123,7 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         FROM course c
         LEFT JOIN users u ON c.user_id = u.id
         WHERE c.deleted_flag = :deleted
-          AND c.status = 'PUBLISHED'
+          AND (c.status = 'PUBLISHED' OR c.status = 'PENDING_UPDATE')
           AND (:level IS NULL OR c.level = :level)
         ORDER BY c.published_at DESC
         """, nativeQuery = true)
@@ -188,6 +189,38 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
      */
     default List<Object[]> findPendingApprovalCourses() {
         return findPendingApprovalCoursesInternal(false);
+    }
+
+    // ========================================
+    // 6) Courses pending update (Moderator)
+    // ========================================
+
+    /**
+     * INTERNAL: list courses pending update (for moderator).
+     * Courses that are PENDING_UPDATE status (submitted update from PUBLISHED).
+     *
+     * Returns: [id, title, slug, subtitle, level, priceCents, discountedPriceCents,
+     *           currency, coverImagePath, status, publishedAt, userId, deletedFlag, teacherName,
+     *           pendingUpdateAt]
+     */
+    @Query(value = """
+        SELECT c.id, c.title, c.slug, c.subtitle, c.level, c.price_cents, c.discounted_price_cents, 
+               c.currency, c.cover_image_path, c.status, c.published_at, c.user_id, c.deleted_flag,
+               COALESCE(u.display_name, u.username) as teacher_name,
+               c.pending_update_at
+        FROM course c
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE c.deleted_flag = :deleted
+          AND c.status = 'PENDING_UPDATE'
+        ORDER BY c.pending_update_at DESC
+        """, nativeQuery = true)
+    List<Object[]> findPendingUpdateCoursesInternal(@Param("deleted") boolean deleted);
+
+    /**
+     * API chính – luôn lấy deleted_flag = false.
+     */
+    default List<Object[]> findPendingUpdateCourses() {
+        return findPendingUpdateCoursesInternal(false);
     }
 
     // ===================================

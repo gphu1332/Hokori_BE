@@ -307,10 +307,22 @@ public class UserProfileController {
 
     @PutMapping("/me/teacher")
     @PreAuthorize("hasRole('TEACHER')")
-    @Operation(summary = "Update current teacher section", description = "Update teacher-only profile fields")
+    @Operation(summary = "Update current teacher section", description = "Update teacher-only profile fields. Bank account fields can only be updated when teacher is APPROVED.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateCurrentTeacherSection(
             @Valid @RequestBody com.hokori.web.dto.TeacherProfileUpdateRequest req) {
         User u = currentUserService.getCurrentUserOrThrow();
+
+        // Check if trying to update bank account fields
+        boolean updatingBankAccount = req.getBankAccountNumber() != null || 
+                                     req.getBankAccountName() != null || 
+                                     req.getBankName() != null || 
+                                     req.getBankBranchName() != null;
+        
+        // Only allow bank account update if teacher is APPROVED
+        if (updatingBankAccount && u.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            return ResponseEntity.ok(ApiResponse.error(
+                    "Only approved teachers can update bank account information. Please submit your approval request first."));
+        }
 
         if (req.getYearsOfExperience()!=null) u.setYearsOfExperience(req.getYearsOfExperience());
         if (req.getBio()!=null) u.setBio(req.getBio());

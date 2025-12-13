@@ -50,4 +50,7 @@ public class CourseRes {
     // Flag action (cho moderator)
     private Boolean canFlag; // true nếu moderator có thể flag course này (status = PUBLISHED)
     private Boolean isModeratorFlagged; // true nếu course đã được moderator flag (đã gửi thông báo cho teacher)
+    
+    // Pending update info (chỉ có khi status = PENDING_UPDATE)
+    private Instant pendingUpdateAt; // Timestamp khi teacher submit update
 }

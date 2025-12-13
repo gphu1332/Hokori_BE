@@ -142,6 +142,23 @@ public class TeacherCourseController {
         return courseService.unpublish(id, currentUserIdOrThrow());
     }
 
+    @Operation(summary = "Submit update cho khoá học đã published", description = """
+        Submit update cho course đã PUBLISHED:
+        - Chỉ có thể submit từ status: PUBLISHED
+        - Course vẫn hiển thị với nội dung cũ cho đến khi moderator approve update
+        - Validate trước khi submit:
+          - Teacher phải có approvalStatus = APPROVED
+          - Course phải có title
+          - Course phải có đúng 1 trial chapter
+        - Chuyển status sang PENDING_UPDATE và set pendingUpdateAt timestamp
+        - Moderator sẽ review và approve/reject update
+        """)
+    @PutMapping("/{id}/submit-update")
+    @PreAuthorize("hasRole('TEACHER')")
+    public CourseRes submitUpdate(@PathVariable Long id) {
+        return courseService.submitUpdate(id, currentUserIdOrThrow());
+    }
+
     @Operation(summary = "Upload ảnh cover cho khoá học",
             description = "Multipart file; lưu vào uploads/courses/{courseId}/cover và cập nhật coverImagePath.")
     @PostMapping(value = "/{courseId}/cover-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
