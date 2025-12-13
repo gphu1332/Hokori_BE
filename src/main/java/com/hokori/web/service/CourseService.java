@@ -49,6 +49,8 @@ public class CourseService {
     public CourseRes createCourse(Long teacherUserId, @Valid CourseUpsertReq r) {
         Course c = new Course();
         c.setUserId(teacherUserId);
+        // Ensure snapshotData is null (not included in INSERT due to insertable=false and @DynamicInsert)
+        c.setSnapshotData(null);
         applyCourse(c, r);
 
         // Generate unique slug with retry logic to handle race conditions

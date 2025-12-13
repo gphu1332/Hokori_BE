@@ -4,11 +4,15 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.Enum.JLPTLevel;
 import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicInsert;
+import org.hibernate.annotations.DynamicUpdate;
 import lombok.Getter; import lombok.Setter;
 import java.time.Instant;
 import java.util.*;
 
 @Entity @Table(name="course")
+@DynamicInsert // Only insert non-null fields (excludes snapshot_data when null)
+@DynamicUpdate // Only update changed fields
 @Getter @Setter
 public class Course extends BaseEntity {
 
@@ -40,7 +44,9 @@ public class Course extends BaseEntity {
     private Instant pendingUpdateAt; // Timestamp khi teacher submit update
     
     // Snapshot data (JSON) để lưu nội dung cũ khi submit update
-    @Column(name = "snapshot_data", columnDefinition = "jsonb")
+    // Use updatable=false, insertable=false to prevent Hibernate from auto-updating this JSONB column
+    // We use native query (updateSnapshotData) to update this field with proper JSONB cast
+    @Column(name = "snapshot_data", columnDefinition = "jsonb", updatable = false, insertable = false)
     @JsonIgnore // Prevent serialization to avoid LOB stream errors
     private String snapshotData; // JSON snapshot của course tree (chapters, lessons, sections, contents)
     
