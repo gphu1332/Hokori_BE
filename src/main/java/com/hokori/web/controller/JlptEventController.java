@@ -65,10 +65,15 @@ public class JlptEventController {
         java.time.LocalDateTime now = java.time.LocalDateTime.now(vietnamZone);
         
         // startAt không được là quá khứ
-        if (req.getStartAt().isBefore(now)) {
+        // Giả định req.getStartAt() đã là giờ Việt Nam (vì FE hiển thị đúng giờ Việt Nam)
+        // Thêm buffer 1 phút để tránh race condition khi user chọn giờ hiện tại
+        java.time.LocalDateTime nowWithBuffer = now.minusMinutes(1);
+        if (req.getStartAt().isBefore(nowWithBuffer)) {
             throw new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.BAD_REQUEST,
-                "startAt không được là quá khứ. Thời gian bắt đầu phải sau thời điểm hiện tại."
+                "startAt không được là quá khứ. Thời gian bắt đầu phải sau thời điểm hiện tại. " +
+                "Giờ hiện tại (VN): " + now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) +
+                ", Giờ bạn chọn: " + req.getStartAt().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
             );
         }
         

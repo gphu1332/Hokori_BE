@@ -104,13 +104,14 @@ public class TeacherQuizService {
         if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
             actualQMeta = (Object[]) qMeta[0];
         } else if (qMeta.length == 0) {
-            // Empty outer array - this shouldn't happen if query returns a result
-            throw new RuntimeException("Invalid quiz metadata: empty outer array returned from database for sectionId=" + sectionId);
+            // Empty outer array - query returned empty result, quiz doesn't exist
+            throw new RuntimeException("Quiz not found for this section");
         }
         
         // Validate array length (should have at least 10 elements: id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag)
         if (actualQMeta.length == 0) {
-            throw new RuntimeException("Invalid quiz metadata: empty inner array returned from database for sectionId=" + sectionId + ". Outer array length: " + qMeta.length);
+            // Empty inner array - query returned empty result, quiz doesn't exist
+            throw new RuntimeException("Quiz not found for this section");
         }
         if (actualQMeta.length < 10) {
             throw new RuntimeException("Invalid quiz metadata: array too short (expected 10 elements, got " + actualQMeta.length + ") for sectionId=" + sectionId);
