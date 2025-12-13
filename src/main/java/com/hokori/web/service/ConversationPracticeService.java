@@ -116,6 +116,21 @@ public class ConversationPracticeService {
         logger.info("Processing conversation response: conversationId={}, historySize={}, level={}, scenario={}", 
             conversationId, conversationHistory.size(), normalizedLevel, normalizedScenario);
         
+        // Validate audio data before processing
+        if (audioData == null || audioData.trim().isEmpty()) {
+            throw new AIServiceException("Conversation Practice", 
+                "Audio data is empty. Please record your response before submitting.", 
+                "EMPTY_AUDIO");
+        }
+        
+        // Check minimum audio data length (base64 string should be at least 500 chars for valid audio)
+        String trimmedAudio = audioData.trim();
+        if (trimmedAudio.length() < 500) {
+            throw new AIServiceException("Conversation Practice", 
+                "Audio recording is too short or empty. Please record your response (at least 1-2 seconds) before submitting.", 
+                "AUDIO_TOO_SHORT");
+        }
+        
         // Step 1: Convert user audio to text
         Map<String, Object> speechToTextResult = aiService.speechToText(audioData, normalizedLanguage, normalizedAudioFormat);
         String userTranscript = (String) speechToTextResult.get("transcript");
@@ -127,8 +142,15 @@ public class ConversationPracticeService {
         
         if (userTranscript == null || userTranscript.isEmpty()) {
             throw new AIServiceException("Conversation Practice", 
-                "Could not transcribe audio. Please try again with clearer pronunciation.", 
+                "Could not transcribe audio. The recording may be empty, too quiet, or unclear. Please try again with clearer pronunciation.", 
                 "TRANSCRIPTION_FAILED");
+        }
+        
+        // Additional check: if transcript is too short (just noise or silence)
+        if (userTranscript.trim().length() < 2) {
+            throw new AIServiceException("Conversation Practice", 
+                "Could not detect any speech in the recording. Please speak clearly and try again.", 
+                "NO_SPEECH_DETECTED");
         }
         
         logger.debug("User transcript: {}, confidence: {}", userTranscript, confidence);
@@ -319,31 +341,68 @@ public class ConversationPracticeService {
     }
     
     /**
-     * Build evaluation prompt
+     * Build evaluation prompt with detailed analysis
      */
     private String buildEvaluationPrompt(String level, String scenario, List<Map<String, String>> conversationHistory) {
         StringBuilder historyText = new StringBuilder();
+        int turnNumber = 1;
         for (Map<String, String> message : conversationHistory) {
             String role = message.get("role");
             String text = message.get("text");
-            if ("user".equals(role)) {
-                historyText.append("User: ").append(text).append("\n");
-            } else if ("ai".equals(role)) {
-                historyText.append("AI: ").append(text).append("\n");
+            if ("ai".equals(role)) {
+                historyText.append(String.format("[Turn %d] AI: %s\n", turnNumber, text));
+            } else if ("user".equals(role)) {
+                historyText.append(String.format("[Turn %d] User: %s\n", turnNumber, text));
+                turnNumber++;
             }
         }
         
+        String levelDescription = getLevelDescription(level);
+        String scenarioDescription = getScenarioDescription(scenario);
+        
         return String.format(
-            "Evaluate this Japanese conversation practice session. " +
-            "User level: %s. Scenario: %s. " +
-            "Conversation:\n%s\n" +
-            "Provide evaluation in JSON format: " +
-            "{\"overallScore\": 0-100, \"accuracyScore\": 0-100, \"fluencyScore\": 0-100, " +
-            "\"grammarScore\": 0-100, \"vocabularyScore\": 0-100, " +
-            "\"overallFeedbackVi\": \"...\", \"strengthsVi\": [\"...\"], \"improvementsVi\": [\"...\"], " +
-            "\"suggestionsVi\": [\"...\"]}. " +
-            "All feedback must be in Vietnamese.",
-            level, scenario, historyText.toString()
+            "Bạn là giáo viên tiếng Nhật chuyên nghiệp. Hãy đánh giá chi tiết cuộc trò chuyện thực hành tiếng Nhật sau đây.\n\n" +
+            "**Thông tin:**\n" +
+            "- Trình độ học viên: %s (%s)\n" +
+            "- Tình huống: %s\n" +
+            "- Số lượt trò chuyện: %d\n\n" +
+            "**Cuộc trò chuyện:**\n%s\n\n" +
+            "**Yêu cầu đánh giá:**\n" +
+            "1. **Điểm số (0-100):**\n" +
+            "   - overallScore: Tổng điểm tổng thể\n" +
+            "   - accuracyScore: Độ chính xác (ngữ pháp, từ vựng, cách diễn đạt)\n" +
+            "   - fluencyScore: Độ trôi chảy (tốc độ, nhịp điệu, tự nhiên)\n" +
+            "   - grammarScore: Ngữ pháp (cấu trúc câu, chia động từ, trợ từ)\n" +
+            "   - vocabularyScore: Từ vựng (sử dụng từ phù hợp, đa dạng)\n\n" +
+            "2. **Phân tích chi tiết:**\n" +
+            "   - overallFeedbackVi: Nhận xét tổng quan về toàn bộ cuộc trò chuyện (2-3 câu)\n" +
+            "   - strengthsVi: Mảng 3-5 điểm mạnh cụ thể (ví dụ: \"Sử dụng đúng trợ từ を trong câu 'りんごを食べます'\", \"Phát âm rõ ràng các từ khó\")\n" +
+            "   - improvementsVi: Mảng 3-5 điểm cần cải thiện cụ thể với ví dụ (ví dụ: \"Lỗi chia động từ: '食べる' nên là '食べます' trong ngữ cảnh lịch sự\", \"Thiếu trợ từ に khi nói về địa điểm\")\n" +
+            "   - suggestionsVi: Mảng 3-5 gợi ý cụ thể để cải thiện (ví dụ: \"Luyện tập thêm cách sử dụng trợ từ に và で\", \"Học thêm từ vựng về chủ đề nhà hàng\")\n" +
+            "   - detailedAnalysisVi: Phân tích chi tiết từng lượt trả lời của học viên, chỉ ra lỗi cụ thể và cách sửa (mảng các object với format: {\"turn\": số lượt, \"userResponse\": \"câu trả lời của học viên\", \"errors\": [\"lỗi 1\", \"lỗi 2\"], \"corrections\": [\"cách sửa 1\", \"cách sửa 2\"], \"betterResponse\": \"câu trả lời tốt hơn\"})\n\n" +
+            "**Lưu ý:**\n" +
+            "- Đánh giá dựa trên trình độ %s, không quá khắt khe nhưng cũng không quá dễ dãi\n" +
+            "- Chỉ ra lỗi cụ thể với ví dụ từ cuộc trò chuyện\n" +
+            "- Đưa ra gợi ý thực tế, có thể áp dụng ngay\n" +
+            "- Tất cả feedback phải bằng tiếng Việt\n" +
+            "- Phân tích chi tiết phải cụ thể, không chung chung\n\n" +
+            "Trả về kết quả dưới dạng JSON hợp lệ:\n" +
+            "{\n" +
+            "  \"overallScore\": số (0-100),\n" +
+            "  \"accuracyScore\": số (0-100),\n" +
+            "  \"fluencyScore\": số (0-100),\n" +
+            "  \"grammarScore\": số (0-100),\n" +
+            "  \"vocabularyScore\": số (0-100),\n" +
+            "  \"overallFeedbackVi\": \"chuỗi\",\n" +
+            "  \"strengthsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
+            "  \"improvementsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
+            "  \"suggestionsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
+            "  \"detailedAnalysisVi\": [\n" +
+            "    {\"turn\": số, \"userResponse\": \"chuỗi\", \"errors\": [\"chuỗi\"], \"corrections\": [\"chuỗi\"], \"betterResponse\": \"chuỗi\"},\n" +
+            "    ...\n" +
+            "  ]\n" +
+            "}",
+            level, levelDescription, scenarioDescription, turnNumber - 1, historyText.toString(), level
         );
     }
     
@@ -412,6 +471,33 @@ public class ConversationPracticeService {
                             jsonNode.get("suggestionsVi").forEach(node -> suggestions.add(node.asText()));
                             evaluation.put("suggestionsVi", suggestions);
                         }
+                        if (jsonNode.has("detailedAnalysisVi")) {
+                            List<Map<String, Object>> detailedAnalysis = new ArrayList<>();
+                            jsonNode.get("detailedAnalysisVi").forEach(node -> {
+                                Map<String, Object> turnAnalysis = new HashMap<>();
+                                if (node.has("turn")) {
+                                    turnAnalysis.put("turn", node.get("turn").asInt());
+                                }
+                                if (node.has("userResponse")) {
+                                    turnAnalysis.put("userResponse", node.get("userResponse").asText());
+                                }
+                                if (node.has("errors")) {
+                                    List<String> errors = new ArrayList<>();
+                                    node.get("errors").forEach(err -> errors.add(err.asText()));
+                                    turnAnalysis.put("errors", errors);
+                                }
+                                if (node.has("corrections")) {
+                                    List<String> corrections = new ArrayList<>();
+                                    node.get("corrections").forEach(corr -> corrections.add(corr.asText()));
+                                    turnAnalysis.put("corrections", corrections);
+                                }
+                                if (node.has("betterResponse")) {
+                                    turnAnalysis.put("betterResponse", node.get("betterResponse").asText());
+                                }
+                                detailedAnalysis.add(turnAnalysis);
+                            });
+                            evaluation.put("detailedAnalysisVi", detailedAnalysis);
+                        }
                         return evaluation;
                     }
                 } catch (Exception e) {
@@ -424,10 +510,15 @@ public class ConversationPracticeService {
         
         // Fallback: return basic evaluation
         evaluation.put("overallScore", 75.0);
+        evaluation.put("accuracyScore", 75.0);
+        evaluation.put("fluencyScore", 75.0);
+        evaluation.put("grammarScore", 75.0);
+        evaluation.put("vocabularyScore", 75.0);
         evaluation.put("overallFeedbackVi", "Cuộc trò chuyện đã hoàn thành. Hãy tiếp tục luyện tập để cải thiện kỹ năng!");
-        evaluation.put("strengthsVi", Arrays.asList("Đã hoàn thành cuộc trò chuyện"));
-        evaluation.put("improvementsVi", Arrays.asList("Tiếp tục luyện tập phát âm và từ vựng"));
-        evaluation.put("suggestionsVi", Arrays.asList("Thử các tình huống khác nhau để mở rộng vốn từ"));
+        evaluation.put("strengthsVi", Arrays.asList("Đã hoàn thành cuộc trò chuyện", "Tham gia tích cực vào cuộc trò chuyện"));
+        evaluation.put("improvementsVi", Arrays.asList("Tiếp tục luyện tập phát âm và từ vựng", "Chú ý hơn đến ngữ pháp và cách sử dụng trợ từ"));
+        evaluation.put("suggestionsVi", Arrays.asList("Thử các tình huống khác nhau để mở rộng vốn từ", "Luyện tập thêm các mẫu câu thông dụng"));
+        evaluation.put("detailedAnalysisVi", new ArrayList<>()); // Empty detailed analysis in fallback
         
         return evaluation;
     }

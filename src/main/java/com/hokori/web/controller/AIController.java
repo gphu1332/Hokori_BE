@@ -913,6 +913,14 @@ public class AIController {
                 return ResponseEntity.ok(ApiResponse.error("Invalid audio format. Valid formats: wav, mp3, flac, ogg, webm"));
             }
             
+            // Validate audio data is not empty
+            if (!request.isValidAudioData()) {
+                return ResponseEntity.ok(ApiResponse.error(
+                    "Audio data is empty or too short. Please record your response before submitting. " +
+                    "Make sure you have spoken something and the recording is complete."
+                ));
+            }
+            
             if (conversationPracticeService == null) {
                 return ResponseEntity.ok(ApiResponse.error("Conversation practice service is not available"));
             }

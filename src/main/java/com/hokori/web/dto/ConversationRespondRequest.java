@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -120,6 +121,37 @@ public class ConversationRespondRequest {
                audioFormat.equals("flac") || 
                audioFormat.equals("ogg") ||
                audioFormat.equals("webm");
+    }
+    
+    /**
+     * Validate audio data is not empty and has minimum length
+     * Empty audio (no recording) typically has very short base64 string
+     */
+    public boolean isValidAudioData() {
+        if (audioData == null || audioData.trim().isEmpty()) {
+            return false;
+        }
+        
+        // Remove whitespace and check length
+        String trimmedAudio = audioData.trim();
+        
+        // Minimum base64 length for a valid audio file (even a very short 1-second audio)
+        // WAV header alone is ~44 bytes = ~60 base64 chars, but we need actual audio data
+        // Set minimum to 500 characters to ensure there's actual audio content
+        if (trimmedAudio.length() < 500) {
+            return false;
+        }
+        
+        // Check if it's valid base64 (basic check)
+        try {
+            // Try to decode a small portion to check if it's valid base64
+            if (trimmedAudio.length() > 100) {
+                Base64.getDecoder().decode(trimmedAudio.substring(0, 100));
+            }
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 }
 
