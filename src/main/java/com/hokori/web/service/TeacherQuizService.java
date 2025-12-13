@@ -493,4 +493,43 @@ public class TeacherQuizService {
             throw new RuntimeException("Cannot delete the only correct option. Set another option correct first.");
         optionRepo.delete(o);
     }
+
+    /**
+     * Xóa quiz (soft delete)
+     * - Set deletedFlag = true cho Quiz
+     * - Set deletedFlag = true cho tất cả Questions và Options của quiz
+     * - Xóa SectionsContent có contentFormat=QUIZ và quizId trỏ đến quiz này
+     * - Giữ lại QuizAttempt và QuizAnswer để lưu lịch sử của learners
+     */
+    public void deleteQuiz(Long sectionId, Long quizId){
+        requireOwnerBySection(sectionId);
+        Quiz quiz = getQuizOrThrow(quizId);
+        if (!quiz.getSection().getId().equals(sectionId))
+            throw new RuntimeException("Quiz doesn't belong to this section");
+
+        // Soft delete all questions (which will cascade delete options)
+        List<Question> questions = questionRepo.findByQuiz_IdOrderByOrderIndexAsc(quizId);
+        for (Question question : questions) {
+            // Delete all options for this question
+            optionRepo.findByQuestion_IdOrderByOrderIndexAsc(question.getId())
+                    .forEach(optionRepo::delete);
+            // Soft delete question
+            question.setDeletedFlag(true);
+            questionRepo.save(question);
+        }
+
+        // Soft delete quiz
+        quiz.setDeletedFlag(true);
+        quizRepo.save(quiz);
+
+        // Delete SectionsContent with QUIZ format and quizId pointing to this quiz
+        List<SectionsContent> quizContents = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId)
+                .stream()
+                .filter(sc -> sc.getContentFormat() == ContentFormat.QUIZ 
+                        && quizId.equals(sc.getQuizId()))
+                .toList();
+        for (SectionsContent content : quizContents) {
+            contentRepo.delete(content);
+        }
+    }
 }

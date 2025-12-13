@@ -187,4 +187,22 @@ public class TeacherQuizController {
         service.deleteOption(sectionId, optionId);
         return ResponseEntity.ok(ApiResponse.success("Deleted", null));
     }
+
+    @Operation(
+            summary = "Xoá quiz",
+            description = """
+            Xóa quiz (soft delete):
+            - Set deletedFlag = true cho Quiz
+            - Set deletedFlag = true cho tất cả Questions và Options của quiz
+            - Xóa SectionsContent có contentFormat=QUIZ và quizId trỏ đến quiz này
+            - Giữ lại QuizAttempt và QuizAnswer để lưu lịch sử của learners
+            """
+    )
+    @DeleteMapping("/{quizId}")
+    public ResponseEntity<ApiResponse<Void>> deleteQuiz(
+            @PathVariable Long sectionId,
+            @PathVariable Long quizId) {
+        service.deleteQuiz(sectionId, quizId);
+        return ResponseEntity.ok(ApiResponse.success("Deleted", null));
+    }
 }

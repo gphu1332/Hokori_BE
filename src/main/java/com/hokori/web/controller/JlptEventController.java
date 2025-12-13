@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.ZoneId;
 import java.util.List;
 
 @RestController
@@ -59,8 +60,9 @@ public class JlptEventController {
     ) {
         User admin = currentUserService.getCurrentUserOrThrow();
 
-        // Validate dates
-        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        // Validate dates - sử dụng timezone Việt Nam (UTC+7)
+        ZoneId vietnamZone = ZoneId.of("Asia/Ho_Chi_Minh");
+        java.time.LocalDateTime now = java.time.LocalDateTime.now(vietnamZone);
         
         // startAt không được là quá khứ
         if (req.getStartAt().isBefore(now)) {
