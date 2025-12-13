@@ -162,7 +162,18 @@ public class CourseService {
     }
 
     public void softDelete(Long id, Long teacherUserId) {
-        getOwned(id, teacherUserId).setDeletedFlag(true);
+        Course c = getOwned(id, teacherUserId);
+        
+        // Only allow deleting courses in DRAFT or REJECTED status
+        // Cannot delete PUBLISHED, PENDING_APPROVAL, PENDING_UPDATE, FLAGGED, or ARCHIVED courses
+        CourseStatus status = c.getStatus();
+        if (status != CourseStatus.DRAFT && status != CourseStatus.REJECTED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Cannot delete course with status " + status + ". Only DRAFT or REJECTED courses can be deleted.");
+        }
+        
+        c.setDeletedFlag(true);
+        courseRepo.save(c);
     }
 
     /**
@@ -333,7 +344,13 @@ public class CourseService {
         // Set status to PENDING_UPDATE and record timestamp
         c.setStatus(CourseStatus.PENDING_UPDATE);
         c.setPendingUpdateAt(Instant.now());
-        c.setSnapshotData(snapshotJson); // Save snapshot of old content
+        // Use native query to update snapshot_data with JSONB cast for PostgreSQL compatibility
+        if (snapshotJson != null && !snapshotJson.trim().isEmpty()) {
+            courseRepo.updateSnapshotData(id, snapshotJson);
+        } else {
+            courseRepo.updateSnapshotData(id, null);
+        }
+        courseRepo.save(c); // Save other fields
         
         // Clear rejection info if any
         c.setRejectionReason(null);
@@ -855,7 +872,9 @@ public class CourseService {
         // Apply update: change status back to PUBLISHED and clear pendingUpdateAt
         c.setStatus(CourseStatus.PUBLISHED);
         c.setPendingUpdateAt(null);
-        c.setSnapshotData(null); // Clear snapshot after approval
+        // Clear snapshot after approval using native query for JSONB compatibility
+        courseRepo.updateSnapshotData(id, null);
+        courseRepo.save(c); // Save other fields
         
         // Clear any rejection/flag info if any
         c.setRejectionReason(null);
@@ -900,7 +919,9 @@ public class CourseService {
         // Revert to PUBLISHED status and clear pendingUpdateAt
         c.setStatus(CourseStatus.PUBLISHED);
         c.setPendingUpdateAt(null);
-        c.setSnapshotData(null); // Clear snapshot after restore
+        // Clear snapshot after restore using native query for JSONB compatibility
+        courseRepo.updateSnapshotData(id, null);
+        courseRepo.save(c); // Save other fields
         
         // Store rejection reason for teacher reference
         c.setRejectionReason(reason);
@@ -1823,6 +1844,63 @@ public class CourseService {
         
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+
+        // Before deleting section, handle quiz if exists
+        // Find quiz for this section (including soft-deleted ones for cleanup)
+        Optional<Quiz> quizOpt = quizRepo.findBySection_Id(sectionId);
+        if (quizOpt.isPresent()) {
+            Quiz quiz = quizOpt.get();
+            // Soft delete quiz and its related data (questions, options)
+            // This preserves learner attempts history
+            quiz.setDeletedFlag(true);
+            quizRepo.save(quiz);
+            
+            // Hard delete SectionsContent entries that reference this quiz
+            // This prevents orphaned content references
+            List<SectionsContent> quizContents = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId)
+                    .stream()
+                    .filter(sc -> sc.getContentFormat() == ContentFormat.QUIZ 
+                            && quiz.getId().equals(sc.getQuizId()))
+                    .toList();
+            for (SectionsContent content : quizContents) {
+                contentRepo.delete(content);
+            }
+        }
+
+        // Before deleting section, handle flashcard sets if exist
+        // Find all flashcard sets referenced by sections content in this section
+        List<SectionsContent> sectionContents = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId);
+        Set<Long> processedFlashcardSetIds = new HashSet<>(); // Avoid processing same set multiple times
+        for (SectionsContent content : sectionContents) {
+            if (content.getFlashcardSetId() != null && !processedFlashcardSetIds.contains(content.getFlashcardSetId())) {
+                // Use eager fetch to load cards
+                Optional<FlashcardSet> flashcardSetOpt = flashcardSetRepo.findByIdWithCreatedByAndCards(content.getFlashcardSetId());
+                if (flashcardSetOpt.isPresent()) {
+                    FlashcardSet flashcardSet = flashcardSetOpt.get();
+                    // Soft delete flashcard set and its cards
+                    // This preserves learner progress history
+                    flashcardSet.setDeletedFlag(true);
+                    // Soft delete all cards in the set (cards already eager fetched)
+                    if (flashcardSet.getCards() != null) {
+                        for (com.hokori.web.entity.Flashcard card : flashcardSet.getCards()) {
+                            if (!card.isDeletedFlag()) {
+                                card.setDeletedFlag(true);
+                            }
+                        }
+                    }
+                    flashcardSetRepo.save(flashcardSet);
+                    
+                    // Hard delete SectionsContent entries that reference this flashcard set
+                    // This prevents orphaned content references
+                    List<SectionsContent> flashcardContents = contentRepo.findByFlashcardSetId(content.getFlashcardSetId());
+                    for (SectionsContent flashcardContent : flashcardContents) {
+                        contentRepo.delete(flashcardContent);
+                    }
+                    
+                    processedFlashcardSetIds.add(content.getFlashcardSetId());
+                }
+            }
+        }
 
         Long lessonId = s.getLesson().getId();
         sectionRepo.delete(s);

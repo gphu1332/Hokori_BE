@@ -247,4 +247,19 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.id = :id AND c.deleted_flag = false
         """, nativeQuery = true)
     Optional<String> findDescriptionById(@Param("id") Long id);
+    
+    /**
+     * Update snapshot_data with JSONB cast for PostgreSQL compatibility
+     * Handles NULL values properly
+     */
+    @Modifying
+    @Query(value = """
+        UPDATE course 
+        SET snapshot_data = CASE 
+            WHEN :snapshotData IS NULL THEN NULL 
+            ELSE CAST(:snapshotData AS JSONB) 
+        END
+        WHERE id = :courseId
+        """, nativeQuery = true)
+    void updateSnapshotData(@Param("courseId") Long courseId, @Param("snapshotData") String snapshotData);
 }

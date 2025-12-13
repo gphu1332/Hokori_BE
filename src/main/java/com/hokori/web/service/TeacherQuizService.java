@@ -99,14 +99,21 @@ public class TeacherQuizService {
         
         Object[] qMeta = quizMetadataOpt.get();
         // Handle nested array case (PostgreSQL)
+        // PostgreSQL native query with LIMIT 1 may return Object[] containing another Object[]
         Object[] actualQMeta = qMeta;
-        if (qMeta.length > 0 && qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
             actualQMeta = (Object[]) qMeta[0];
+        } else if (qMeta.length == 0) {
+            // Empty outer array - this shouldn't happen if query returns a result
+            throw new RuntimeException("Invalid quiz metadata: empty outer array returned from database for sectionId=" + sectionId);
         }
         
-        // Validate array length (should have at least 10 elements)
+        // Validate array length (should have at least 10 elements: id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag)
         if (actualQMeta.length == 0) {
-            throw new RuntimeException("Invalid quiz metadata: empty array returned from database for sectionId=" + sectionId);
+            throw new RuntimeException("Invalid quiz metadata: empty inner array returned from database for sectionId=" + sectionId + ". Outer array length: " + qMeta.length);
+        }
+        if (actualQMeta.length < 10) {
+            throw new RuntimeException("Invalid quiz metadata: array too short (expected 10 elements, got " + actualQMeta.length + ") for sectionId=" + sectionId);
         }
         
         // Metadata: [id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
@@ -125,9 +132,45 @@ public class TeacherQuizService {
         requireOwnerBySection(sectionId);
 
         // Check if section already has a non-deleted quiz
+        // Query filters deleted_flag and uses LIMIT 1, so it should only return non-deleted quizzes
         var existingQuizOpt = quizRepo.findQuizMetadataBySectionId(sectionId);
         if (existingQuizOpt.isPresent()) {
-            throw new RuntimeException("Quiz for this section already exists");
+            // Verify the result is valid (not empty array)
+            Object[] qMeta = existingQuizOpt.get();
+            Object[] actualQMeta = qMeta;
+            if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+                actualQMeta = (Object[]) qMeta[0];
+            }
+            
+            // If array is empty or too short, something is wrong - allow creating new quiz
+            if (actualQMeta.length == 0 || actualQMeta.length < 10) {
+                // Invalid metadata - allow creating new quiz
+                // This handles edge case where query returns invalid data
+            } else {
+                // Valid quiz exists - check if there are multiple quizzes (shouldn't happen, but possible due to bugs)
+                var allQuizzes = quizRepo.findAllQuizMetadataBySectionId(sectionId);
+                long nonDeletedCount = allQuizzes.stream()
+                    .mapToLong(quizMeta -> {
+                        Object[] meta = quizMeta;
+                        if (meta.length == 1 && meta[0] instanceof Object[]) {
+                            meta = (Object[]) meta[0];
+                        }
+                        if (meta.length > 9) {
+                            Boolean deletedFlag = meta[9] != null ? 
+                                (meta[9] instanceof Boolean ? (Boolean) meta[9] :
+                                 ((Number) meta[9]).intValue() != 0) : false;
+                            return Boolean.TRUE.equals(deletedFlag) ? 0 : 1;
+                        }
+                        return 0;
+                    })
+                    .sum();
+                
+                if (nonDeletedCount > 1) {
+                    throw new RuntimeException("Multiple non-deleted quizzes found for this section. " +
+                        "Please contact admin to clean up. Found " + nonDeletedCount + " non-deleted quiz(es) for sectionId=" + sectionId);
+                }
+                throw new RuntimeException("Quiz for this section already exists. Please delete the existing quiz first.");
+            }
         }
 
         Section section = sectionRepo.findById(sectionId)
