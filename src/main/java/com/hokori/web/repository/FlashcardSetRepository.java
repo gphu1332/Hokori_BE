@@ -17,6 +17,12 @@ public interface FlashcardSetRepository extends JpaRepository<FlashcardSet, Long
     List<FlashcardSet> findByCreatedBy_IdAndTypeAndDeletedFlagFalse(Long userId, FlashcardSetType type);
 
     Optional<FlashcardSet> findBySectionContent_IdAndDeletedFlagFalse(Long sectionContentId);
+    
+    /**
+     * Find all FlashcardSets (including deleted ones) that reference a specific SectionsContent
+     * Used when deleting content to break foreign key constraint
+     */
+    List<FlashcardSet> findBySectionContent_Id(Long sectionContentId);
 
     /**
      * Find flashcard set by section content ID with eager fetching of createdBy, role, and sectionContent

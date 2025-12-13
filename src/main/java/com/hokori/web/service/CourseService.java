@@ -2005,6 +2005,17 @@ public class CourseService {
         Long courseId = c.getSection().getLesson().getChapter().getCourse().getId();
         assertOwner(courseId, teacherUserId);
 
+        // Before deleting content, handle flashcard sets that reference this content
+        // FlashcardSet has foreign key constraint (sectionContent) to SectionsContent
+        // Always check, regardless of contentFormat, because FlashcardSet can reference any content
+        List<FlashcardSet> flashcardSets = flashcardSetRepo.findBySectionContent_Id(contentId);
+        for (FlashcardSet flashcardSet : flashcardSets) {
+            // Set sectionContent to null to break foreign key constraint before deleting content
+            // This preserves the flashcard set and its cards (they can still be used elsewhere)
+            flashcardSet.setSectionContent(null);
+            flashcardSetRepo.save(flashcardSet);
+        }
+
         // Xóa file vật lý nếu content có filePath
         String filePath = c.getFilePath();
         if (filePath != null && !filePath.trim().isEmpty()) {
