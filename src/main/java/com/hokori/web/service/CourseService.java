@@ -39,6 +39,8 @@ public class CourseService {
     private final com.hokori.web.service.NotificationService notificationService;
     private final QuizRepository quizRepo;
     private final FlashcardSetRepository flashcardSetRepo;
+    private final QuestionRepository questionRepo;
+    private final OptionRepository optionRepo;
     private final FileStorageService fileStorageService;
     private final com.hokori.web.service.CourseFlagService courseFlagService;
     private final ObjectMapper objectMapper;
@@ -1852,12 +1854,8 @@ public class CourseService {
         Optional<Quiz> quizOpt = quizRepo.findBySection_Id(sectionId);
         if (quizOpt.isPresent()) {
             Quiz quiz = quizOpt.get();
-            // Soft delete quiz and its related data (questions, options)
-            // This preserves learner attempts history
-            quiz.setDeletedFlag(true);
-            quizRepo.save(quiz);
             
-            // Hard delete SectionsContent entries that reference this quiz
+            // Hard delete SectionsContent entries that reference this quiz first
             // This prevents orphaned content references
             List<SectionsContent> quizContents = contentRepo.findBySection_IdOrderByOrderIndexAsc(sectionId)
                     .stream()
@@ -1867,6 +1865,25 @@ public class CourseService {
             for (SectionsContent content : quizContents) {
                 contentRepo.delete(content);
             }
+            
+            // Hard delete quiz, questions, and options to break foreign key constraint before deleting section
+            // Note: section_id is NOT NULL, so we must delete quiz before deleting section
+            // Learner attempts (QuizAttempt, QuizAnswer) are preserved as they reference quiz by ID (not FK)
+            Long quizId = quiz.getId();
+            
+            // Delete all options first (they reference questions)
+            questionRepo.findByQuiz_IdOrderByOrderIndexAsc(quizId)
+                    .forEach(question -> {
+                        optionRepo.findByQuestion_IdOrderByOrderIndexAsc(question.getId())
+                                .forEach(optionRepo::delete);
+                    });
+            
+            // Delete all questions (they reference quiz)
+            questionRepo.findByQuiz_IdOrderByOrderIndexAsc(quizId)
+                    .forEach(questionRepo::delete);
+            
+            // Finally delete quiz (breaks foreign key constraint to section)
+            quizRepo.delete(quiz);
         }
 
         // Before deleting section, handle flashcard sets if exist
