@@ -71,6 +71,9 @@ public class ConversationPracticeService {
         aiMessage.put("textVi", aiQuestionVi);
         conversationHistory.add(aiMessage);
         
+        // Generate learning materials for this scenario
+        Map<String, Object> learningMaterials = generateLearningMaterials(normalizedLevel, normalizedScenario, originalScenario);
+        
         // Build response
         Map<String, Object> result = new HashMap<>();
         result.put("conversationId", generateConversationId()); // Temporary ID
@@ -84,6 +87,12 @@ public class ConversationPracticeService {
         result.put("conversationHistory", conversationHistory);
         result.put("turnNumber", 1);
         result.put("maxTurns", 7);
+        
+        // Add new learning fields
+        result.put("scenarioDescription", learningMaterials.get("scenarioDescription"));
+        result.put("vocabularyPreview", learningMaterials.get("vocabularyPreview"));
+        result.put("grammarPoints", learningMaterials.get("grammarPoints"));
+        result.put("tips", learningMaterials.get("tips"));
         
         logger.debug("Conversation started successfully: conversationId={}", result.get("conversationId"));
         return result;
@@ -201,6 +210,9 @@ public class ConversationPracticeService {
         aiMessage.put("textVi", aiNextQuestionVi);
         updatedHistory.add(aiMessage);
         
+        // Generate turn-by-turn feedback for user's response
+        Map<String, Object> turnFeedback = generateTurnFeedback(userTranscript, normalizedLevel, updatedHistory);
+        
         // Build response
         Map<String, Object> result = new HashMap<>();
         result.put("conversationId", conversationId);
@@ -215,6 +227,9 @@ public class ConversationPracticeService {
         result.put("turnNumber", currentTurn + 1);
         result.put("maxTurns", 7);
         result.put("isEnding", false);
+        
+        // Add turn-by-turn feedback
+        result.put("turnFeedback", turnFeedback);
         
         logger.debug("Conversation response processed: turnNumber={}", result.get("turnNumber"));
         return result;
@@ -1022,6 +1037,274 @@ public class ConversationPracticeService {
         levels.put("N2", "upper-intermediate (complex conversations)");
         levels.put("N1", "advanced (fluent conversations)");
         return levels.getOrDefault(level, "beginner");
+    }
+    
+    /**
+     * Generate learning materials (vocabulary, grammar, tips) for the scenario
+     */
+    private Map<String, Object> generateLearningMaterials(String level, String scenario, String originalScenario) {
+        Map<String, Object> materials = new HashMap<>();
+        
+        // Get scenario description
+        String scenarioDesc = getScenarioDescription(scenario);
+        if (isDetailedScenarioDescription(originalScenario)) {
+            scenarioDesc = originalScenario; // Use original if it's a detailed description
+        }
+        materials.put("scenarioDescription", scenarioDesc);
+        
+        // Try to generate with Gemini, fallback to static data
+        try {
+            if (geminiService != null && googleCloudEnabled) {
+                String prompt = String.format(
+                    "Bạn là giáo viên tiếng Nhật chuyên nghiệp. " +
+                    "Hãy tạo tài liệu học tập cho tình huống trò chuyện tiếng Nhật.\n\n" +
+                    "**Thông tin:**\n" +
+                    "- Trình độ: %s\n" +
+                    "- Tình huống: %s\n" +
+                    "- Mô tả chi tiết: %s\n\n" +
+                    "Hãy trả về JSON với format:\n" +
+                    "{\n" +
+                    "  \"vocabularyPreview\": [\"từ vựng 1\", \"từ vựng 2\", ...],\n" +
+                    "  \"grammarPoints\": [\"điểm ngữ pháp 1\", \"điểm ngữ pháp 2\", ...],\n" +
+                    "  \"tips\": [\"mẹo 1\", \"mẹo 2\", ...]\n" +
+                    "}\n\n" +
+                    "Yêu cầu:\n" +
+                    "- vocabularyPreview: 5-8 từ vựng quan trọng sẽ dùng trong tình huống này (tiếng Nhật)\n" +
+                    "- grammarPoints: 3-5 điểm ngữ pháp sẽ luyện tập (mô tả bằng tiếng Việt)\n" +
+                    "- tips: 3-5 mẹo hữu ích để thành công trong tình huống này (tiếng Việt)\n" +
+                    "- Tất cả phải phù hợp với trình độ %s",
+                    level, scenario, scenarioDesc, level
+                );
+                
+                String response = geminiService.generateContent(prompt);
+                if (response != null) {
+                    // Try to parse JSON
+                    try {
+                        com.fasterxml.jackson.databind.JsonNode jsonNode = geminiService.generateContentAsJson(
+                            "Parse this JSON: " + response
+                        );
+                        if (jsonNode != null) {
+                            if (jsonNode.has("vocabularyPreview")) {
+                                List<String> vocab = new ArrayList<>();
+                                jsonNode.get("vocabularyPreview").forEach(node -> vocab.add(node.asText()));
+                                materials.put("vocabularyPreview", vocab);
+                            }
+                            if (jsonNode.has("grammarPoints")) {
+                                List<String> grammar = new ArrayList<>();
+                                jsonNode.get("grammarPoints").forEach(node -> grammar.add(node.asText()));
+                                materials.put("grammarPoints", grammar);
+                            }
+                            if (jsonNode.has("tips")) {
+                                List<String> tips = new ArrayList<>();
+                                jsonNode.get("tips").forEach(node -> tips.add(node.asText()));
+                                materials.put("tips", tips);
+                            }
+                            
+                            // If all fields are present, return
+                            if (materials.containsKey("vocabularyPreview") && 
+                                materials.containsKey("grammarPoints") && 
+                                materials.containsKey("tips")) {
+                                return materials;
+                            }
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse learning materials JSON, using fallback", e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to generate learning materials with Gemini, using fallback", e);
+        }
+        
+        // Fallback to static data based on scenario
+        materials.put("vocabularyPreview", getDefaultVocabulary(scenario, level));
+        materials.put("grammarPoints", getDefaultGrammarPoints(scenario, level));
+        materials.put("tips", getDefaultTips(scenario, level));
+        
+        return materials;
+    }
+    
+    /**
+     * Generate turn-by-turn feedback for user's response
+     */
+    private Map<String, Object> generateTurnFeedback(String userTranscript, String level, List<Map<String, String>> conversationHistory) {
+        Map<String, Object> feedback = new HashMap<>();
+        
+        try {
+            if (geminiService != null && googleCloudEnabled && userTranscript != null && !userTranscript.trim().isEmpty()) {
+                // Get last AI question for context
+                String lastAIQuestion = "";
+                if (!conversationHistory.isEmpty()) {
+                    for (int i = conversationHistory.size() - 1; i >= 0; i--) {
+                        Map<String, String> msg = conversationHistory.get(i);
+                        if ("ai".equals(msg.get("role"))) {
+                            lastAIQuestion = msg.get("text");
+                            break;
+                        }
+                    }
+                }
+                
+                String prompt = String.format(
+                    "Đánh giá nhanh câu trả lời của học viên trong cuộc trò chuyện tiếng Nhật.\n\n" +
+                    "**Thông tin:**\n" +
+                    "- Trình độ: %s\n" +
+                    "- Câu hỏi AI: %s\n" +
+                    "- Câu trả lời học viên: %s\n\n" +
+                    "Hãy trả về JSON với format:\n" +
+                    "{\n" +
+                    "  \"isCorrect\": true/false,\n" +
+                    "  \"feedbackVi\": \"nhận xét ngắn gọn\",\n" +
+                    "  \"suggestionVi\": \"gợi ý cải thiện\"\n" +
+                    "}\n\n" +
+                    "Yêu cầu:\n" +
+                    "- Đánh giá xem câu trả lời có phù hợp với câu hỏi không\n" +
+                    "- Nhận xét ngắn gọn, khuyến khích (1-2 câu)\n" +
+                    "- Gợi ý cách cải thiện nếu có lỗi nhỏ\n" +
+                    "- Tất cả bằng tiếng Việt",
+                    level, lastAIQuestion, userTranscript
+                );
+                
+                String response = geminiService.generateContent(prompt);
+                if (response != null) {
+                    try {
+                        com.fasterxml.jackson.databind.JsonNode jsonNode = geminiService.generateContentAsJson(
+                            "Parse this JSON: " + response
+                        );
+                        if (jsonNode != null) {
+                            if (jsonNode.has("isCorrect")) {
+                                feedback.put("isCorrect", jsonNode.get("isCorrect").asBoolean());
+                            }
+                            if (jsonNode.has("feedbackVi")) {
+                                feedback.put("feedbackVi", jsonNode.get("feedbackVi").asText());
+                            }
+                            if (jsonNode.has("suggestionVi")) {
+                                feedback.put("suggestionVi", jsonNode.get("suggestionVi").asText());
+                            }
+                            
+                            if (!feedback.isEmpty()) {
+                                return feedback;
+                            }
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse turn feedback JSON", e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to generate turn feedback with Gemini", e);
+        }
+        
+        // Fallback: basic positive feedback
+        feedback.put("isCorrect", true);
+        feedback.put("feedbackVi", "Tốt lắm! Hãy tiếp tục.");
+        feedback.put("suggestionVi", "");
+        
+        return feedback;
+    }
+    
+    /**
+     * Get default vocabulary for scenario (fallback)
+     */
+    private List<String> getDefaultVocabulary(String scenario, String level) {
+        List<String> vocab = new ArrayList<>();
+        
+        switch (scenario) {
+            case "restaurant":
+                vocab.add("メニュー");
+                vocab.add("注文");
+                vocab.add("おすすめ");
+                vocab.add("お会計");
+                vocab.add("いただきます");
+                break;
+            case "shopping":
+                vocab.add("いくら");
+                vocab.add("試着");
+                vocab.add("サイズ");
+                vocab.add("レジ");
+                vocab.add("ありがとう");
+                break;
+            case "greeting":
+                vocab.add("はじめまして");
+                vocab.add("よろしく");
+                vocab.add("名前");
+                vocab.add("出身");
+                vocab.add("趣味");
+                break;
+            case "directions":
+                vocab.add("道");
+                vocab.add("右");
+                vocab.add("左");
+                vocab.add("まっすぐ");
+                vocab.add("近く");
+                break;
+            case "hotel":
+                vocab.add("チェックイン");
+                vocab.add("予約");
+                vocab.add("部屋");
+                vocab.add("鍵");
+                vocab.add("朝食");
+                break;
+            case "airport":
+                vocab.add("搭乗券");
+                vocab.add("手荷物");
+                vocab.add("ゲート");
+                vocab.add("出発");
+                vocab.add("到着");
+                break;
+            default:
+                vocab.add("こんにちは");
+                vocab.add("ありがとう");
+                vocab.add("すみません");
+        }
+        
+        return vocab;
+    }
+    
+    /**
+     * Get default grammar points for scenario (fallback)
+     */
+    private List<String> getDefaultGrammarPoints(String scenario, String level) {
+        List<String> grammar = new ArrayList<>();
+        
+        if ("N5".equals(level) || "N4".equals(level)) {
+            grammar.add("Cách nói lịch sự です/ます");
+            grammar.add("Câu hỏi với か");
+            grammar.add("Từ chỉ định これ/それ/あれ");
+        } else if ("N3".equals(level)) {
+            grammar.add("Cách nói điều kiện たら/ば");
+            grammar.add("Thể bị động");
+            grammar.add("Cách nói nhờ vả てください");
+        } else {
+            grammar.add("Kính ngữ và khiêm nhường ngữ");
+            grammar.add("Cách diễn đạt phức tạp");
+            grammar.add("Thành ngữ và cách nói tự nhiên");
+        }
+        
+        return grammar;
+    }
+    
+    /**
+     * Get default tips for scenario (fallback)
+     */
+    private List<String> getDefaultTips(String scenario, String level) {
+        List<String> tips = new ArrayList<>();
+        
+        tips.add("Hãy lắng nghe kỹ câu hỏi trước khi trả lời");
+        tips.add("Sử dụng cách nói lịch sự trong các tình huống trang trọng");
+        tips.add("Đừng ngại hỏi lại nếu không hiểu: \"すみません、もう一度お願いします\"");
+        
+        switch (scenario) {
+            case "restaurant":
+                tips.add("Nhớ nói \"いただきます\" trước khi ăn");
+                tips.add("Khi gọi món, có thể dùng \"お願いします\"");
+                break;
+            case "shopping":
+                tips.add("Hỏi giá bằng \"いくらですか\"");
+                tips.add("Có thể thử đồ bằng \"試着できますか\"");
+                break;
+        }
+        
+        return tips;
     }
 }
 
