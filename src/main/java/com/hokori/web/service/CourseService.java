@@ -1848,6 +1848,16 @@ public class CourseService {
         
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Only allow deleting sections from DRAFT or REJECTED courses
+        // For PUBLISHED courses, teachers should use the pending_update flow to modify structure
+        CourseStatus status = course.getStatus();
+        if (status != CourseStatus.DRAFT && status != CourseStatus.REJECTED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Cannot delete section from course with status " + status + ". " +
+                "Only sections in DRAFT or REJECTED courses can be deleted. " +
+                "For PUBLISHED courses, please submit an update request instead.");
+        }
 
         // Before deleting section, handle quiz if exists
         // Find quiz for this section (including soft-deleted ones for cleanup)
@@ -1925,10 +1935,9 @@ public class CourseService {
         sectionRepo.delete(s);
         renormalizeSectionOrder(lessonId);
         
-        // BR-03: Nếu course đang PUBLISHED và xóa section (thay đổi syllabus structure) → auto-submit
-        if (course.getStatus() == CourseStatus.PUBLISHED) {
-            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (section deleted)");
-        }
+        // Note: No need to auto-submit for PUBLISHED courses anymore since we only allow
+        // deletion from DRAFT or REJECTED courses. Teachers must use pending_update flow
+        // to modify PUBLISHED course structure.
     }
 
     public SectionRes reorderSection(Long sectionId, Long teacherUserId, int newIndex) {
