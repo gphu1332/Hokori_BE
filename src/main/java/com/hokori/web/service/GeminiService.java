@@ -339,12 +339,25 @@ public class GeminiService {
         
         requestBody.put("contents", contents);
 
-        // Generation config
+        // Generation config - optimized for conversation
+        // Higher quality models (gemini-1.5-pro, gemini-2.0) can use more tokens and higher temperature
         Map<String, Object> generationConfig = new HashMap<>();
-        generationConfig.put("temperature", 0.8); // Higher temperature for more natural conversation
-        generationConfig.put("topK", 40);
-        generationConfig.put("topP", 0.95);
-        generationConfig.put("maxOutputTokens", 1024); // Shorter responses for conversation
+        
+        // Adjust config based on model capabilities
+        if (modelName != null && (modelName.contains("pro") || modelName.contains("2.0") || modelName.contains("ultra"))) {
+            // Premium models: More creative, longer responses allowed
+            generationConfig.put("temperature", 0.9); // Higher creativity for natural conversation
+            generationConfig.put("topK", 50);
+            generationConfig.put("topP", 0.95);
+            generationConfig.put("maxOutputTokens", 2048); // Allow longer, more detailed responses
+        } else {
+            // Standard models (flash): Balanced for speed and quality
+            generationConfig.put("temperature", 0.8); // Balanced creativity
+            generationConfig.put("topK", 40);
+            generationConfig.put("topP", 0.95);
+            generationConfig.put("maxOutputTokens", 1024); // Shorter responses for faster generation
+        }
+        
         requestBody.put("generationConfig", generationConfig);
 
         HttpHeaders headers = new HttpHeaders();
