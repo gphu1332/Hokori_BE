@@ -33,6 +33,7 @@ public class FlashcardSetService {
     private final FlashcardRepository cardRepo;
     private final UserFlashcardProgressRepository progressRepo;
     private final CourseService courseService;
+    private final com.hokori.web.repository.SectionsContentRepository contentRepo;
 
     // =======================
     // CREATE SET
@@ -229,6 +230,12 @@ public class FlashcardSetService {
                     card.setDeletedFlag(true);
                 }
             }
+        }
+
+        // 3. Xóa SectionsContent có flashcardSetId trỏ đến set này (giống như quiz deletion)
+        List<com.hokori.web.entity.SectionsContent> contentsWithFlashcard = contentRepo.findByFlashcardSetId(setId);
+        for (com.hokori.web.entity.SectionsContent content : contentsWithFlashcard) {
+            contentRepo.delete(content);
         }
     }
 

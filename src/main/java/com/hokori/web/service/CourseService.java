@@ -38,6 +38,7 @@ public class CourseService {
     private final EnrollmentRepository enrollmentRepo;
     private final com.hokori.web.service.NotificationService notificationService;
     private final QuizRepository quizRepo;
+    private final FlashcardSetRepository flashcardSetRepo;
     private final FileStorageService fileStorageService;
     private final com.hokori.web.service.CourseFlagService courseFlagService;
     private final ObjectMapper objectMapper;
@@ -453,6 +454,19 @@ public class CourseService {
                     var contentEntities = contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId());
                     var contentDtos = new ArrayList<ContentRes>(contentEntities.size());
                     for (var ct : contentEntities) {
+                        // Filter out content with deleted quizId or flashcardSetId
+                        if (ct.getQuizId() != null) {
+                            Optional<Quiz> quizOpt = quizRepo.findById(ct.getQuizId());
+                            if (quizOpt.isEmpty() || Boolean.TRUE.equals(quizOpt.get().getDeletedFlag())) {
+                                continue; // Skip content with deleted quiz
+                            }
+                        }
+                        if (ct.getFlashcardSetId() != null) {
+                            Optional<FlashcardSet> setOpt = flashcardSetRepo.findById(ct.getFlashcardSetId());
+                            if (setOpt.isEmpty() || setOpt.get().isDeletedFlag()) {
+                                continue; // Skip content with deleted flashcard set
+                            }
+                        }
                         contentDtos.add(new ContentRes(
                                 ct.getId(),
                                 ct.getOrderIndex(),
@@ -526,6 +540,19 @@ public class CourseService {
                 var contentEntities = contentRepo.findBySection_IdOrderByOrderIndexAsc(s.getId());
                 var contentDtos = new ArrayList<ContentRes>(contentEntities.size());
                 for (var ct : contentEntities) {
+                    // Filter out content with deleted quizId or flashcardSetId
+                    if (ct.getQuizId() != null) {
+                        Optional<Quiz> quizOpt = quizRepo.findById(ct.getQuizId());
+                        if (quizOpt.isEmpty() || Boolean.TRUE.equals(quizOpt.get().getDeletedFlag())) {
+                            continue; // Skip content with deleted quiz
+                        }
+                    }
+                    if (ct.getFlashcardSetId() != null) {
+                        Optional<FlashcardSet> setOpt = flashcardSetRepo.findById(ct.getFlashcardSetId());
+                        if (setOpt.isEmpty() || setOpt.get().isDeletedFlag()) {
+                            continue; // Skip content with deleted flashcard set
+                        }
+                    }
                     contentDtos.add(new ContentRes(
                             ct.getId(),
                             ct.getOrderIndex(),
@@ -1545,6 +1572,22 @@ public class CourseService {
     private SectionRes toSectionResFull(Section s) {
         List<ContentRes> contents = s.getContents().stream()
                 .sorted(Comparator.comparing(SectionsContent::getOrderIndex))
+                .filter(ct -> {
+                    // Filter out content with deleted quizId or flashcardSetId
+                    if (ct.getQuizId() != null) {
+                        Optional<Quiz> quizOpt = quizRepo.findById(ct.getQuizId());
+                        if (quizOpt.isEmpty() || Boolean.TRUE.equals(quizOpt.get().getDeletedFlag())) {
+                            return false; // Skip content with deleted quiz
+                        }
+                    }
+                    if (ct.getFlashcardSetId() != null) {
+                        Optional<FlashcardSet> setOpt = flashcardSetRepo.findById(ct.getFlashcardSetId());
+                        if (setOpt.isEmpty() || setOpt.get().isDeletedFlag()) {
+                            return false; // Skip content with deleted flashcard set
+                        }
+                    }
+                    return true;
+                })
                 .map(this::toContentRes)
                 .collect(Collectors.toList());
         return new SectionRes(

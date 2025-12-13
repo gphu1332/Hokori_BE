@@ -43,4 +43,14 @@ public interface SectionsContentRepository extends JpaRepository<SectionsContent
         WHERE sc.id = :sectionContentId
         """)
     Optional<Long> findChapterIdBySectionContentId(@Param("sectionContentId") Long sectionContentId);
+    
+    /**
+     * Find all SectionsContent with flashcardSetId pointing to a specific set
+     */
+    List<SectionsContent> findByFlashcardSetId(Long flashcardSetId);
+    
+    /**
+     * Find all SectionsContent with quizId pointing to a specific quiz
+     */
+    List<SectionsContent> findByQuizId(Long quizId);
 }
