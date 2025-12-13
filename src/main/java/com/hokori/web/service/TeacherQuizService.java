@@ -100,8 +100,13 @@ public class TeacherQuizService {
         Object[] qMeta = quizMetadataOpt.get();
         // Handle nested array case (PostgreSQL)
         Object[] actualQMeta = qMeta;
-        if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
+        if (qMeta.length > 0 && qMeta.length == 1 && qMeta[0] instanceof Object[]) {
             actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Validate array length (should have at least 10 elements)
+        if (actualQMeta.length == 0) {
+            throw new RuntimeException("Invalid quiz metadata: empty array returned from database for sectionId=" + sectionId);
         }
         
         // Metadata: [id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
@@ -119,9 +124,11 @@ public class TeacherQuizService {
     public QuizDto createQuiz(Long sectionId, QuizUpsertReq req){
         requireOwnerBySection(sectionId);
 
-        quizRepo.findBySection_Id(sectionId).ifPresent(q -> {
+        // Check if section already has a non-deleted quiz
+        var existingQuizOpt = quizRepo.findQuizMetadataBySectionId(sectionId);
+        if (existingQuizOpt.isPresent()) {
             throw new RuntimeException("Quiz for this section already exists");
-        });
+        }
 
         Section section = sectionRepo.findById(sectionId)
                 .orElseThrow(() -> new RuntimeException("Section not found: " + sectionId));
@@ -167,6 +174,11 @@ public class TeacherQuizService {
             actualQMeta = (Object[]) qMeta[0];
         }
         
+        // Validate array length (should have at least 10 elements)
+        if (actualQMeta.length == 0) {
+            throw new RuntimeException("Invalid quiz metadata: empty array returned from database");
+        }
+        
         // Metadata: [id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
         return new QuizDto(
                 ((Number) actualQMeta[0]).longValue(),
@@ -202,6 +214,11 @@ public class TeacherQuizService {
         Object[] actualQMeta = qMeta;
         if (qMeta.length == 1 && qMeta[0] instanceof Object[]) {
             actualQMeta = (Object[]) qMeta[0];
+        }
+        
+        // Validate array length (should have at least 10 elements)
+        if (actualQMeta.length == 0) {
+            throw new RuntimeException("Invalid quiz metadata: empty array returned from database");
         }
         
         // Metadata: [id, sectionId, title, description, totalQuestions, timeLimitSec, passScorePercent, createdAt, updatedAt, deletedFlag]
