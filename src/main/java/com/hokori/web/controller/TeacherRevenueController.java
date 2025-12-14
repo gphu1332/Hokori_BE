@@ -5,6 +5,7 @@ import com.hokori.web.dto.revenue.*;
 import com.hokori.web.service.TeacherRevenueService;
 import com.hokori.web.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(name = "Teacher Revenue", description = "APIs để teacher quản lý revenue và bank account")
 @PreAuthorize("hasRole('TEACHER')")
+@SecurityRequirement(name = "Bearer Authentication")
 public class TeacherRevenueController {
     
     private static final DateTimeFormatter YEAR_MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");

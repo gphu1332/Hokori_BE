@@ -195,6 +195,12 @@ public class TeacherRevenueService {
                     .collect(Collectors.toList());
         }
         if (filter.getCourseId() != null) {
+            // Verify course belongs to teacher (security check)
+            Course course = courseRepo.findById(filter.getCourseId()).orElse(null);
+            if (course == null || !course.getUserId().equals(teacherId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                        "Course not found or you are not the owner of this course");
+            }
             filteredRevenues = filteredRevenues.stream()
                     .filter(r -> r.getCourseId().equals(filter.getCourseId()))
                     .collect(Collectors.toList());
