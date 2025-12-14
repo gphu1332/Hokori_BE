@@ -115,12 +115,16 @@ public class TeacherRevenueService {
         long unpaidRevenueCents = totalRevenueCents - paidRevenueCents;
         
         // Determine payout status
+        // Only consider fully paid if there's revenue > 0 and all is paid
+        boolean isFullyPaid = totalRevenueCents > 0 && unpaidRevenueCents == 0 && !revenues.isEmpty();
         String payoutStatus;
-        boolean isFullyPaid = unpaidRevenueCents == 0;
-        if (isFullyPaid && !revenues.isEmpty()) {
+        if (isFullyPaid) {
             payoutStatus = "FULLY_PAID";
         } else if (paidRevenueCents > 0) {
             payoutStatus = "PARTIALLY_PAID";
+        } else if (totalRevenueCents == 0) {
+            // No revenue (free courses) - should be PENDING, not FULLY_PAID
+            payoutStatus = "PENDING";
         } else {
             payoutStatus = "PENDING";
         }
@@ -277,13 +281,17 @@ public class TeacherRevenueService {
             
             long courseUnpaidRevenueCents = courseRevenueCents - coursePaidRevenueCents;
             
-            boolean isFullyPaid = courseUnpaidRevenueCents == 0 && !courseRevenues.isEmpty();
+            // Only consider fully paid if there's revenue > 0 and all is paid
+            boolean isFullyPaid = courseRevenueCents > 0 && courseUnpaidRevenueCents == 0 && !courseRevenues.isEmpty();
             
             String payoutStatus;
             if (isFullyPaid) {
                 payoutStatus = "FULLY_PAID";
             } else if (coursePaidRevenueCents > 0) {
                 payoutStatus = "PARTIALLY_PAID";
+            } else if (courseRevenueCents == 0) {
+                // No revenue (free courses) - should be PENDING, not FULLY_PAID
+                payoutStatus = "PENDING";
             } else {
                 payoutStatus = "PENDING";
             }
@@ -310,12 +318,16 @@ public class TeacherRevenueService {
         }
         
         // Determine overall payout status
-        boolean isFullyPaid = unpaidRevenueCents == 0 && !filteredRevenues.isEmpty();
+        // Only consider fully paid if there's revenue > 0 and all is paid
+        boolean isFullyPaid = totalRevenueCents > 0 && unpaidRevenueCents == 0 && !filteredRevenues.isEmpty();
         String payoutStatus;
         if (isFullyPaid) {
             payoutStatus = "FULLY_PAID";
         } else if (paidRevenueCents > 0) {
             payoutStatus = "PARTIALLY_PAID";
+        } else if (totalRevenueCents == 0) {
+            // No revenue (free courses) - should be PENDING, not FULLY_PAID
+            payoutStatus = "PENDING";
         } else {
             payoutStatus = "PENDING";
         }
