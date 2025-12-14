@@ -83,6 +83,9 @@ public class AdminPaymentService {
                     .collect(Collectors.groupingBy(TeacherRevenue::getCourseId));
             
             List<CourseRevenueRes> courses = new ArrayList<>();
+            long totalPendingRevenueCents = 0L;
+            int totalPendingSales = 0;
+            
             for (Map.Entry<Long, List<TeacherRevenue>> entry : revenuesByCourse.entrySet()) {
                 Long courseId = entry.getKey();
                 List<TeacherRevenue> courseRevenues = entry.getValue();
@@ -99,6 +102,9 @@ public class AdminPaymentService {
                     continue;
                 }
                 
+                totalPendingRevenueCents += courseRevenueCents;
+                totalPendingSales += courseRevenues.size();
+                
                 courses.add(CourseRevenueRes.builder()
                         .courseId(courseId)
                         .courseTitle(courseTitle)
@@ -113,6 +119,11 @@ public class AdminPaymentService {
                         .build());
             }
             
+            // Skip teachers who only have free courses (no revenue to pay)
+            if (totalPendingRevenueCents == 0 || courses.isEmpty()) {
+                continue;
+            }
+            
             teacherMap.put(teacherId, AdminPendingPayoutRes.builder()
                     .teacherId(teacherId)
                     .teacherName(teacher.getDisplayName() != null ? teacher.getDisplayName() : 
@@ -124,8 +135,8 @@ public class AdminPaymentService {
                     .bankName(teacher.getBankName())
                     .bankBranchName(teacher.getBankBranchName())
                     .yearMonth(yearMonth)
-                    .totalPendingRevenueCents(totalRevenue)
-                    .totalPendingSales(unpaidRevenues.size())
+                    .totalPendingRevenueCents(totalPendingRevenueCents)
+                    .totalPendingSales(totalPendingSales)
                     .courses(courses)
                     .build());
         }
@@ -156,15 +167,13 @@ public class AdminPaymentService {
                     "No pending payout found for teacher " + teacherId + " in " + yearMonth);
         }
         
-        long totalPendingRevenueCents = unpaidRevenues.stream()
-                .mapToLong(TeacherRevenue::getTeacherRevenueCents)
-                .sum();
-        
-        // Group by course
+        // Group by course first
         Map<Long, List<TeacherRevenue>> revenuesByCourse = unpaidRevenues.stream()
                 .collect(Collectors.groupingBy(TeacherRevenue::getCourseId));
         
         List<CourseRevenueRes> courses = new ArrayList<>();
+        long totalPendingRevenueCents = 0L;
+        
         for (Map.Entry<Long, List<TeacherRevenue>> entry : revenuesByCourse.entrySet()) {
             Long courseId = entry.getKey();
             List<TeacherRevenue> courseRevenues = entry.getValue();
@@ -181,6 +190,8 @@ public class AdminPaymentService {
                 continue;
             }
             
+            totalPendingRevenueCents += courseRevenueCents;
+            
             courses.add(CourseRevenueRes.builder()
                     .courseId(courseId)
                     .courseTitle(courseTitle)
@@ -193,6 +204,13 @@ public class AdminPaymentService {
                     .isFullyPaid(false)
                     .payoutStatus("PENDING")
                     .build());
+        }
+        
+        // If after filtering free courses, there's no revenue to pay, return 404
+        if (totalPendingRevenueCents == 0 || courses.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                    "No pending payout found for teacher " + teacherId + " in " + yearMonth + 
+                    " (only free courses found)");
         }
         
         String teacherName = teacher.getDisplayName() != null ? teacher.getDisplayName() : 
