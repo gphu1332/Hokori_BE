@@ -557,29 +557,40 @@ public class PaymentService {
                                 
                                 // Only create wallet transaction if course has a price and teacher exists
                                 if (teacherRevenueCents > 0 && course.getUserId() != null) {
-                                    walletService.createCourseSaleTransaction(
-                                            course.getUserId(),
-                                            course.getId(),
-                                            teacherRevenueCents,
-                                            null // createdBy = null (system)
-                                    );
-                                    log.info("Created wallet transaction for teacher {} from course {} sale: {} cents", 
-                                            course.getUserId(), course.getId(), teacherRevenueCents);
+                                    try {
+                                        walletService.createCourseSaleTransaction(
+                                                course.getUserId(),
+                                                course.getId(),
+                                                teacherRevenueCents,
+                                                null // createdBy = null (system)
+                                        );
+                                        log.info("Successfully created wallet transaction for teacher {} from course {} sale: {} cents (paymentId={}, orderCode={})", 
+                                                course.getUserId(), course.getId(), teacherRevenueCents, payment.getId(), payment.getOrderCode());
+                                    } catch (Exception walletException) {
+                                        // Log error but don't throw - enrollment has already succeeded
+                                        log.error("Failed to create wallet transaction for course {} after payment {} (orderCode: {}), but enrollment was successful. Error: {}", 
+                                                course.getId(), payment.getId(), payment.getOrderCode(), walletException.getMessage(), walletException);
+                                    }
+                                } else {
+                                    log.warn("Skipping wallet transaction creation for course {}: teacherRevenueCents={}, teacherUserId={} (paymentId={}, orderCode={})", 
+                                            course.getId(), teacherRevenueCents, course.getUserId(), payment.getId(), payment.getOrderCode());
                                 }
                             } catch (Exception walletException) {
                                 // Log error but don't throw - enrollment has already succeeded
-                                log.error("Failed to create wallet transaction for course {} after payment {} (orderCode: {}), but enrollment was successful.", 
-                                        course.getId(), payment.getId(), payment.getOrderCode(), walletException);
+                                log.error("Failed to process wallet transaction for course {} after payment {} (orderCode: {}), but enrollment was successful. Error: {}", 
+                                        course.getId(), payment.getId(), payment.getOrderCode(), walletException.getMessage(), walletException);
                             }
                         }
                         
                         // Create revenue records for tracking and payout management
                         try {
+                            log.info("Creating revenue records for payment {} (orderCode: {})", payment.getId(), payment.getOrderCode());
                             revenueService.createRevenueFromPayment(payment);
+                            log.info("Successfully created revenue records for payment {} (orderCode: {})", payment.getId(), payment.getOrderCode());
                         } catch (Exception revenueException) {
                             // Log error but don't throw - payment and enrollment already succeeded
-                            log.error("Failed to create revenue records for payment {} (orderCode: {}), but payment was successful.", 
-                                    payment.getId(), payment.getOrderCode(), revenueException);
+                            log.error("Failed to create revenue records for payment {} (orderCode: {}), but payment was successful. Error: {}", 
+                                    payment.getId(), payment.getOrderCode(), revenueException.getMessage(), revenueException);
                         }
                         
                         // Create notification for each enrolled course

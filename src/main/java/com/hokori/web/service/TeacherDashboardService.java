@@ -14,6 +14,7 @@ import com.hokori.web.repository.EnrollmentRepository;
 import com.hokori.web.repository.UserRepository;
 import com.hokori.web.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class TeacherDashboardService {
 
     private final CourseRepository courseRepo;
@@ -172,6 +174,12 @@ public class TeacherDashboardService {
                 toZdt.toInstant()
         );
         if (revenueCents == null) revenueCents = 0L;
+        
+        log.debug("Revenue by month - teacherId={}, targetMonth={}, revenueCents={}", 
+                teacherId, targetMonth, revenueCents);
+        
+        log.debug("Revenue by month - teacherId={}, targetMonth={}, revenueCents={}", 
+                teacherId, targetMonth, revenueCents);
 
         // Get all transactions for the period (with Course loaded)
         List<WalletTransaction> transactions = walletTxRepo

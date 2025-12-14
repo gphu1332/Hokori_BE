@@ -158,14 +158,15 @@ public class RevenueService {
                         .build();
                 
                 revenueRepo.save(revenue);
-                log.info("Created revenue record: teacherId={}, courseId={}, paymentId={}, " +
-                         "teacherRevenue={} cents, adminCommission={} cents",
-                        course.getUserId(), course.getId(), payment.getId(),
-                        teacherRevenueCents, adminCommissionCents);
+                log.info("Created revenue record: teacherId={}, courseId={}, paymentId={}, orderCode={}, " +
+                         "teacherRevenue={} cents, adminCommission={} cents, yearMonth={}",
+                        course.getUserId(), course.getId(), payment.getId(), payment.getOrderCode(),
+                        teacherRevenueCents, adminCommissionCents, yearMonth);
             }
             
         } catch (Exception e) {
-            log.error("Error creating revenue from payment {}", payment.getId(), e);
+            log.error("Error creating revenue from payment {} (orderCode: {}). Error: {}", 
+                    payment.getId(), payment.getOrderCode(), e.getMessage(), e);
             // Don't throw - payment already succeeded, revenue can be created later
         }
     }
