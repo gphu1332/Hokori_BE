@@ -76,6 +76,30 @@ public class TeacherDashboardService {
         );
         if (revenueCents == null) revenueCents = 0L;
 
+        // Debug: Check if there are any wallet transactions at all for this teacher
+        List<WalletTransaction> allTeacherTransactions = walletTxRepo
+                .findByUser_IdWithCourseOrderByCreatedAtDesc(teacherId);
+        long totalTransactions = allTeacherTransactions.size();
+        long completedCourseSaleTransactions = allTeacherTransactions.stream()
+                .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                        && tx.getSource() == WalletTransactionSource.COURSE_SALE)
+                .count();
+        
+        // Check transactions in the period
+        long transactionsInPeriod = allTeacherTransactions.stream()
+                .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                        && tx.getSource() == WalletTransactionSource.COURSE_SALE
+                        && tx.getCreatedAt().isAfter(fromZdt.toInstant())
+                        && tx.getCreatedAt().isBefore(toZdt.toInstant()))
+                .count();
+        
+        log.info("Dashboard overview - teacherId={}, currentMonth={}, revenueCents={}, " +
+                 "totalTransactions={}, completedCourseSaleTransactions={}, transactionsInPeriod={}, " +
+                 "from={}, to={}",
+                teacherId, currentMonth, revenueCents, 
+                totalTransactions, completedCourseSaleTransactions, transactionsInPeriod,
+                fromZdt, toZdt);
+
         // VND trực tiếp, không chia 100
         BigDecimal monthlyRevenue = BigDecimal.valueOf(revenueCents);
 
@@ -175,11 +199,29 @@ public class TeacherDashboardService {
         );
         if (revenueCents == null) revenueCents = 0L;
         
-        log.debug("Revenue by month - teacherId={}, targetMonth={}, revenueCents={}", 
-                teacherId, targetMonth, revenueCents);
+        // Debug: Check if there are any wallet transactions at all for this teacher
+        List<WalletTransaction> allTeacherTransactions = walletTxRepo
+                .findByUser_IdWithCourseOrderByCreatedAtDesc(teacherId);
+        long totalTransactions = allTeacherTransactions.size();
+        long completedCourseSaleTransactions = allTeacherTransactions.stream()
+                .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                        && tx.getSource() == WalletTransactionSource.COURSE_SALE)
+                .count();
         
-        log.debug("Revenue by month - teacherId={}, targetMonth={}, revenueCents={}", 
-                teacherId, targetMonth, revenueCents);
+        // Check transactions in the period
+        long transactionsInPeriod = allTeacherTransactions.stream()
+                .filter(tx -> tx.getStatus() == WalletTransactionStatus.COMPLETED 
+                        && tx.getSource() == WalletTransactionSource.COURSE_SALE
+                        && tx.getCreatedAt().isAfter(fromZdt.toInstant())
+                        && tx.getCreatedAt().isBefore(toZdt.toInstant()))
+                .count();
+        
+        log.info("Revenue by month - teacherId={}, targetMonth={}, revenueCents={}, " +
+                 "totalTransactions={}, completedCourseSaleTransactions={}, transactionsInPeriod={}, " +
+                 "from={}, to={}",
+                teacherId, targetMonth, revenueCents, 
+                totalTransactions, completedCourseSaleTransactions, transactionsInPeriod,
+                fromZdt, toZdt);
 
         // Get all transactions for the period (with Course loaded)
         List<WalletTransaction> transactions = walletTxRepo
