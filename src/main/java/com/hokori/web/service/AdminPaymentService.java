@@ -62,7 +62,6 @@ public class AdminPaymentService {
         for (Object[] row : groupedRevenues) {
             Long teacherId = ((Number) row[0]).longValue();
             String revenueYearMonth = (String) row[1];
-            Long totalRevenue = ((Number) row[2]).longValue();
             
             // Filter by yearMonth
             if (!yearMonth.equals(revenueYearMonth)) {
