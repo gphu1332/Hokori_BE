@@ -164,13 +164,29 @@ public class TeacherRevenueService {
         String yearMonth = filter.getYearMonth();
         if (yearMonth == null || yearMonth.trim().isEmpty()) {
             yearMonth = YearMonth.now().format(YEAR_MONTH_FORMATTER);
-        }
-        // Validate yearMonth format
-        try {
-            YearMonth.parse(yearMonth, YEAR_MONTH_FORMATTER);
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                    "Invalid yearMonth format. Expected format: YYYY-MM (e.g., 2025-01)");
+        } else {
+            // Handle both formats: "2025" (year only) or "2025-12" (year-month)
+            yearMonth = yearMonth.trim();
+            if (yearMonth.matches("^\\d{4}$")) {
+                // Only year provided (e.g., "2025"), use current month
+                int year = Integer.parseInt(yearMonth);
+                YearMonth currentYearMonth = YearMonth.now();
+                if (year == currentYearMonth.getYear()) {
+                    // Same year, use current month
+                    yearMonth = currentYearMonth.format(YEAR_MONTH_FORMATTER);
+                } else {
+                    // Different year, use December of that year
+                    yearMonth = YearMonth.of(year, 12).format(YEAR_MONTH_FORMATTER);
+                }
+            } else {
+                // Validate yearMonth format (YYYY-MM)
+                try {
+                    YearMonth.parse(yearMonth, YEAR_MONTH_FORMATTER);
+                } catch (Exception e) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Invalid yearMonth format. Expected format: YYYY (e.g., 2025) or YYYY-MM (e.g., 2025-12)");
+                }
+            }
         }
         
         List<TeacherRevenue> revenues = revenueRepo.findByTeacherIdAndYearMonthOrderByPaidAtDesc(
