@@ -537,6 +537,7 @@ public class PaymentService {
                                         : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
                                 
                                 // If multiple courses, calculate proportional amount
+                                // IMPORTANT: Must match RevenueService logic exactly
                                 long teacherRevenueCents;
                                 if (courses.size() == 1) {
                                     // Single course: teacher gets 80% of payment amount
@@ -545,7 +546,8 @@ public class PaymentService {
                                     // Multiple courses: calculate proportional amount based on course price
                                     // Formula: (coursePrice / totalCoursePrice) * paymentAmount * 0.80
                                     if (totalCoursePriceCents > 0) {
-                                        long courseAmountCents = (coursePriceCents * payment.getAmountCents()) / totalCoursePriceCents;
+                                        // Use double division with Math.round to match RevenueService
+                                        long courseAmountCents = Math.round((double) coursePriceCents / totalCoursePriceCents * payment.getAmountCents());
                                         teacherRevenueCents = Math.round(courseAmountCents * 0.80);
                                     } else {
                                         // Fallback: divide equally
@@ -1043,14 +1045,19 @@ public class PaymentService {
                                 ? course.getDiscountedPriceCents() 
                                 : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
                         
+                        // IMPORTANT: Must match RevenueService and handleWebhook logic exactly
                         long teacherRevenueCents;
                         if (courses.size() == 1) {
-                            teacherRevenueCents = payment.getAmountCents();
+                            // Single course: teacher gets 80% of payment amount
+                            teacherRevenueCents = Math.round(payment.getAmountCents() * 0.80);
                         } else {
                             if (totalCoursePriceCents > 0) {
-                                teacherRevenueCents = (coursePriceCents * payment.getAmountCents()) / totalCoursePriceCents;
+                                // Use double division with Math.round to match RevenueService
+                                long courseAmountCents = Math.round((double) coursePriceCents / totalCoursePriceCents * payment.getAmountCents());
+                                teacherRevenueCents = Math.round(courseAmountCents * 0.80);
                             } else {
-                                teacherRevenueCents = payment.getAmountCents() / courses.size();
+                                // Fallback: divide equally
+                                teacherRevenueCents = Math.round((payment.getAmountCents() / courses.size()) * 0.80);
                             }
                         }
                         

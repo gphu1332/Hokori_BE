@@ -87,21 +87,36 @@ public class RevenueService {
                 return;
             }
             
+            log.debug("Creating revenue for payment {}: {} courses, totalCoursePriceCents={}, paymentAmountCents={}", 
+                    payment.getId(), courses.size(), totalCoursePriceCents, payment.getAmountCents());
+            
             // Calculate price per course (proportional if multiple courses)
-            // If single course, use its price; if multiple, distribute proportionally
+            // If single course, use payment amount; if multiple, distribute proportionally
             for (com.hokori.web.entity.Course course : courses) {
                 long coursePriceCents = course.getDiscountedPriceCents() != null 
                         ? course.getDiscountedPriceCents() 
                         : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
                 
                 // Calculate proportional amount if multiple courses
-                long courseAmountCents = totalCoursePriceCents > 0
-                        ? Math.round((double) coursePriceCents / totalCoursePriceCents * payment.getAmountCents())
-                        : coursePriceCents;
+                long courseAmountCents;
+                if (courses.size() == 1) {
+                    // Single course: use full payment amount
+                    courseAmountCents = payment.getAmountCents();
+                } else if (totalCoursePriceCents > 0) {
+                    // Multiple courses: calculate proportional amount based on course price
+                    courseAmountCents = Math.round((double) coursePriceCents / totalCoursePriceCents * payment.getAmountCents());
+                } else {
+                    // Fallback: if totalCoursePriceCents = 0 but payment > 0, divide equally
+                    // Use integer division to match PaymentService fallback logic
+                    courseAmountCents = payment.getAmountCents() / courses.size();
+                }
                 
                 // Calculate teacher revenue (80%) and admin commission (20%)
                 long teacherRevenueCents = Math.round(courseAmountCents * TEACHER_REVENUE_PERCENT);
                 long adminCommissionCents = courseAmountCents - teacherRevenueCents;
+                
+                log.debug("Course {}: coursePriceCents={}, courseAmountCents={}, teacherRevenueCents={}, adminCommissionCents={}", 
+                        course.getId(), coursePriceCents, courseAmountCents, teacherRevenueCents, adminCommissionCents);
                 
                 // Check if revenue already exists (idempotent)
                 if (revenueRepo.findByPaymentIdAndCourseId(payment.getId(), course.getId()).isPresent()) {
