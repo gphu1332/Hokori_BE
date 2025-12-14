@@ -197,9 +197,17 @@ public class TeacherRevenueService {
         if (filter.getCourseId() != null) {
             // Verify course belongs to teacher (security check)
             Course course = courseRepo.findById(filter.getCourseId()).orElse(null);
-            if (course == null || !course.getUserId().equals(teacherId)) {
+            if (course == null) {
+                log.warn("Course {} not found when filtering revenue for teacherId={}", 
+                        filter.getCourseId(), teacherId);
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                        "Course not found or you are not the owner of this course");
+                        "Course not found");
+            }
+            if (!course.getUserId().equals(teacherId)) {
+                log.warn("Course {} (owned by userId={}) does not belong to teacherId={}", 
+                        filter.getCourseId(), course.getUserId(), teacherId);
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                        "You are not the owner of this course");
             }
             filteredRevenues = filteredRevenues.stream()
                     .filter(r -> r.getCourseId().equals(filter.getCourseId()))
