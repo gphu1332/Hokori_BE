@@ -281,6 +281,11 @@ public class TeacherRevenueService {
             
             long courseUnpaidRevenueCents = courseRevenueCents - coursePaidRevenueCents;
             
+            // Skip free courses (revenue = 0) - không cần hiển thị vì không có tiền để trả
+            if (courseRevenueCents == 0) {
+                continue;
+            }
+            
             // Only consider fully paid if there's revenue > 0 and all is paid
             boolean isFullyPaid = courseRevenueCents > 0 && courseUnpaidRevenueCents == 0 && !courseRevenues.isEmpty();
             
@@ -289,9 +294,6 @@ public class TeacherRevenueService {
                 payoutStatus = "FULLY_PAID";
             } else if (coursePaidRevenueCents > 0) {
                 payoutStatus = "PARTIALLY_PAID";
-            } else if (courseRevenueCents == 0) {
-                // No revenue (free courses) - should be PENDING, not FULLY_PAID
-                payoutStatus = "PENDING";
             } else {
                 payoutStatus = "PENDING";
             }
@@ -394,6 +396,11 @@ public class TeacherRevenueService {
                 long courseRevenueCents = courseRevenues.stream()
                         .mapToLong(TeacherRevenue::getTeacherRevenueCents)
                         .sum();
+                
+                // Skip free courses (revenue = 0) - không cần hiển thị vì không có tiền để trả
+                if (courseRevenueCents == 0) {
+                    continue;
+                }
                 
                 boolean isPaid = courseRevenues.stream().allMatch(TeacherRevenue::getIsPaid);
                 

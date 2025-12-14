@@ -94,6 +94,11 @@ public class AdminPaymentService {
                         .mapToLong(TeacherRevenue::getTeacherRevenueCents)
                         .sum();
                 
+                // Skip free courses (revenue = 0) - không cần hiển thị vì không có tiền để trả
+                if (courseRevenueCents == 0) {
+                    continue;
+                }
+                
                 courses.add(CourseRevenueRes.builder()
                         .courseId(courseId)
                         .courseTitle(courseTitle)
@@ -170,6 +175,11 @@ public class AdminPaymentService {
             long courseRevenueCents = courseRevenues.stream()
                     .mapToLong(TeacherRevenue::getTeacherRevenueCents)
                     .sum();
+            
+            // Skip free courses (revenue = 0) - không cần hiển thị vì không có tiền để trả
+            if (courseRevenueCents == 0) {
+                continue;
+            }
             
             courses.add(CourseRevenueRes.builder()
                     .courseId(courseId)
