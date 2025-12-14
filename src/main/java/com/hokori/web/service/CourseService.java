@@ -98,12 +98,25 @@ public class CourseService {
 
     public CourseRes updateCourse(Long id, Long teacherUserId, @Valid CourseUpsertReq r) {
         Course c = getOwned(id, teacherUserId);
+        
+        // Check course status restrictions
+        CourseStatus currentStatus = c.getStatus();
+        if (currentStatus == CourseStatus.PENDING_APPROVAL) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Cannot update course with status PENDING_APPROVAL. " +
+                "Please wait for moderator approval or rejection. " +
+                "If rejected, you can edit and resubmit.");
+        }
+        // Allow update for FLAGGED courses (teacher can edit and resubmit)
+        // Allow update for PUBLISHED courses (will auto-submit if title/price changed)
+        // Allow update for DRAFT, REJECTED, PENDING_UPDATE, ARCHIVED
+        
         String oldSlug = c.getSlug();
         
         // Lưu giá trị cũ để so sánh
         Long oldPriceCents = c.getPriceCents();
         Long oldDiscountedPriceCents = c.getDiscountedPriceCents();
-        CourseStatus oldStatus = c.getStatus();
+        CourseStatus oldStatus = currentStatus;
         
         applyCourse(c, r);
 
@@ -439,6 +452,16 @@ public class CourseService {
 
     public CourseRes unpublish(Long id, Long teacherUserId) {
         Course c = getOwned(id, teacherUserId);
+        
+        // Only allow unpublishing from PUBLISHED status
+        // Cannot unpublish from PENDING_APPROVAL, PENDING_UPDATE, FLAGGED, etc.
+        if (c.getStatus() != CourseStatus.PUBLISHED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Cannot unpublish course with status " + c.getStatus() + ". " +
+                "Only PUBLISHED courses can be unpublished. " +
+                "For courses in other statuses, please use the appropriate workflow.");
+        }
+        
         c.setStatus(CourseStatus.DRAFT);
         c.setPublishedAt(null);
         return toCourseResLite(c);
