@@ -151,6 +151,7 @@ public class User {
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "profile_approval_request_id",
             foreignKey = @ForeignKey(name = "fk_users_profile_approval_request"))
+    @JsonIgnore // Prevent LazyInitializationException when serializing to JSON
     private ProfileApproveRequest currentApproveRequest;
 
     // ===== Payout / Bank (teacher) =====
