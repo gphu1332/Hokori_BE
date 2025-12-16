@@ -120,7 +120,7 @@ public class RevenueService {
                         course.getId(), coursePriceCents, courseAmountCents, teacherRevenueCents, adminCommissionCents);
                 
                 // Check if revenue already exists (idempotent)
-                if (revenueRepo.findByPaymentIdAndCourseId(payment.getId(), course.getId()).isPresent()) {
+                if (revenueRepo.findByPayment_IdAndCourse_Id(payment.getId(), course.getId()).isPresent()) {
                     log.debug("Revenue already exists for payment {} and course {}", payment.getId(), course.getId());
                     continue;
                 }
