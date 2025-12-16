@@ -11,7 +11,7 @@ public interface CourseCompletionCertificateRepository extends JpaRepository<Cou
     /**
      * Tìm certificate theo enrollment ID
      */
-    Optional<CourseCompletionCertificate> findByEnrollmentId(Long enrollmentId);
+    Optional<CourseCompletionCertificate> findByEnrollment_Id(Long enrollmentId);
 
     /**
      * Lấy tất cả certificates của một user
