@@ -696,7 +696,7 @@ public class PaymentService {
      */
     @Transactional(readOnly = true)
     public Page<PaymentResponse> listMyPayments(Long userId, Pageable pageable) {
-        Page<Payment> payments = paymentRepo.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+        Page<Payment> payments = paymentRepo.findByUser_IdOrderByCreatedAtDesc(userId, pageable);
         return payments.map(payment -> {
             List<Long> courseIds = parseCourseIds(payment.getCourseIds());
             return PaymentResponse.fromEntity(payment, courseIds);
@@ -719,7 +719,7 @@ public class PaymentService {
      */
     @Transactional(readOnly = true)
     public PaymentResponse getPaymentByOrderCode(Long orderCode, Long userId) {
-        Payment payment = paymentRepo.findByOrderCodeAndUserId(orderCode, userId)
+        Payment payment = paymentRepo.findByOrderCodeAndUser_Id(orderCode, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
         List<Long> courseIds = parseCourseIds(payment.getCourseIds());
         return PaymentResponse.fromEntity(payment, courseIds);

@@ -196,7 +196,7 @@ public class NotificationService {
      */
     @Transactional(readOnly = true)
     public List<NotificationRes> getMyNotifications(Long userId) {
-        List<Notification> notifications = notificationRepo.findByUserIdOrderByCreatedAtDesc(userId);
+        List<Notification> notifications = notificationRepo.findByUser_IdOrderByCreatedAtDesc(userId);
         return notifications.stream()
                 .map(this::toRes)
                 .collect(Collectors.toList());

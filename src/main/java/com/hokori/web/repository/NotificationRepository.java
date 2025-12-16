@@ -13,17 +13,17 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     /**
      * Lấy tất cả notifications của một user, sắp xếp theo thời gian tạo (mới nhất trước)
      */
-    List<Notification> findByUserIdOrderByCreatedAtDesc(Long userId);
+    List<Notification> findByUser_IdOrderByCreatedAtDesc(Long userId);
 
     /**
      * Lấy notifications chưa đọc của một user
      */
-    List<Notification> findByUserIdAndIsReadFalseOrderByCreatedAtDesc(Long userId);
+    List<Notification> findByUser_IdAndIsReadFalseOrderByCreatedAtDesc(Long userId);
 
     /**
      * Đếm số notifications chưa đọc của một user
      */
-    long countByUserIdAndIsReadFalse(Long userId);
+    long countByUser_IdAndIsReadFalse(Long userId);
 
     /**
      * Đánh dấu notification là đã đọc
