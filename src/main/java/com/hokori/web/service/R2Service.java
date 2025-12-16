@@ -63,7 +63,7 @@ public class R2Service {
                     .replace("+", "%20"); // Replace + with %20 for spaces
 
             String fullUrl = publicUrl + encodedPath;
-            log.debug("File uploaded to R2: {} -> {}", filePath, fullUrl);
+            log.info("✅ File uploaded to R2 successfully: {} -> {}", filePath, fullUrl);
             return fullUrl;
 
         } catch (Exception e) {

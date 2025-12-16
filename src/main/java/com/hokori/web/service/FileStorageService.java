@@ -79,7 +79,7 @@ public class FileStorageService {
 
             // Upload file to R2
             String fileUrl = r2Service.uploadFile(fileData, filePath, contentType);
-            log.info("File uploaded to R2: {} -> {}", filePath, fileUrl);
+            log.info("✅ File stored in R2: {} -> {}", filePath, fileUrl);
 
             // Create FileStorage entity (chỉ lưu metadata, không lưu binary data)
             FileStorage fileStorage = new FileStorage();
