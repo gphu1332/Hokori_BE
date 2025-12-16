@@ -18,6 +18,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString(exclude = {"user"}) // Exclude user để tránh LazyInitializationException
 public class Payment {
     
     @Id
@@ -38,8 +39,34 @@ public class Payment {
     @Builder.Default
     private PaymentStatus status = PaymentStatus.PENDING;
     
-    @Column(name = "user_id", nullable = false)
-    private Long userId; // User thực hiện thanh toán
+    // JPA Relationship với User
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "user_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_payment_user")
+    )
+    private User user;
+    
+    // Convenience method để lấy userId (không break code hiện tại)
+    // Lombok @Getter sẽ không generate getUserId() vì đã có custom method này
+    public Long getUserId() {
+        return user != null ? user.getId() : null;
+    }
+    
+    // Convenience method để set userId (tạo User proxy để không break code hiện tại)
+    // Lombok @Setter sẽ không generate setUserId() vì đã có custom method này
+    // Note: Khi dùng builder, cần inject User entity thay vì chỉ userId
+    public void setUserId(Long userId) {
+        if (userId != null) {
+            // Tạo User proxy để JPA có thể persist foreign key
+            // Code sử dụng nên inject User entity thay vì chỉ userId
+            this.user = new User();
+            this.user.setId(userId);
+        } else {
+            this.user = null;
+        }
+    }
     
     @Column(name = "cart_id")
     private Long cartId; // Cart được thanh toán (optional)

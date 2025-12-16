@@ -4,6 +4,7 @@ import com.hokori.web.Enum.NotificationType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 
 import java.time.Instant;
 
@@ -19,10 +20,30 @@ import java.time.Instant;
         })
 @Getter
 @Setter
+@ToString(exclude = {"user"}) // Exclude relationships để tránh LazyInitializationException
 public class Notification extends BaseEntity {
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId; // User nhận notification
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "user_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_notification_user")
+    )
+    private User user;
+
+    // Convenience methods để không break code hiện tại
+    public Long getUserId() {
+        return user != null ? user.getId() : null;
+    }
+
+    public void setUserId(Long userId) {
+        if (userId != null) {
+            this.user = new User();
+            this.user.setId(userId);
+        } else {
+            this.user = null;
+        }
+    }
 
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, length = 50)

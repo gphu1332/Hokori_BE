@@ -102,10 +102,16 @@ public class LearnerProgressService {
         }
         
         // Course is free (priceCents == null or priceCents == 0), allow direct enrollment
+        // Load User and Course entities để set vào Enrollment relationship
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
         // Create enrollment
         Enrollment enrollment = Enrollment.builder()
-                .userId(userId)
-                .courseId(courseId)
+                .user(user) // Set User entity thay vì chỉ userId
+                .course(course) // Set Course entity thay vì chỉ courseId
                 .progressPercent(0)
                 .startedAt(Instant.now())
                 .lastAccessAt(Instant.now())
@@ -175,10 +181,16 @@ public class LearnerProgressService {
         }
         
         // Skip price check - user has already paid
+        // Load User and Course entities để set vào Enrollment relationship
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
         // Create enrollment
         Enrollment enrollment = Enrollment.builder()
-                .userId(userId)
-                .courseId(courseId)
+                .user(user) // Set User entity thay vì chỉ userId
+                .course(course) // Set Course entity thay vì chỉ courseId
                 .progressPercent(0)
                 .startedAt(Instant.now())
                 .lastAccessAt(Instant.now())

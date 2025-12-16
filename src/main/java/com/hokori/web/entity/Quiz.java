@@ -1,7 +1,6 @@
 package com.hokori.web.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.hokori.web.entity.Section;
 import jakarta.persistence.*;
 import lombok.Getter; import lombok.Setter;
 

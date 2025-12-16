@@ -222,12 +222,16 @@ public class PaymentService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error serializing course IDs");
         }
         
+        // Load User entity để set vào Payment relationship
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        
         Payment payment = Payment.builder()
                 .orderCode(orderCode)
                 .amountCents(totalAmount) // Amount in VND
                 .description(description)
                 .status(PaymentStatus.PENDING)
-                .userId(userId)
+                .user(user) // Set User entity thay vì chỉ userId
                 .cartId(cartId)
                 .courseIds(courseIdsJson)
                 .paymentLink(payOSResponse.getData().getCheckoutUrl())
@@ -368,13 +372,17 @@ public class PaymentService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create payment link");
         }
         
+        // Load User entity để set vào Payment relationship
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        
         // Save payment record
         Payment payment = Payment.builder()
                 .orderCode(orderCode)
                 .amountCents(aiPackage.getPriceCents())
                 .description(description)
                 .status(PaymentStatus.PENDING)
-                .userId(userId)
+                .user(user) // Set User entity thay vì chỉ userId
                 .aiPackageId(packageId)
                 .aiPackagePurchaseId(purchase.getId())
                 .paymentLink(payOSResponse.getData().getCheckoutUrl())

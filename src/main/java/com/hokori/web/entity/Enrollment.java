@@ -8,15 +8,55 @@ import java.time.Instant;
 @Table(name = "enrollment", uniqueConstraints =
 @UniqueConstraint(name = "uk_enroll_user_course", columnNames = {"user_id", "course_id"}))
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@ToString(exclude = {"user", "course"}) // Exclude relationships để tránh LazyInitializationException
 public class Enrollment {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "course_id", nullable = false)
-    private Long courseId;
+    // JPA Relationship với Course
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "course_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_enrollment_course")
+    )
+    private Course course;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    // JPA Relationship với User
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "user_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_enrollment_user")
+    )
+    private User user;
+
+    // Convenience methods để không break code hiện tại
+    public Long getCourseId() {
+        return course != null ? course.getId() : null;
+    }
+
+    public void setCourseId(Long courseId) {
+        if (courseId != null) {
+            this.course = new Course();
+            this.course.setId(courseId);
+        } else {
+            this.course = null;
+        }
+    }
+
+    public Long getUserId() {
+        return user != null ? user.getId() : null;
+    }
+
+    public void setUserId(Long userId) {
+        if (userId != null) {
+            this.user = new User();
+            this.user.setId(userId);
+        } else {
+            this.user = null;
+        }
+    }
 
     @Column(name = "progress_percent", nullable = false)
     @Builder.Default

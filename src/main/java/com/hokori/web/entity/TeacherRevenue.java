@@ -25,23 +25,121 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString(exclude = {"teacher", "course", "payment", "enrollment", "payoutBy"}) // Exclude relationships để tránh LazyInitializationException
 public class TeacherRevenue {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(name = "teacher_id", nullable = false)
-    private Long teacherId; // Teacher owner của course
+    // JPA Relationship với User (teacher)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "teacher_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_teacher_revenue_teacher")
+    )
+    private User teacher;
     
-    @Column(name = "course_id", nullable = false)
-    private Long courseId; // Course được bán
+    // JPA Relationship với Course
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "course_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_teacher_revenue_course")
+    )
+    private Course course;
     
-    @Column(name = "payment_id", nullable = false)
-    private Long paymentId; // Payment tạo ra revenue này
+    // JPA Relationship với Payment
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "payment_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_teacher_revenue_payment")
+    )
+    private Payment payment;
     
-    @Column(name = "enrollment_id")
-    private Long enrollmentId; // Enrollment được tạo từ payment này
+    // JPA Relationship với Enrollment (optional)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "enrollment_id",
+            foreignKey = @ForeignKey(name = "fk_teacher_revenue_enrollment")
+    )
+    private Enrollment enrollment;
+    
+    // JPA Relationship với User (payoutBy - admin)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "payout_by_user_id",
+            foreignKey = @ForeignKey(name = "fk_teacher_revenue_payout_by")
+    )
+    private User payoutBy;
+    
+    // Convenience methods để không break code hiện tại
+    public Long getTeacherId() {
+        return teacher != null ? teacher.getId() : null;
+    }
+
+    public void setTeacherId(Long teacherId) {
+        if (teacherId != null) {
+            this.teacher = new User();
+            this.teacher.setId(teacherId);
+        } else {
+            this.teacher = null;
+        }
+    }
+
+    public Long getCourseId() {
+        return course != null ? course.getId() : null;
+    }
+
+    public void setCourseId(Long courseId) {
+        if (courseId != null) {
+            this.course = new Course();
+            this.course.setId(courseId);
+        } else {
+            this.course = null;
+        }
+    }
+
+    public Long getPaymentId() {
+        return payment != null ? payment.getId() : null;
+    }
+
+    public void setPaymentId(Long paymentId) {
+        if (paymentId != null) {
+            this.payment = new Payment();
+            this.payment.setId(paymentId);
+        } else {
+            this.payment = null;
+        }
+    }
+
+    public Long getEnrollmentId() {
+        return enrollment != null ? enrollment.getId() : null;
+    }
+
+    public void setEnrollmentId(Long enrollmentId) {
+        if (enrollmentId != null) {
+            this.enrollment = new Enrollment();
+            this.enrollment.setId(enrollmentId);
+        } else {
+            this.enrollment = null;
+        }
+    }
+
+    public Long getPayoutByUserId() {
+        return payoutBy != null ? payoutBy.getId() : null;
+    }
+
+    public void setPayoutByUserId(Long payoutByUserId) {
+        if (payoutByUserId != null) {
+            this.payoutBy = new User();
+            this.payoutBy.setId(payoutByUserId);
+        } else {
+            this.payoutBy = null;
+        }
+    }
     
     // Revenue calculation
     @Column(name = "total_amount_cents", nullable = false)

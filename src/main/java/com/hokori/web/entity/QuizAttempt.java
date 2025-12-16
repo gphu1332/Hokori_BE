@@ -2,6 +2,7 @@ package com.hokori.web.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter; import lombok.Setter;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 
@@ -12,18 +13,43 @@ import java.time.LocalDateTime;
                 @Index(name="idx_quiz_attempt_user", columnList = "user_id"),
                 @Index(name="idx_quiz_attempt_quiz", columnList = "quiz_id")
         })
+@ToString(exclude = {"user", "quiz"}) // Exclude relationships để tránh LazyInitializationException
 public class QuizAttempt {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /** Ai làm bài */
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "user_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_quiz_attempt_user")
+    )
+    private User user;
 
     /** Quiz thuộc lesson này */
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "quiz_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "quiz_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_quiz_attempt_quiz")
+    )
     private Quiz quiz;
+
+    // Convenience methods để không break code hiện tại
+    public Long getUserId() {
+        return user != null ? user.getId() : null;
+    }
+
+    public void setUserId(Long userId) {
+        if (userId != null) {
+            this.user = new User();
+            this.user.setId(userId);
+        } else {
+            this.user = null;
+        }
+    }
 
     /** Trạng thái */
     @Enumerated(EnumType.STRING) @Column(name = "status", length = 20, nullable = false)

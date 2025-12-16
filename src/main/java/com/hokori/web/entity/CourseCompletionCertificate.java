@@ -23,20 +23,77 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString(exclude = {"user", "course", "enrollment"}) // Exclude relationships để tránh LazyInitializationException
 public class CourseCompletionCertificate {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "enrollment_id", nullable = false, unique = true)
-    private Long enrollmentId; // Link đến enrollment
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "enrollment_id",
+            nullable = false,
+            unique = true,
+            foreignKey = @ForeignKey(name = "fk_cc_enrollment")
+    )
+    private Enrollment enrollment;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId; // Learner
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "user_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_cc_user")
+    )
+    private User user;
 
-    @Column(name = "course_id", nullable = false)
-    private Long courseId; // Course đã hoàn thành
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "course_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_cc_course")
+    )
+    private Course course;
+
+    // Convenience methods để không break code hiện tại
+    public Long getEnrollmentId() {
+        return enrollment != null ? enrollment.getId() : null;
+    }
+
+    public void setEnrollmentId(Long enrollmentId) {
+        if (enrollmentId != null) {
+            this.enrollment = new Enrollment();
+            this.enrollment.setId(enrollmentId);
+        } else {
+            this.enrollment = null;
+        }
+    }
+
+    public Long getUserId() {
+        return user != null ? user.getId() : null;
+    }
+
+    public void setUserId(Long userId) {
+        if (userId != null) {
+            this.user = new User();
+            this.user.setId(userId);
+        } else {
+            this.user = null;
+        }
+    }
+
+    public Long getCourseId() {
+        return course != null ? course.getId() : null;
+    }
+
+    public void setCourseId(Long courseId) {
+        if (courseId != null) {
+            this.course = new Course();
+            this.course.setId(courseId);
+        } else {
+            this.course = null;
+        }
+    }
 
     @Column(name = "course_title", length = 500)
     private String courseTitle; // Snapshot tên course khi hoàn thành
@@ -58,7 +115,12 @@ public class CourseCompletionCertificate {
         if (certificateNumber == null) {
             // Generate certificate number: CERT-{courseId}-{userId}-{timestamp}
             long timestamp = Instant.now().toEpochMilli();
-            certificateNumber = String.format("CERT-%d-%d-%d", courseId, userId, timestamp);
+            Long courseIdValue = getCourseId();
+            Long userIdValue = getUserId();
+            certificateNumber = String.format("CERT-%d-%d-%d", 
+                courseIdValue != null ? courseIdValue : 0, 
+                userIdValue != null ? userIdValue : 0, 
+                timestamp);
         }
     }
 }

@@ -1,10 +1,10 @@
 package com.hokori.web.service;
 
-import com.hokori.web.entity.Payment;
-import com.hokori.web.entity.TeacherRevenue;
+import com.hokori.web.entity.*;
 import com.hokori.web.repository.CourseRepository;
 import com.hokori.web.repository.EnrollmentRepository;
 import com.hokori.web.repository.TeacherRevenueRepository;
+import com.hokori.web.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,6 +36,7 @@ public class RevenueService {
     private final TeacherRevenueRepository revenueRepo;
     private final CourseRepository courseRepo;
     private final EnrollmentRepository enrollmentRepo;
+    private final UserRepository userRepo;
     
     /**
      * Tạo revenue records khi payment thành công
@@ -125,9 +126,9 @@ public class RevenueService {
                 }
                 
                 // Find enrollment for this course and payment
-                Long enrollmentId = null;
+                Enrollment enrollmentEntity = null;
                 try {
-                    com.hokori.web.entity.Enrollment enrollment = enrollmentRepo
+                    Enrollment enrollment = enrollmentRepo
                             .findByUserIdAndCourseId(payment.getUserId(), course.getId())
                             .orElse(null);
                     if (enrollment != null && enrollment.getCreatedAt() != null) {
@@ -135,19 +136,23 @@ public class RevenueService {
                         long timeDiff = Math.abs(enrollment.getCreatedAt().toEpochMilli() - 
                                                 payment.getPaidAt().toEpochMilli());
                         if (timeDiff < 60000) { // Within 1 minute
-                            enrollmentId = enrollment.getId();
+                            enrollmentEntity = enrollment;
                         }
                     }
                 } catch (Exception e) {
                     log.warn("Could not find enrollment for payment {} and course {}", payment.getId(), course.getId());
                 }
                 
+                // Load User entity (teacher) để set vào TeacherRevenue relationship
+                User teacher = userRepo.findById(course.getUserId())
+                        .orElseThrow(() -> new RuntimeException("Teacher not found: " + course.getUserId()));
+                
                 // Create revenue record
                 TeacherRevenue revenue = TeacherRevenue.builder()
-                        .teacherId(course.getUserId())
-                        .courseId(course.getId())
-                        .paymentId(payment.getId())
-                        .enrollmentId(enrollmentId)
+                        .teacher(teacher) // Set User entity thay vì chỉ teacherId
+                        .course(course) // Set Course entity thay vì chỉ courseId
+                        .payment(payment) // Set Payment entity thay vì chỉ paymentId
+                        .enrollment(enrollmentEntity) // Set Enrollment entity thay vì chỉ enrollmentId
                         .totalAmountCents(payment.getAmountCents())
                         .coursePriceCents(coursePriceCents)
                         .teacherRevenueCents(teacherRevenueCents)
@@ -203,9 +208,13 @@ public class RevenueService {
                 continue;
             }
             
+            // Load User entity (admin) để set vào TeacherRevenue relationship
+            User admin = userRepo.findById(adminUserId)
+                    .orElseThrow(() -> new RuntimeException("Admin user not found: " + adminUserId));
+            
             revenue.setIsPaid(true);
             revenue.setPayoutDate(now);
-            revenue.setPayoutByUserId(adminUserId);
+            revenue.setPayoutBy(admin); // Set User entity thay vì chỉ payoutByUserId
             revenue.setPayoutNote(note);
             revenueRepo.save(revenue);
             
