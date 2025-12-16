@@ -133,7 +133,7 @@ public class PaymentService {
             // Enroll user into all free courses
             for (Long courseId : courseIds) {
                 try {
-                    if (!enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+                    if (!enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
                         learnerProgressService.enrollCourse(userId, courseId);
                         log.info("Enrolled user {} into free course {}", userId, courseId);
                     }

@@ -773,7 +773,7 @@ public class CourseService {
         res.setTeacherName(teacherName);
 
         // ✅ Quan trọng: set enrollCount ở đây
-        long enrollCount = (id != null) ? enrollmentRepo.countByCourseId(id) : 0L;
+        long enrollCount = (id != null) ? enrollmentRepo.countByCourse_Id(id) : 0L;
         res.setEnrollCount(enrollCount);
         
         // Map rejection info (chỉ có khi status = REJECTED)

@@ -21,8 +21,8 @@ public class LearnerDashboardService {
     private final UserDailyLearningRepository userDailyLearningRepo;
 
     public LearnerDashboardSummaryRes getSummary(Long userId) {
-        long totalEnrolled = enrollmentRepo.countByUserId(userId);
-        long totalCompleted = enrollmentRepo.countByUserIdAndCompletedAtIsNotNull(userId);
+        long totalEnrolled = enrollmentRepo.countByUser_Id(userId);
+        long totalCompleted = enrollmentRepo.countByUser_IdAndCompletedAtIsNotNull(userId);
 
         int streak = learnerProgressService.getCurrentLearningStreak(userId);
 

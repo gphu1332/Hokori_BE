@@ -54,7 +54,7 @@ public class TeacherStatisticsService {
         String courseTitle = actualMetadata[1] != null ? actualMetadata[1].toString() : "Unknown";
         
         // Lấy tất cả enrollments của course này
-        List<Enrollment> enrollments = enrollmentRepo.findByCourseIdOrderByCreatedAtDesc(courseId);
+        List<Enrollment> enrollments = enrollmentRepo.findByCourse_IdOrderByCreatedAtDesc(courseId);
         
         // Tính statistics tổng hợp
         int totalEnrollments = enrollments.size();

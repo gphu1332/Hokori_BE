@@ -129,7 +129,7 @@ public class RevenueService {
                 Enrollment enrollmentEntity = null;
                 try {
                     Enrollment enrollment = enrollmentRepo
-                            .findByUserIdAndCourseId(payment.getUserId(), course.getId())
+                            .findByUser_IdAndCourse_Id(payment.getUserId(), course.getId())
                             .orElse(null);
                     if (enrollment != null && enrollment.getCreatedAt() != null) {
                         // Check if enrollment was created around the same time as payment

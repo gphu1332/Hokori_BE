@@ -11,7 +11,8 @@ import java.util.Optional;
 
 public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
 
-    Optional<Enrollment> findByUserIdAndCourseId(Long userId, Long courseId);
+    // Use relationship paths: User_Id and Course_Id
+    Optional<Enrollment> findByUser_IdAndCourse_Id(Long userId, Long courseId);
     
     /**
      * Find the most recent enrollment for a user and course.
@@ -26,20 +27,20 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     """, nativeQuery = true)
     Optional<Enrollment> findLatestByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
 
-    List<Enrollment> findByUserId(Long userId);
+    List<Enrollment> findByUser_Id(Long userId);
 
-    boolean existsByUserIdAndCourseId(Long userId, Long courseId);
+    boolean existsByUser_IdAndCourse_Id(Long userId, Long courseId);
 
     // ====== NEW: đếm học viên active của teacher ======
     // Đếm tất cả học viên từ các courses PUBLISHED và FLAGGED của teacher
     // (FLAGGED courses vẫn có học viên đã enroll, nên vẫn tính vào tổng số)
     @Query("""
-        select count(distinct e.userId)
+        select count(distinct e.user.id)
         from Enrollment e
-        where e.courseId in (
+        where e.course.id in (
             select c.id
             from Course c
-            where c.userId = :teacherId
+            where c.user.id = :teacherId
               and c.status in :statuses
               and c.deletedFlag = false
         )
@@ -50,22 +51,22 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     );
 
     // ====== NEW: đếm enrollment theo course ======
-// ✅ Đúng với entity có field courseId
-    long countByCourseId(Long courseId);
-    long countByUserId(Long userId);
-    long countByUserIdAndCompletedAtIsNotNull(Long userId);
+    // Use relationship paths: Course_Id and User_Id
+    long countByCourse_Id(Long courseId);
+    long countByUser_Id(Long userId);
+    long countByUser_IdAndCompletedAtIsNotNull(Long userId);
     
     // ====== Teacher: lấy danh sách learners trong course ======
-    List<Enrollment> findByCourseIdOrderByCreatedAtDesc(Long courseId);
+    List<Enrollment> findByCourse_IdOrderByCreatedAtDesc(Long courseId);
 
     // ====== Admin: đếm tổng enrollments của teacher ======
     @Query("""
         select count(e)
         from Enrollment e
-        where e.courseId in (
+        where e.course.id in (
             select c.id
             from Course c
-            where c.userId = :teacherId
+            where c.user.id = :teacherId
               and c.deletedFlag = false
         )
         """)

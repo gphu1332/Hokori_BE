@@ -52,7 +52,7 @@ public class LearnerProgressService {
      */
     public EnrollmentLiteRes enrollCourse(Long userId, Long courseId) {
         // Check if already enrolled
-        if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+        if (enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Already enrolled in this course");
         }
         
@@ -135,9 +135,9 @@ public class LearnerProgressService {
      */
     public EnrollmentLiteRes enrollCourseAfterPayment(Long userId, Long courseId) {
         // Check if already enrolled
-        if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+        if (enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
             // Already enrolled, return existing enrollment
-            Enrollment existing = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+            Enrollment existing = enrollmentRepo.findByUser_IdAndCourse_Id(userId, courseId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Enrollment check failed"));
             return EnrollmentLiteRes.builder()
                     .enrollmentId(existing.getId())
@@ -210,7 +210,7 @@ public class LearnerProgressService {
     
     @Transactional(readOnly = true)
     public EnrollmentLiteRes getEnrollment(Long userId, Long courseId) {
-        Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+        Enrollment e = enrollmentRepo.findByUser_IdAndCourse_Id(userId, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
         return EnrollmentLiteRes.builder()
                 .enrollmentId(e.getId())
@@ -227,7 +227,7 @@ public class LearnerProgressService {
      */
     @Transactional(readOnly = true)
     public List<EnrollmentLiteRes> listEnrolledCourses(Long userId) {
-        List<Enrollment> enrollments = enrollmentRepo.findByUserId(userId);
+        List<Enrollment> enrollments = enrollmentRepo.findByUser_Id(userId);
         return enrollments.stream()
                 .map(e -> EnrollmentLiteRes.builder()
                         .enrollmentId(e.getId())
@@ -244,7 +244,7 @@ public class LearnerProgressService {
     // NOTE: Trial chapters progress is shown but NOT counted in course progress %
     @Transactional(readOnly = true)
     public List<ChapterProgressRes> getChaptersProgress(Long userId, Long courseId) {
-        Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+        Enrollment e = enrollmentRepo.findByUser_IdAndCourse_Id(userId, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
 
         List<Chapter> chapters = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
@@ -290,7 +290,7 @@ public class LearnerProgressService {
     // NOTE: Trial chapters lessons are shown but NOT counted in course progress
     @Transactional(readOnly = true)
     public List<LessonProgressRes> getLessonsProgress(Long userId, Long courseId) {
-        Enrollment e = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+        Enrollment e = enrollmentRepo.findByUser_IdAndCourse_Id(userId, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled"));
 
         List<Lesson> lessons = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId).stream()

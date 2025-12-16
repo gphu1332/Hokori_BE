@@ -59,7 +59,7 @@ public class LearnerQuizService {
         
         // If not trial chapter, require enrollment
         if (!isTrialChapter) {
-            if (!enrollRepo.existsByUserIdAndCourseId(userId, courseId)) {
+            if (!enrollRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
                     "You must enroll in this course before taking the quiz");
             }
