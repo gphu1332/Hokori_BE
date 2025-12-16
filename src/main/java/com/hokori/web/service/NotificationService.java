@@ -207,7 +207,7 @@ public class NotificationService {
      */
     @Transactional(readOnly = true)
     public List<NotificationRes> getUnreadNotifications(Long userId) {
-        List<Notification> notifications = notificationRepo.findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId);
+        List<Notification> notifications = notificationRepo.findByUser_IdAndIsReadFalseOrderByCreatedAtDesc(userId);
         return notifications.stream()
                 .map(this::toRes)
                 .collect(Collectors.toList());
@@ -218,7 +218,7 @@ public class NotificationService {
      */
     @Transactional(readOnly = true)
     public long getUnreadCount(Long userId) {
-        return notificationRepo.countByUserIdAndIsReadFalse(userId);
+        return notificationRepo.countByUser_IdAndIsReadFalse(userId);
     }
 
     /**
