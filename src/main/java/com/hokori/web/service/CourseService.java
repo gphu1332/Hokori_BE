@@ -2374,7 +2374,7 @@ public class CourseService {
             snapshot.setStatus(course.getStatus());
             snapshot.setPublishedAt(course.getPublishedAt());
             snapshot.setPendingUpdateAt(course.getPendingUpdateAt());
-            snapshot.setEnrollCount(enrollmentRepo.countByCourseId(course.getId()));
+            snapshot.setEnrollCount(enrollmentRepo.countByCourse_Id(course.getId()));
             snapshot.setTeacherName(getTeacherName(course.getUserId()));
             return snapshot;
         } catch (JsonProcessingException e) {
