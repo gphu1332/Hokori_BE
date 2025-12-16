@@ -662,7 +662,7 @@ public class AdminController {
                     .map(metadata -> ((Number) metadata[0]).longValue())
                     .collect(Collectors.toList());
             long totalEnrollments = teacherCourseIds.stream()
-                    .mapToLong(courseId -> enrollmentRepository.countByCourseId(courseId))
+                    .mapToLong(courseId -> enrollmentRepository.countByCourse_Id(courseId))
                     .sum();
 
             // Get total revenue (all time)
@@ -1146,7 +1146,7 @@ public class AdminController {
                 long totalEnrollments = teacherCourses.stream()
                         .mapToLong(metadata -> {
                             Long courseId = ((Number) metadata[0]).longValue();
-                            return enrollmentRepository.countByCourseId(courseId);
+                            return enrollmentRepository.countByCourse_Id(courseId);
                         })
                         .sum();
 

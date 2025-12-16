@@ -280,7 +280,7 @@ public class FlashcardSetController {
                     Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
                     
-                    enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                    enrollmentRepo.findByUser_IdAndCourse_Id(currentUserId, courseId)
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
                                 "You must enroll in this course to access flashcard sets"));
                 }
@@ -488,7 +488,7 @@ public class FlashcardSetController {
                             Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
                                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
                             
-                            enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                            enrollmentRepo.findByUser_IdAndCourse_Id(currentUserId, courseId)
                                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
                                         "You must enroll in this course to access flashcard cards"));
                         }
@@ -604,7 +604,7 @@ public class FlashcardSetController {
                     Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
                     
-                    enrollmentRepo.findByUserIdAndCourseId(currentUserId, courseId)
+                    enrollmentRepo.findByUser_IdAndCourse_Id(currentUserId, courseId)
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
                                 "You must enroll in this course to access flashcard sets"));
                 }
@@ -801,7 +801,7 @@ public class FlashcardSetController {
                             Long courseId = sectionsContentRepo.findCourseIdBySectionContentId(sectionContentId)
                                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found for this section content"));
                             
-                            enrollmentRepo.findByUserIdAndCourseId(current.getId(), courseId)
+                            enrollmentRepo.findByUser_IdAndCourse_Id(current.getId(), courseId)
                                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
                                         "You must enroll in this course to review flashcard cards"));
                         }

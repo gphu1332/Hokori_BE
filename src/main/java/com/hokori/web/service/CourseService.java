@@ -839,7 +839,7 @@ public class CourseService {
 
         // Get enrolled course IDs for this user (if authenticated)
         Set<Long> enrolledCourseIds = userId != null
-                ? enrollmentRepo.findByUserId(userId).stream()
+                ? enrollmentRepo.findByUser_Id(userId).stream()
                         .map(e -> e.getCourseId())
                         .collect(Collectors.toSet())
                 : Collections.emptySet();
@@ -1474,7 +1474,7 @@ public class CourseService {
         res.setTeacherName(getTeacherName(c.getUserId()));
 
         // ✅ luôn trả enrollCount
-        long enrollCount = enrollmentRepo.countByCourseId(c.getId());
+        long enrollCount = enrollmentRepo.countByCourse_Id(c.getId());
         res.setEnrollCount(enrollCount);
 
         // Map rejection info (chỉ có khi status = REJECTED)
@@ -1691,7 +1691,7 @@ public class CourseService {
         CourseRes res = toCourseResLite(c);
 
         // nếu CourseRes có field enrollCount
-        long enrollCount = enrollmentRepo.countByCourseId(id);
+        long enrollCount = enrollmentRepo.countByCourse_Id(id);
         res.setEnrollCount(enrollCount);
 
         return res;
@@ -2234,7 +2234,7 @@ public class CourseService {
             // PUBLISHED: use current content
             res = getTree(courseId);
         }
-        long enrollCount = enrollmentRepo.countByCourseId(courseId);
+        long enrollCount = enrollmentRepo.countByCourse_Id(courseId);
         res.setEnrollCount(enrollCount);
         
         // Set isEnrolled if userId provided

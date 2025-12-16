@@ -276,7 +276,7 @@ public class CartService {
         Long courseId = ((Number) actualMeta[1]).longValue();
         
         // Check if user has enrolled in this course (business rule: can't update cart item for owned course)
-        if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+        if (enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
             throw new IllegalStateException("COURSE_OWNED");
         }
         

@@ -360,7 +360,7 @@ public class LearnerQuizService {
         }
         
         // Check enrollment
-        if (!enrollRepo.existsByUserIdAndCourseId(userId, courseId)) {
+        if (!enrollRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
             return; // Not enrolled, skip
         }
         
