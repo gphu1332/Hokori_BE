@@ -40,7 +40,7 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
         where e.course.id in (
             select c.id
             from Course c
-            where c.user.id = :teacherId
+            where c.userId = :teacherId
               and c.status in :statuses
               and c.deletedFlag = false
         )
@@ -66,7 +66,7 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
         where e.course.id in (
             select c.id
             from Course c
-            where c.user.id = :teacherId
+            where c.userId = :teacherId
               and c.deletedFlag = false
         )
         """)
