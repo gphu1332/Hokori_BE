@@ -1,6 +1,23 @@
 app:
   upload-dir: ./uploads
 
+# Cloudflare R2 Configuration (S3-compatible object storage)
+cloudflare:
+  r2:
+    # Account ID từ Cloudflare Dashboard -> R2 -> Manage R2 API Tokens
+    account-id: ${CLOUDFLARE_R2_ACCOUNT_ID:}
+    # Access Key ID từ R2 API Token
+    access-key-id: ${CLOUDFLARE_R2_ACCESS_KEY_ID:}
+    # Secret Access Key từ R2 API Token
+    secret-access-key: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY:}
+    # Endpoint URL (format: https://<account-id>.r2.cloudflarestorage.com)
+    endpoint: ${CLOUDFLARE_R2_ENDPOINT:}
+    # Bucket name trong R2
+    bucket-name: ${CLOUDFLARE_R2_BUCKET_NAME:}
+    # Public URL để access files (format: https://pub-<random-id>.r2.dev)
+    # Hoặc custom domain nếu bạn đã setup
+    public-url: ${CLOUDFLARE_R2_PUBLIC_URL:}
+
 spring:
   servlet:
     multipart:

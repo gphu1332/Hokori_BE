@@ -33,11 +33,20 @@ public class FileStorage extends BaseEntity {
     private String contentType;
 
     /**
-     * Binary data của file
+     * URL của file trên Cloudflare R2 (thay vì lưu binary data trong database)
+     * Ví dụ: "https://pub-xxx.r2.dev/sections/123/uuid.mp4"
+     */
+    @Column(name = "file_url", length = 1000)
+    private String fileUrl;
+
+    /**
+     * Binary data của file (DEPRECATED - chỉ dùng để migrate dữ liệu cũ)
      * PostgreSQL sẽ dùng BYTEA type
      * Note: Không dùng @Lob với PostgreSQL BYTEA, chỉ cần columnDefinition
+     * @deprecated Sử dụng fileUrl thay vì fileData. Field này sẽ được xóa sau khi migrate xong.
      */
-    @Column(name = "file_data", nullable = false, columnDefinition = "BYTEA")
+    @Deprecated
+    @Column(name = "file_data", columnDefinition = "BYTEA")
     private byte[] fileData;
 
     /**

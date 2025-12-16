@@ -17,9 +17,10 @@ import java.util.UUID;
 public class FileStorageService {
 
     private final FileStorageRepository fileStorageRepository;
+    private final R2Service r2Service;
 
     /**
-     * Lưu file vào PostgreSQL database
+     * Lưu file lên Cloudflare R2 và lưu metadata vào database
      * @param file MultipartFile từ request
      * @param subFolder Thư mục con (ví dụ: "sections/123")
      * @return filePath tương đối để lưu vào SectionsContent
@@ -76,19 +77,23 @@ public class FileStorageService {
                 contentType = "application/octet-stream";
             }
 
-            // Create FileStorage entity
+            // Upload file to R2
+            String fileUrl = r2Service.uploadFile(fileData, filePath, contentType);
+            log.info("File uploaded to R2: {} -> {}", filePath, fileUrl);
+
+            // Create FileStorage entity (chỉ lưu metadata, không lưu binary data)
             FileStorage fileStorage = new FileStorage();
             fileStorage.setFilePath(filePath);
             fileStorage.setFileName(original);
             fileStorage.setContentType(contentType);
-            fileStorage.setFileData(fileData);
+            fileStorage.setFileUrl(fileUrl); // Lưu URL từ R2
             fileStorage.setFileSizeBytes(file.getSize());
 
-            // Save to database
+            // Save metadata to database
             fileStorageRepository.save(fileStorage);
-            fileStorageRepository.flush(); // Ensure file is persisted immediately, especially for large files
+            fileStorageRepository.flush();
             
-            log.debug("File stored successfully: {} ({} bytes)", filePath, file.getSize());
+            log.debug("File metadata stored successfully: {} ({} bytes)", filePath, file.getSize());
             return filePath;
         } catch (IllegalArgumentException e) {
             throw e; // Re-throw validation errors
@@ -98,7 +103,7 @@ public class FileStorageService {
     }
 
     /**
-     * Lấy file từ database theo filePath
+     * Lấy file metadata từ database theo filePath
      * @param filePath Đường dẫn tương đối
      * @return FileStorage entity hoặc null nếu không tìm thấy
      */
@@ -108,15 +113,72 @@ public class FileStorageService {
     }
 
     /**
-     * Xóa file (soft delete)
+     * Lấy file bytes từ R2 (fallback về database nếu file cũ chưa migrate)
+     * @param filePath Đường dẫn tương đối
+     * @return File bytes hoặc null nếu không tìm thấy
+     */
+    public byte[] getFileBytes(String filePath) {
+        FileStorage fileStorage = getFile(filePath);
+        if (fileStorage == null) {
+            return null;
+        }
+
+        // Nếu có URL từ R2, download từ R2
+        if (fileStorage.getFileUrl() != null && !fileStorage.getFileUrl().isEmpty()) {
+            return r2Service.downloadFile(filePath);
+        }
+
+        // Fallback: file cũ chưa migrate, lấy từ database
+        if (fileStorage.getFileData() != null) {
+            log.debug("Using legacy file data from database for: {}", filePath);
+            return fileStorage.getFileData();
+        }
+
+        return null;
+    }
+
+    /**
+     * Xóa file từ R2 và database (soft delete)
      * @param filePath Đường dẫn tương đối
      */
     public void deleteFile(String filePath) {
         fileStorageRepository.findByFilePathAndDeletedFlagFalse(filePath)
                 .ifPresent(file -> {
+                    // Xóa file từ R2 nếu có URL
+                    if (file.getFileUrl() != null && !file.getFileUrl().isEmpty()) {
+                        try {
+                            r2Service.deleteFile(filePath);
+                            log.debug("File deleted from R2: {}", filePath);
+                        } catch (Exception e) {
+                            log.warn("Failed to delete file from R2: {}", filePath, e);
+                            // Continue với soft delete trong database
+                        }
+                    }
+
+                    // Soft delete trong database
                     file.setDeletedFlag(true);
                     fileStorageRepository.save(file);
                 });
+    }
+
+    /**
+     * Lấy public URL của file
+     * @param filePath Đường dẫn tương đối
+     * @return Public URL hoặc null nếu không tìm thấy
+     */
+    public String getFileUrl(String filePath) {
+        FileStorage fileStorage = getFile(filePath);
+        if (fileStorage == null) {
+            return null;
+        }
+
+        // Nếu có URL từ R2, return URL đó
+        if (fileStorage.getFileUrl() != null && !fileStorage.getFileUrl().isEmpty()) {
+            return fileStorage.getFileUrl();
+        }
+
+        // Fallback: generate URL từ R2 (cho file cũ chưa migrate)
+        return r2Service.getPublicUrl(filePath);
     }
 }
 

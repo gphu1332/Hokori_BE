@@ -82,6 +82,22 @@ public class FileController {
 
             log.debug("File found: {} ({} bytes, type: {})", filePath, fileStorage.getFileSizeBytes(), fileStorage.getContentType());
 
+            // Nếu file có URL từ R2, redirect đến R2 URL (tốt hơn là serve trực tiếp)
+            if (fileStorage.getFileUrl() != null && !fileStorage.getFileUrl().isEmpty()) {
+                log.debug("Redirecting to R2 URL: {}", fileStorage.getFileUrl());
+                HttpHeaders headers = new HttpHeaders();
+                headers.setLocation(java.net.URI.create(fileStorage.getFileUrl()));
+                return ResponseEntity.status(HttpStatus.FOUND)
+                        .headers(headers)
+                        .build();
+            }
+
+            // Fallback: serve file từ database (cho file cũ chưa migrate)
+            byte[] fileData = fileStorageService.getFileBytes(filePath);
+            if (fileData == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File data not found: " + filePath);
+            }
+
             // Set content type
             MediaType mediaType;
             try {
@@ -94,7 +110,7 @@ public class FileController {
             // Set headers
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(mediaType);
-            headers.setContentLength(fileStorage.getFileSizeBytes());
+            headers.setContentLength(fileData.length);
             
             // Set content disposition for inline display (browser sẽ hiển thị trực tiếp)
             if (fileStorage.getFileName() != null) {
@@ -106,7 +122,7 @@ public class FileController {
             
             return ResponseEntity.ok()
                     .headers(headers)
-                    .body(fileStorage.getFileData());
+                    .body(fileData);
         } catch (ResponseStatusException e) {
             throw e;
         } catch (Exception e) {
