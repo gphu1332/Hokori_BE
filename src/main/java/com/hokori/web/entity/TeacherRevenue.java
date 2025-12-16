@@ -170,8 +170,8 @@ public class TeacherRevenue {
     @Column(name = "payout_date")
     private Instant payoutDate; // Thời gian admin đánh dấu đã chuyển tiền
     
-    @Column(name = "payout_by_user_id")
-    private Long payoutByUserId; // Admin đã đánh dấu chuyển tiền
+    // Note: payoutByUserId đã được thay thế bằng @ManyToOne relationship 'payoutBy' ở trên
+    // Convenience methods getPayoutByUserId() và setPayoutByUserId() vẫn hoạt động để backward compatibility
     
     @Column(name = "payout_note", columnDefinition = "TEXT")
     private String payoutNote; // Ghi chú khi chuyển tiền
