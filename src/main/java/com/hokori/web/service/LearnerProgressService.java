@@ -518,12 +518,16 @@ public class LearnerProgressService {
             courseTitle = "Course #" + enrollment.getCourseId();
         }
         
-        // Tạo certificate
+        // Load entities để set vào relationships
+        User user = enrollment.getUser();
+        Course course = enrollment.getCourse();
+        
+        // Tạo certificate với relationships
         com.hokori.web.entity.CourseCompletionCertificate certificate = 
                 com.hokori.web.entity.CourseCompletionCertificate.builder()
-                        .enrollmentId(enrollment.getId())
-                        .userId(enrollment.getUserId())
-                        .courseId(enrollment.getCourseId())
+                        .enrollment(enrollment)
+                        .user(user)
+                        .course(course)
                         .courseTitle(courseTitle)
                         .completedAt(enrollment.getCompletedAt())
                         .build();

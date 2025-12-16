@@ -31,6 +31,7 @@ public class LearnerQuizService {
     private final SectionRepository sectionRepo;
     private final SectionsContentRepository contentRepo;
     private final UserContentProgressRepository ucpRepo; // To check if content already completed
+    private final UserRepository userRepo; // For loading User entity for QuizAttempt
 
     /**
      * Helper method to check enrollment and get courseId from sectionId.
@@ -89,6 +90,9 @@ public class LearnerQuizService {
         
         // Get Quiz entity reference for QuizAttempt (only need ID)
         Quiz quizRef = quizRepo.getReferenceById(quizId);
+        
+        // Get User entity reference for QuizAttempt
+        User userRef = userRepo.getReferenceById(userId);
 
         if (req == null || !Boolean.TRUE.equals(req.forceNew())) {
             var last = attemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quizId);
@@ -98,7 +102,7 @@ public class LearnerQuizService {
         }
 
         QuizAttempt a = new QuizAttempt();
-        a.setUserId(userId);
+        a.setUser(userRef); // Set User entity thay vì chỉ userId
         a.setQuiz(quizRef);
         a.setTotalQuestions(attemptRepo.countQuestions(quizId));
         attemptRepo.save(a);

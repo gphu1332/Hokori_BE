@@ -29,14 +29,14 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
      * Đánh dấu notification là đã đọc
      */
     @Modifying
-    @Query("UPDATE Notification n SET n.isRead = true, n.readAt = CURRENT_TIMESTAMP WHERE n.id = :id AND n.userId = :userId")
+    @Query("UPDATE Notification n SET n.isRead = true, n.readAt = CURRENT_TIMESTAMP WHERE n.id = :id AND n.user.id = :userId")
     int markAsRead(@Param("id") Long id, @Param("userId") Long userId);
 
     /**
      * Đánh dấu tất cả notifications của user là đã đọc
      */
     @Modifying
-    @Query("UPDATE Notification n SET n.isRead = true, n.readAt = CURRENT_TIMESTAMP WHERE n.userId = :userId AND n.isRead = false")
+    @Query("UPDATE Notification n SET n.isRead = true, n.readAt = CURRENT_TIMESTAMP WHERE n.user.id = :userId AND n.isRead = false")
     int markAllAsRead(@Param("userId") Long userId);
 }
 
