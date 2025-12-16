@@ -31,7 +31,7 @@ public class CourseCompletionCertificateService {
      * Lấy tất cả certificates của một learner
      */
     public List<CourseCompletionCertificateRes> getMyCertificates(Long userId) {
-        List<CourseCompletionCertificate> certificates = certRepo.findByUserIdOrderByCompletedAtDesc(userId);
+        List<CourseCompletionCertificate> certificates = certRepo.findByUser_IdOrderByCompletedAtDesc(userId);
         
         return certificates.stream()
                 .map(this::toRes)
@@ -42,7 +42,7 @@ public class CourseCompletionCertificateService {
      * Lấy certificate của learner cho một course cụ thể
      */
     public CourseCompletionCertificateRes getCertificateByCourse(Long userId, Long courseId) {
-        CourseCompletionCertificate cert = certRepo.findByUserIdAndCourseId(userId, courseId)
+        CourseCompletionCertificate cert = certRepo.findByUser_IdAndCourse_Id(userId, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
                         "Certificate not found for this course"));
         

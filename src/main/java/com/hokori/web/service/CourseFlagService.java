@@ -47,7 +47,7 @@ public class CourseFlagService {
         }
 
         // Kiểm tra user đã flag course này chưa
-        if (flagRepo.existsByCourse_IdAndUserId(courseId, userId)) {
+        if (flagRepo.existsByCourse_IdAndUser_Id(courseId, userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "You have already flagged this course");
         }

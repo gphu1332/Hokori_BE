@@ -95,7 +95,7 @@ public class LearnerQuizService {
         User userRef = userRepo.getReferenceById(userId);
 
         if (req == null || !Boolean.TRUE.equals(req.forceNew())) {
-            var last = attemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quizId);
+            var last = attemptRepo.findByUser_IdAndQuiz_IdOrderByStartedAtDesc(userId, quizId);
             if (!last.isEmpty() && last.get(0).getStatus() == QuizAttempt.Status.IN_PROGRESS) {
                 return toDto(last.get(0), quizTitle);
             }
@@ -114,7 +114,7 @@ public class LearnerQuizService {
 
     @Transactional(readOnly = true)
     public PlayQuestionDto nextQuestion(Long attemptId, Long userId) {
-        QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
+        QuizAttempt a = attemptRepo.findByIdAndUser_Id(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
         
         // Check enrollment via quiz's section
@@ -177,7 +177,7 @@ public class LearnerQuizService {
     }
 
     public void answer(Long attemptId, Long userId, Long questionId, AnswerReq req) {
-        QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
+        QuizAttempt a = attemptRepo.findByIdAndUser_Id(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
         
         // Check enrollment via quiz's section
@@ -209,7 +209,7 @@ public class LearnerQuizService {
     }
 
     public AttemptDto submit(Long attemptId, Long userId) {
-        QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
+        QuizAttempt a = attemptRepo.findByIdAndUser_Id(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
         
         // Check enrollment via quiz's section
@@ -290,7 +290,7 @@ public class LearnerQuizService {
     private void markLastContentCompleteForQuiz(Long sectionId, Long userId, Quiz quiz, int score, Long attemptId) {
         // Check if this is the highest scoring attempt
         // Only mark content completed based on the highest scoring attempt to ensure progress reflects best performance
-        var allAttempts = attemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quiz.getId());
+        var allAttempts = attemptRepo.findByUser_IdAndQuiz_IdOrderByStartedAtDesc(userId, quiz.getId());
         if (!allAttempts.isEmpty()) {
             QuizAttempt highestScoreAttempt = allAttempts.stream()
                     .filter(att -> att.getStatus() == QuizAttempt.Status.SUBMITTED 
@@ -404,7 +404,7 @@ public class LearnerQuizService {
 
     @Transactional(readOnly = true)
     public AttemptDetailDto detail(Long attemptId, Long userId) {
-        QuizAttempt a = attemptRepo.findByIdAndUserId(attemptId, userId)
+        QuizAttempt a = attemptRepo.findByIdAndUser_Id(attemptId, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Attempt not found"));
         
         // Check enrollment via quiz's section
@@ -461,7 +461,7 @@ public class LearnerQuizService {
                 .orElseThrow(() -> new EntityNotFoundException("Quiz not found"));
         Integer passScorePercent = quiz.getPassScorePercent();
         
-        return attemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quiz.getId())
+        return attemptRepo.findByUser_IdAndQuiz_IdOrderByStartedAtDesc(userId, quiz.getId())
                 .stream()
                 .map(x -> {
                     Boolean passed = null;
@@ -504,7 +504,7 @@ public class LearnerQuizService {
         Integer passScorePercent = actualQMeta[6] != null ? ((Number) actualQMeta[6]).intValue() : null;
         
         // Get attempt history count
-        long attemptCount = attemptRepo.countByUserIdAndQuiz_Id(userId, quizId);
+        long attemptCount = attemptRepo.countByUser_IdAndQuiz_Id(userId, quizId);
         
         return new com.hokori.web.dto.quiz.QuizInfoDto(
                 quizId,

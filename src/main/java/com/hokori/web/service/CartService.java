@@ -86,7 +86,7 @@ public class CartService {
                     if (status != CourseStatus.PUBLISHED && status != CourseStatus.PENDING_UPDATE) return false;
                     
                     // Check if user already enrolled (remove from cart if enrolled)
-                    if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+                    if (enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
                         return false;
                     }
                     
@@ -166,7 +166,7 @@ public class CartService {
                     // Allow PUBLISHED and PENDING_UPDATE courses in cart
                     if (status != CourseStatus.PUBLISHED && status != CourseStatus.PENDING_UPDATE) return itemId;
                     
-                    if (enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+                    if (enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
                         return itemId;
                     }
                     
@@ -195,7 +195,7 @@ public class CartService {
         }
 
         // Check if already enrolled
-        if (enrollmentRepo.existsByUserIdAndCourseId(userId, req.courseId())) {
+        if (enrollmentRepo.existsByUser_IdAndCourse_Id(userId, req.courseId())) {
             throw new IllegalStateException("COURSE_OWNED");
         }
 

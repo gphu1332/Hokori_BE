@@ -9,19 +9,19 @@ import java.util.Optional;
 
 public interface UserDailyLearningRepository extends JpaRepository<UserDailyLearning, Long> {
 
-    Optional<UserDailyLearning> findByUserIdAndLearningDate(Long userId, LocalDate learningDate);
+    Optional<UserDailyLearning> findByUser_IdAndLearningDate(Long userId, LocalDate learningDate);
 
     // Lấy danh sách ngày có học, sort DESC để tính streak
-    List<UserDailyLearning> findByUserIdOrderByLearningDateDesc(Long userId);
+    List<UserDailyLearning> findByUser_IdOrderByLearningDateDesc(Long userId);
 
-    List<UserDailyLearning> findByUserIdAndLearningDateBetweenOrderByLearningDateDesc(
+    List<UserDailyLearning> findByUser_IdAndLearningDateBetweenOrderByLearningDateDesc(
             Long userId, LocalDate from, LocalDate to);
 
     // Lấy ngày học gần nhất
-    Optional<UserDailyLearning> findTopByUserIdOrderByLearningDateDesc(Long userId);
+    Optional<UserDailyLearning> findTopByUser_IdOrderByLearningDateDesc(Long userId);
 
     // Check 1 ngày cụ thể có hoạt động học không
-    boolean existsByUserIdAndLearningDate(Long userId, LocalDate learningDate);
+    boolean existsByUser_IdAndLearningDate(Long userId, LocalDate learningDate);
 }
 
 

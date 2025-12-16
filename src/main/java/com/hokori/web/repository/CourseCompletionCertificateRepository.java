@@ -16,16 +16,16 @@ public interface CourseCompletionCertificateRepository extends JpaRepository<Cou
     /**
      * Lấy tất cả certificates của một user
      */
-    List<CourseCompletionCertificate> findByUserIdOrderByCompletedAtDesc(Long userId);
+    List<CourseCompletionCertificate> findByUser_IdOrderByCompletedAtDesc(Long userId);
 
     /**
      * Kiểm tra user đã có certificate cho course này chưa
      */
-    boolean existsByUserIdAndCourseId(Long userId, Long courseId);
+    boolean existsByUser_IdAndCourse_Id(Long userId, Long courseId);
 
     /**
      * Lấy certificate của user cho một course cụ thể
      */
-    Optional<CourseCompletionCertificate> findByUserIdAndCourseId(Long userId, Long courseId);
+    Optional<CourseCompletionCertificate> findByUser_IdAndCourse_Id(Long userId, Long courseId);
 }
 

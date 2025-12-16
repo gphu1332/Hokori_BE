@@ -708,7 +708,7 @@ public class PaymentService {
      */
     @Transactional(readOnly = true)
     public PaymentResponse getPaymentDetail(Long paymentId, Long userId) {
-        Payment payment = paymentRepo.findByIdAndUserId(paymentId, userId)
+        Payment payment = paymentRepo.findByIdAndUser_Id(paymentId, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
         List<Long> courseIds = parseCourseIds(payment.getCourseIds());
         return PaymentResponse.fromEntity(payment, courseIds);
@@ -732,7 +732,7 @@ public class PaymentService {
      */
     @Transactional
     public void retryEnrollmentFromPayment(Long paymentId, Long userId) {
-        Payment payment = paymentRepo.findByIdAndUserId(paymentId, userId)
+        Payment payment = paymentRepo.findByIdAndUser_Id(paymentId, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
         
         // Allow retry for PAID payments, or PENDING payments (user confirms payment was successful)
@@ -778,7 +778,7 @@ public class PaymentService {
      */
     @Transactional
     public void retryAIPackageActivationFromPayment(Long paymentId, Long userId) {
-        Payment payment = paymentRepo.findByIdAndUserId(paymentId, userId)
+        Payment payment = paymentRepo.findByIdAndUser_Id(paymentId, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
         
         // Allow retry for PAID payments, or PENDING payments (user confirms payment was successful)

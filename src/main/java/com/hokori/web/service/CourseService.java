@@ -2200,7 +2200,7 @@ public class CourseService {
         }
         
         // Check if user is enrolled (for FLAGGED courses access)
-        boolean isEnrolled = userId != null && enrollmentRepo.existsByUserIdAndCourseId(userId, courseId);
+        boolean isEnrolled = userId != null && enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId);
         
         if (status != CourseStatus.PUBLISHED && status != CourseStatus.PENDING_UPDATE) {
             // Nếu course bị FLAGGED: chỉ cho phép access nếu user đã enrolled

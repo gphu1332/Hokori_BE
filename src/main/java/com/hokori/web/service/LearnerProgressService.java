@@ -911,7 +911,7 @@ public class LearnerProgressService {
     public void recordLearningActivity(Long userId, Instant when) {
         LocalDate date = when.atZone(ZoneId.systemDefault()).toLocalDate();
 
-        userDailyLearningRepo.findByUserIdAndLearningDate(userId, date)
+        userDailyLearningRepo.findByUser_IdAndLearningDate(userId, date)
                 .ifPresentOrElse(
                         log -> log.setActivityCount(log.getActivityCount() + 1),
                         () -> {
@@ -932,7 +932,7 @@ public class LearnerProgressService {
 
         // cần method này trong UserDailyLearningRepository
         List<UserDailyLearning> logs =
-                userDailyLearningRepo.findByUserIdAndLearningDateBetweenOrderByLearningDateDesc(
+                userDailyLearningRepo.findByUser_IdAndLearningDateBetweenOrderByLearningDateDesc(
                         userId, from, today);
 
         if (logs.isEmpty()) {
@@ -956,7 +956,7 @@ public class LearnerProgressService {
 
     @Transactional(readOnly = true)
     public int getCurrentLearningStreak(Long userId) {
-        var lastOpt = userDailyLearningRepo.findTopByUserIdOrderByLearningDateDesc(userId);
+        var lastOpt = userDailyLearningRepo.findTopByUser_IdOrderByLearningDateDesc(userId);
         if (lastOpt.isEmpty()) {
             return 0; // chưa học ngày nào
         }
@@ -973,7 +973,7 @@ public class LearnerProgressService {
         int streak = 0;
         LocalDate cursor = lastDate;
 
-        while (userDailyLearningRepo.existsByUserIdAndLearningDate(userId, cursor)) {
+        while (userDailyLearningRepo.existsByUser_IdAndLearningDate(userId, cursor)) {
             streak++;
             cursor = cursor.minusDays(1);
         }
@@ -990,7 +990,7 @@ public class LearnerProgressService {
     @Transactional(readOnly = true)
     public CourseLearningTreeRes getCourseLearningTree(Long userId, Long courseId) {
         // Check enrollment
-        Enrollment enrollment = enrollmentRepo.findByUserIdAndCourseId(userId, courseId)
+        Enrollment enrollment = enrollmentRepo.findByUser_IdAndCourse_Id(userId, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not enrolled in this course"));
 
         // Get course metadata
@@ -1094,7 +1094,7 @@ public class LearnerProgressService {
                         quizPassScorePercent = quiz.getPassScorePercent();
                         
                         // Get best score from all submitted attempts
-                        var allAttempts = quizAttemptRepo.findByUserIdAndQuiz_IdOrderByStartedAtDesc(userId, quizId);
+                        var allAttempts = quizAttemptRepo.findByUser_IdAndQuiz_IdOrderByStartedAtDesc(userId, quizId);
                         Optional<QuizAttempt> bestAttempt = allAttempts.stream()
                                 .filter(att -> att.getStatus() == QuizAttempt.Status.SUBMITTED 
                                         && att.getScorePercent() != null)

@@ -27,7 +27,7 @@ public class LearnerDashboardService {
         int streak = learnerProgressService.getCurrentLearningStreak(userId);
 
         var today = LocalDate.now(ZoneId.systemDefault());
-        int todayActivity = userDailyLearningRepo.findByUserIdAndLearningDate(userId, today)
+        int todayActivity = userDailyLearningRepo.findByUser_IdAndLearningDate(userId, today)
                 .map(UserDailyLearning::getActivityCount)
                 .orElse(0);
 

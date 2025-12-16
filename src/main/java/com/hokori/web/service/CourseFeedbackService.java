@@ -49,7 +49,7 @@ public class CourseFeedbackService {
         }
 
         // 3. Chỉ learner đã enroll mới được feedback
-        if (!enrollmentRepo.existsByUserIdAndCourseId(userId, courseId)) {
+        if (!enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId)) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
                     "You must enroll in this course before giving feedback"

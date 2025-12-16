@@ -18,12 +18,12 @@ public interface CourseFlagRepository extends JpaRepository<CourseFlag, Long> {
     /**
      * Kiểm tra user đã flag course này chưa
      */
-    boolean existsByCourse_IdAndUserId(Long courseId, Long userId);
+    boolean existsByCourse_IdAndUser_Id(Long courseId, Long userId);
 
     /**
      * Lấy flag của user cho course này (nếu có)
      */
-    Optional<CourseFlag> findByCourse_IdAndUserId(Long courseId, Long userId);
+    Optional<CourseFlag> findByCourse_IdAndUser_Id(Long courseId, Long userId);
 
     /**
      * Lấy tất cả flags của một course

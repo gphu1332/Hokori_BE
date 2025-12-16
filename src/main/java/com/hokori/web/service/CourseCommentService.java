@@ -48,7 +48,7 @@ public class CourseCommentService {
     }
 
     private void ensureLearnerEnrolled(Long userId, Long courseId) {
-        boolean enrolled = enrollmentRepo.existsByUserIdAndCourseId(userId, courseId);
+        boolean enrolled = enrollmentRepo.existsByUser_IdAndCourse_Id(userId, courseId);
         if (!enrolled) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You must enroll the course to comment");
         }

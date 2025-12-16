@@ -7,14 +7,14 @@ import org.springframework.data.repository.query.Param;
 import java.util.*;
 
 public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, Long> {
-    List<QuizAttempt> findByUserIdAndQuiz_IdOrderByStartedAtDesc(Long userId, Long quizId);
+    List<QuizAttempt> findByUser_IdAndQuiz_IdOrderByStartedAtDesc(Long userId, Long quizId);
 
-    Optional<QuizAttempt> findByIdAndUserId(Long id, Long userId);
+    Optional<QuizAttempt> findByIdAndUser_Id(Long id, Long userId);
 
     @Query("""
         select count(q) from Question q where q.quiz.id = :quizId
     """)
     int countQuestions(@Param("quizId") Long quizId);
     
-    long countByUserIdAndQuiz_Id(Long userId, Long quizId);
+    long countByUser_IdAndQuiz_Id(Long userId, Long quizId);
 }

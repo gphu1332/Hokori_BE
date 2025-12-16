@@ -12,14 +12,14 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     
     Optional<Payment> findByOrderCode(Long orderCode);
     
-    Optional<Payment> findByOrderCodeAndUserId(Long orderCode, Long userId);
+    Optional<Payment> findByOrderCodeAndUser_Id(Long orderCode, Long userId);
     
     boolean existsByOrderCode(Long orderCode);
     
-    Page<Payment> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+    Page<Payment> findByUser_IdOrderByCreatedAtDesc(Long userId, Pageable pageable);
     
-    List<Payment> findByUserIdOrderByCreatedAtDesc(Long userId);
+    List<Payment> findByUser_IdOrderByCreatedAtDesc(Long userId);
     
-    Optional<Payment> findByIdAndUserId(Long id, Long userId);
+    Optional<Payment> findByIdAndUser_Id(Long id, Long userId);
 }
 
