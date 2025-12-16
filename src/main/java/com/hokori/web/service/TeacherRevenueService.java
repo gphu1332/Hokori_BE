@@ -79,7 +79,7 @@ public class TeacherRevenueService {
                         org.springframework.http.HttpStatus.NOT_FOUND, "Teacher not found"));
         
         List<TeacherRevenue> revenues = revenueRepo
-                .findByTeacherIdAndYearMonthOrderByPaidAtDesc(teacherId, yearMonth);
+                .findByTeacher_IdAndYearMonthOrderByPaidAtDesc(teacherId, yearMonth);
         
         if (revenues.isEmpty()) {
             return PayoutStatusRes.builder()
@@ -193,7 +193,7 @@ public class TeacherRevenueService {
             }
         }
         
-        List<TeacherRevenue> revenues = revenueRepo.findByTeacherIdAndYearMonthOrderByPaidAtDesc(
+        List<TeacherRevenue> revenues = revenueRepo.findByTeacher_IdAndYearMonthOrderByPaidAtDesc(
                 teacherId, yearMonth);
         
         if (revenues.isEmpty()) {
@@ -359,7 +359,7 @@ public class TeacherRevenueService {
      * Lấy danh sách revenue của teacher (tất cả các tháng)
      */
     public List<TeacherRevenueSummaryRes> getAllRevenueSummaries(Long teacherId) {
-        List<TeacherRevenue> allRevenues = revenueRepo.findByTeacherIdOrderByYearMonthDescPaidAtDesc(teacherId);
+        List<TeacherRevenue> allRevenues = revenueRepo.findByTeacher_IdOrderByYearMonthDescPaidAtDesc(teacherId);
         
         // Group by yearMonth
         Map<String, List<TeacherRevenue>> revenuesByMonth = allRevenues.stream()
@@ -432,7 +432,7 @@ public class TeacherRevenueService {
      * Lấy chi tiết revenue của một course trong tháng
      */
     public List<TeacherRevenueRes> getCourseRevenueDetails(Long teacherId, Long courseId, String yearMonth) {
-        List<TeacherRevenue> revenues = revenueRepo.findByCourseIdAndYearMonthOrderByPaidAtDesc(courseId, yearMonth);
+        List<TeacherRevenue> revenues = revenueRepo.findByCourse_IdAndYearMonthOrderByPaidAtDesc(courseId, yearMonth);
         
         // Filter by teacher (security check)
         revenues = revenues.stream()

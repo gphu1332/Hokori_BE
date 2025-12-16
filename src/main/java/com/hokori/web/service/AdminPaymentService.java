@@ -75,7 +75,7 @@ public class AdminPaymentService {
             
             // Get unpaid revenues for this teacher and month
             List<TeacherRevenue> unpaidRevenues = revenueRepo
-                    .findByTeacherIdAndYearMonthAndIsPaidFalseOrderByPaidAtDesc(teacherId, yearMonth);
+                    .findByTeacher_IdAndYearMonthAndIsPaidFalseOrderByPaidAtDesc(teacherId, yearMonth);
             
             // Group by course
             Map<Long, List<TeacherRevenue>> revenuesByCourse = unpaidRevenues.stream()

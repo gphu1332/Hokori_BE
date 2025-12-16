@@ -228,7 +228,7 @@ public class RevenueService {
     @Transactional
     public void markTeacherMonthRevenueAsPaid(Long teacherId, String yearMonth, Long adminUserId, String note) {
         List<TeacherRevenue> revenues = revenueRepo
-                .findByTeacherIdAndYearMonthAndIsPaidFalseOrderByPaidAtDesc(teacherId, yearMonth);
+                .findByTeacher_IdAndYearMonthAndIsPaidFalseOrderByPaidAtDesc(teacherId, yearMonth);
         
         if (revenues.isEmpty()) {
             throw new RuntimeException("No unpaid revenue found for teacher " + teacherId + " in " + yearMonth);
