@@ -159,7 +159,7 @@ public class AdminPaymentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Teacher not found"));
         
         List<TeacherRevenue> unpaidRevenues = revenueRepo
-                .findByTeacherIdAndYearMonthAndIsPaidFalseOrderByPaidAtDesc(teacherId, yearMonth);
+                .findByTeacher_IdAndYearMonthAndIsPaidFalseOrderByPaidAtDesc(teacherId, yearMonth);
         
         if (unpaidRevenues.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
