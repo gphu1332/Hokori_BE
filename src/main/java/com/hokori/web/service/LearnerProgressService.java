@@ -495,7 +495,7 @@ public class LearnerProgressService {
      */
     private void createCompletionCertificate(Enrollment enrollment) {
         // Kiểm tra đã có certificate chưa (tránh duplicate)
-        if (certificateRepo.findByEnrollmentId(enrollment.getId()).isPresent()) {
+        if (certificateRepo.findByEnrollment_Id(enrollment.getId()).isPresent()) {
             log.debug("Certificate already exists for enrollmentId={}", enrollment.getId());
             return;
         }
