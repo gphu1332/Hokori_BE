@@ -82,5 +82,19 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
     @Modifying
     @Query("DELETE FROM PasswordResetOtp o WHERE o.expiresAt < :now")
     void deleteExpiredOtp(@Param("now") LocalDateTime now);
+    
+    /**
+     * Đếm tổng số lần nhập sai OTP của một email trong khoảng thời gian gần đây (15 phút)
+     * Dùng để track failed attempts theo email, không phải theo từng OTP record
+     */
+    @Query("""
+            SELECT COALESCE(SUM(o.failedAttempts), 0) 
+            FROM PasswordResetOtp o
+            WHERE o.email = :email
+            AND o.createdAt > :since
+            """)
+    Long countTotalFailedAttemptsByEmailSince(
+            @Param("email") String email,
+            @Param("since") LocalDateTime since);
 }
 
