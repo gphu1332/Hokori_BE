@@ -56,7 +56,30 @@ public class AdminPaymentService {
         // Optimized: Filter by yearMonth ngay trong SQL query thay vì filter trong code
         List<Object[]> groupedRevenues = revenueRepo.findUnpaidRevenueGroupedByTeacherAndMonthForYearMonth(yearMonth);
         
-        log.debug("Found {} teachers with unpaid revenue in month {}", groupedRevenues.size(), yearMonth);
+        log.info("🔍 Querying pending payouts for yearMonth: {}", yearMonth);
+        log.info("📊 Found {} teachers with unpaid revenue in month {}", groupedRevenues.size(), yearMonth);
+        
+        // Debug: Log all found teachers
+        if (groupedRevenues.isEmpty()) {
+            // Check if there are any unpaid revenues at all (for debugging)
+            List<Object[]> allUnpaid = revenueRepo.findUnpaidRevenueGroupedByTeacherAndMonth();
+            log.warn("⚠️ No unpaid revenue found for month {}. Total unpaid revenues across all months: {}", 
+                    yearMonth, allUnpaid.size());
+            if (!allUnpaid.isEmpty()) {
+                log.info("📋 Available months with unpaid revenue:");
+                for (Object[] row : allUnpaid) {
+                    String availableMonth = (String) row[1];
+                    Long teacherId = ((Number) row[0]).longValue();
+                    log.info("  - Month: {}, TeacherId: {}", availableMonth, teacherId);
+                }
+            }
+        } else {
+            for (Object[] row : groupedRevenues) {
+                Long teacherId = ((Number) row[0]).longValue();
+                String revenueYearMonth = (String) row[1];
+                log.debug("  TeacherId: {}, YearMonth: {}", teacherId, revenueYearMonth);
+            }
+        }
         
         Map<Long, AdminPendingPayoutRes> teacherMap = new LinkedHashMap<>();
         
@@ -78,6 +101,13 @@ public class AdminPaymentService {
             // Get unpaid revenues for this teacher and month
             List<TeacherRevenue> unpaidRevenues = revenueRepo
                     .findByTeacher_IdAndYearMonthAndIsPaidFalseOrderByPaidAtDesc(teacherId, yearMonth);
+            
+            log.debug("  Teacher {}: Found {} unpaid revenue records", teacherId, unpaidRevenues.size());
+            
+            if (unpaidRevenues.isEmpty()) {
+                log.warn("  ⚠️ Teacher {} has no unpaid revenues in month {} (but was in grouped query)", teacherId, yearMonth);
+                continue;
+            }
             
             // Group by course
             Map<Long, List<TeacherRevenue>> revenuesByCourse = unpaidRevenues.stream()
@@ -122,8 +152,13 @@ public class AdminPaymentService {
             
             // Skip teachers who only have free courses (no revenue to pay)
             if (totalPendingRevenueCents == 0 || courses.isEmpty()) {
+                log.debug("  ⚠️ Skipping teacher {}: totalPendingRevenueCents={}, courses.size()={}", 
+                        teacherId, totalPendingRevenueCents, courses.size());
                 continue;
             }
+            
+            log.info("  ✅ Adding teacher {} to result: totalPendingRevenueCents={}, courses={}", 
+                    teacherId, totalPendingRevenueCents, courses.size());
             
             teacherMap.put(teacherId, AdminPendingPayoutRes.builder()
                     .teacherId(teacherId)
@@ -142,6 +177,7 @@ public class AdminPaymentService {
                     .build());
         }
         
+        log.info("📤 Returning {} teachers with pending payouts for month {}", teacherMap.size(), yearMonth);
         return new ArrayList<>(teacherMap.values());
     }
     
