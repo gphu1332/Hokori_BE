@@ -180,12 +180,15 @@ public class PasswordResetService {
             // Flush để đảm bảo record được ghi vào database trước khi đếm
             entityManager.flush();
             
+            // Clear để đảm bảo query đếm sẽ chạy trực tiếp vào database, không cache
+            entityManager.clear();
+            
             // Đếm số lần verify sai trong 15 phút gần đây
             LocalDateTime since = now.minusMinutes(FAILED_ATTEMPTS_WINDOW_MINUTES);
             Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, since);
             
-            log.info("OTP verification failed for email: {}, failed attempts in last {} minutes: {}/{}", 
-                    email, FAILED_ATTEMPTS_WINDOW_MINUTES, failedAttemptsCount, MAX_FAILED_ATTEMPTS);
+            log.info("OTP verification failed for email: {}, failed attempts in last {} minutes: {}/{}, since: {}, now: {}", 
+                    email, FAILED_ATTEMPTS_WINDOW_MINUTES, failedAttemptsCount, MAX_FAILED_ATTEMPTS, since, now);
             
             // Kiểm tra: nếu >= 5 lần trong 15 phút thì lockout
             if (failedAttemptsCount >= MAX_FAILED_ATTEMPTS) {
@@ -275,6 +278,9 @@ public class PasswordResetService {
                     
                     // Flush để đảm bảo record được ghi vào database trước khi đếm
                     entityManager.flush();
+                    
+                    // Clear để đảm bảo query đếm sẽ chạy trực tiếp vào database, không cache
+                    entityManager.clear();
                     
                     // Đếm lại số lần verify sai sau khi record
                     Long newFailedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, windowStart);

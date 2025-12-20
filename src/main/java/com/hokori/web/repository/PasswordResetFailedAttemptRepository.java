@@ -13,13 +13,14 @@ public interface PasswordResetFailedAttemptRepository extends JpaRepository<Pass
 
     /**
      * Đếm số lần verify sai OTP của một email trong khoảng thời gian gần đây (15 phút)
+     * Sử dụng native query để bypass JPA cache và đảm bảo đếm đúng từ database
      */
-    @Query("""
-            SELECT COUNT(f) 
-            FROM PasswordResetFailedAttempt f
-            WHERE f.email = :email
-            AND f.attemptedAt > :since
-            """)
+    @Query(value = """
+            SELECT COUNT(*) 
+            FROM password_reset_failed_attempts
+            WHERE email = :email
+            AND attempted_at >= :since
+            """, nativeQuery = true)
     Long countFailedAttemptsByEmailSince(
             @Param("email") String email,
             @Param("since") LocalDateTime since);
