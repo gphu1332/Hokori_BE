@@ -109,6 +109,7 @@ message.txt
 *.md
 !README.md
 !SETUP_GUIDE.md
+!FORGOT_PASSWORD_DOCUMENTATION.md
 *.txt
 !*.sql.template
 
