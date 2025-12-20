@@ -109,7 +109,6 @@ public class PasswordResetService {
         otp.setOtpCode(otpCode);
         otp.setExpiresAt(expiresAt);
         otp.setIsUsed(false);
-        otp.setFailedAttempts(0);
         otpRepository.save(otp);
         
         log.info("OTP created for email: {}, OTP code: {}, expires at: {}", email, otpCode, expiresAt);

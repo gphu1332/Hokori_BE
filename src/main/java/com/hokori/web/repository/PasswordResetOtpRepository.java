@@ -94,59 +94,11 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
     void markAsUsed(@Param("id") Long id);
 
     /**
-     * Tăng số lần verify sai bằng native query
-     * Dùng native query để update trực tiếp trong database, bypass JPA cache
-     */
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value = """
-            UPDATE password_reset_otp 
-            SET failed_attempts = failed_attempts + 1 
-            WHERE id = :id
-            """, nativeQuery = true)
-    void incrementFailedAttemptsNative(@Param("id") Long id);
-    
-    /**
-     * Tăng số lần verify sai (backward compatibility)
-     * flushAutomatically = true để đảm bảo changes được flush ngay lập tức
-     */
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("UPDATE PasswordResetOtp o SET o.failedAttempts = o.failedAttempts + 1 WHERE o.id = :id")
-    void incrementFailedAttempts(@Param("id") Long id);
-
-    /**
      * Xóa các OTP đã hết hạn (cleanup job)
      */
     @Modifying
     @Query("DELETE FROM PasswordResetOtp o WHERE o.expiresAt < :now")
     void deleteExpiredOtp(@Param("now") LocalDateTime now);
-    
-    /**
-     * Đếm tổng số lần nhập sai OTP của một email trong khoảng thời gian gần đây (15 phút)
-     * Dùng để track failed attempts theo email, không phải theo từng OTP record
-     */
-    @Query("""
-            SELECT COALESCE(SUM(o.failedAttempts), 0) 
-            FROM PasswordResetOtp o
-            WHERE o.email = :email
-            AND o.createdAt > :since
-            """)
-    Long countTotalFailedAttemptsByEmailSince(
-            @Param("email") String email,
-            @Param("since") LocalDateTime since);
-    
-    /**
-     * Đếm số lần request OTP của một email trong khoảng thời gian gần đây
-     * Dùng để rate limiting - tránh spam request OTP
-     */
-    @Query("""
-            SELECT COUNT(o) 
-            FROM PasswordResetOtp o
-            WHERE o.email = :email
-            AND o.createdAt > :since
-            """)
-    Long countOtpRequestsByEmailSince(
-            @Param("email") String email,
-            @Param("since") LocalDateTime since);
     
     /**
      * Invalidate các OTP cũ chưa sử dụng của email này khi request OTP mới

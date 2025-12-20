@@ -48,12 +48,6 @@ public class PasswordResetOtp {
     private Boolean isUsed = false;
 
     /**
-     * Số lần verify sai (để chặn brute force)
-     */
-    @Column(name = "failed_attempts", nullable = false)
-    private Integer failedAttempts = 0;
-
-    /**
      * Thời gian tạo OTP
      */
     @Column(name = "created_at", nullable = false)
