@@ -53,18 +53,20 @@ public class AdminPaymentService {
                     "Invalid yearMonth format. Expected format: YYYY-MM (e.g., 2025-01)");
         }
         
-        // Get all unpaid revenues grouped by teacher and yearMonth
-        List<Object[]> groupedRevenues = revenueRepo.findUnpaidRevenueGroupedByTeacherAndMonth();
+        // Optimized: Filter by yearMonth ngay trong SQL query thay vì filter trong code
+        List<Object[]> groupedRevenues = revenueRepo.findUnpaidRevenueGroupedByTeacherAndMonthForYearMonth(yearMonth);
         
-        // Filter by yearMonth if specified
+        log.debug("Found {} teachers with unpaid revenue in month {}", groupedRevenues.size(), yearMonth);
+        
         Map<Long, AdminPendingPayoutRes> teacherMap = new LinkedHashMap<>();
         
         for (Object[] row : groupedRevenues) {
             Long teacherId = ((Number) row[0]).longValue();
             String revenueYearMonth = (String) row[1];
             
-            // Filter by yearMonth
+            // Verify yearMonth matches (should always match since we filter in SQL, but double-check)
             if (!yearMonth.equals(revenueYearMonth)) {
+                log.warn("YearMonth mismatch: expected {}, got {} for teacher {}", yearMonth, revenueYearMonth, teacherId);
                 continue;
             }
             

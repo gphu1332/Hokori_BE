@@ -64,6 +64,17 @@ public interface TeacherRevenueRepository extends JpaRepository<TeacherRevenue, 
     List<Object[]> findUnpaidRevenueGroupedByTeacherAndMonth();
     
     /**
+     * Tìm revenue chưa được chuyển tiền theo yearMonth cụ thể, group by teacher
+     * Optimized: filter ngay trong SQL thay vì filter trong code
+     */
+    @Query("SELECT tr.teacher.id, tr.yearMonth, SUM(tr.teacherRevenueCents) as totalRevenue " +
+           "FROM TeacherRevenue tr " +
+           "WHERE tr.isPaid = false AND tr.yearMonth = :yearMonth " +
+           "GROUP BY tr.teacher.id, tr.yearMonth " +
+           "ORDER BY tr.teacher.id")
+    List<Object[]> findUnpaidRevenueGroupedByTeacherAndMonthForYearMonth(@Param("yearMonth") String yearMonth);
+    
+    /**
      * Tìm revenue chưa được chuyển tiền của teacher trong tháng cụ thể
      */
     List<TeacherRevenue> findByTeacher_IdAndYearMonthAndIsPaidFalseOrderByPaidAtDesc(
