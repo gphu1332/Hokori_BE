@@ -28,6 +28,7 @@ public class AdminPendingPayoutRes {
     private String yearMonth; // Format: "2025-01"
     private Long totalPendingRevenueCents; // Tổng tiền cần chuyển trong tháng này
     private Integer totalPendingSales; // Số lượng sales chưa được chuyển tiền
+    private String payoutStatus; // "PENDING" - luôn là PENDING vì đây là pending payouts
     
     // Chi tiết các courses
     private List<CourseRevenueRes> courses;

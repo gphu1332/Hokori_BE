@@ -146,7 +146,7 @@ public class AdminPaymentService {
                         .paidSalesCount(0)
                         .unpaidSalesCount(courseRevenues.size())
                         .isFullyPaid(false)
-                        .payoutStatus("PENDING")
+                        // Không set payoutStatus ở level course - admin chỉ cần xem tổng và trạng thái teacher
                         .build());
             }
             
@@ -173,6 +173,7 @@ public class AdminPaymentService {
                     .yearMonth(yearMonth)
                     .totalPendingRevenueCents(totalPendingRevenueCents)
                     .totalPendingSales(totalPendingSales)
+                    .payoutStatus("PENDING") // Luôn là PENDING vì đây là pending payouts
                     .courses(courses)
                     .build());
         }
@@ -239,7 +240,7 @@ public class AdminPaymentService {
                     .paidSalesCount(0)
                     .unpaidSalesCount(courseRevenues.size())
                     .isFullyPaid(false)
-                    .payoutStatus("PENDING")
+                    // Không set payoutStatus ở level course - admin chỉ cần xem tổng và trạng thái teacher
                     .build());
         }
         
@@ -268,6 +269,7 @@ public class AdminPaymentService {
                 .yearMonth(yearMonth)
                 .totalPendingRevenueCents(totalPendingRevenueCents)
                 .totalPendingSales(unpaidRevenues.size())
+                .payoutStatus("PENDING") // Luôn là PENDING vì đây là pending payouts
                 .courses(courses)
                 .build();
     }
