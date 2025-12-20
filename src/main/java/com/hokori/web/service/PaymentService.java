@@ -281,7 +281,7 @@ public class PaymentService {
                 boolean isExpired = purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now);
                 
                 // Check if quota is exhausted
-                boolean quotaExhausted = checkQuotaExhausted(userId);
+                boolean quotaExhausted = aiPackageService.checkQuotaExhausted(userId);
                 
                 if (!isExpired && !quotaExhausted) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 

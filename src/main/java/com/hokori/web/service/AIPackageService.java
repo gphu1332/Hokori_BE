@@ -247,8 +247,9 @@ public class AIPackageService {
     
     /**
      * Check if quota is exhausted for user's active package
+     * Public method để các service khác có thể gọi
      */
-    private boolean checkQuotaExhausted(Long userId) {
+    public boolean checkQuotaExhausted(Long userId) {
         Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         if (purchaseOpt.isEmpty()) {
             return false; // No active package, not exhausted
