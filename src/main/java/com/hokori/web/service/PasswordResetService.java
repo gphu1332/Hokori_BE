@@ -65,11 +65,15 @@ public class PasswordResetService {
     public void requestOtpByEmail(String email, String ipAddress) {
         LocalDateTime now = LocalDateTime.now();
         
+        log.info("Requesting OTP for email: {}, IP: {}", email, ipAddress);
+        
         // Kiểm tra lockout cho email hoặc IP
         Optional<PasswordResetLockout> lockoutOpt = lockoutRepository.findActiveLockoutByEmailOrIp(email, ipAddress, now);
         if (lockoutOpt.isPresent()) {
             PasswordResetLockout lockout = lockoutOpt.get();
             long minutesRemaining = java.time.Duration.between(now, lockout.getUnlockAt()).toMinutes();
+            log.warn("OTP request blocked due to active lockout for email: {}, IP: {}, unlock at: {}, minutes remaining: {}", 
+                    email, ipAddress, lockout.getUnlockAt(), minutesRemaining);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
                     String.format("Password reset function is temporarily locked due to too many failed attempts. Please try again in %d minutes.", 
                             minutesRemaining + 1));
@@ -85,6 +89,7 @@ public class PasswordResetService {
 
         User user = userOpt.get();
         if (Boolean.FALSE.equals(user.getIsActive())) {
+            log.warn("OTP request blocked for deactivated account: {}", email);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is deactivated");
         }
 
@@ -92,15 +97,17 @@ public class PasswordResetService {
         LocalDateTime rateLimitSince = now.minusMinutes(OTP_REQUEST_RATE_LIMIT_MINUTES);
         Long otpRequestCount = otpRepository.countOtpRequestsByEmailSince(email, rateLimitSince);
         
+        log.info("Email: {}, OTP requests in last {} minutes: {}/{}", 
+                email, OTP_REQUEST_RATE_LIMIT_MINUTES, otpRequestCount, MAX_OTP_REQUESTS_PER_MINUTES);
+        
         if (otpRequestCount >= MAX_OTP_REQUESTS_PER_MINUTES) {
             long minutesRemaining = OTP_REQUEST_RATE_LIMIT_MINUTES;
+            log.warn("OTP request blocked due to rate limit for email: {}, requests: {}/{}", 
+                    email, otpRequestCount, MAX_OTP_REQUESTS_PER_MINUTES);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
                     String.format("Too many OTP requests. Please wait %d minutes before requesting a new OTP.", 
                             minutesRemaining));
         }
-        
-        log.debug("Email: {}, OTP requests in last {} minutes: {}/{}", 
-                email, OTP_REQUEST_RATE_LIMIT_MINUTES, otpRequestCount, MAX_OTP_REQUESTS_PER_MINUTES);
 
         // Invalidate các OTP cũ chưa sử dụng của email này khi request OTP mới
         // Đảm bảo chỉ có 1 OTP active tại một thời điểm
@@ -122,9 +129,16 @@ public class PasswordResetService {
         log.info("OTP created for email: {}, OTP code: {}, expires at: {}", email, otpCode, expiresAt);
 
         // Gửi email
-        emailService.sendOtpEmail(email, otpCode);
+        try {
+            emailService.sendOtpEmail(email, otpCode);
+            log.info("OTP email sent successfully to: {}", email);
+        } catch (Exception e) {
+            log.error("Failed to send OTP email to {}: {}", email, e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                    "Failed to send OTP email. Please try again later.");
+        }
 
-        log.info("OTP requested for email: {}, IP: {}", email, ipAddress);
+        log.info("OTP requested successfully for email: {}, IP: {}, OTP ID: {}", email, ipAddress, otp.getId());
     }
 
     /**
