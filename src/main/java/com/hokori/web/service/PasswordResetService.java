@@ -202,6 +202,10 @@ public class PasswordResetService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     private int incrementFailedAttemptsAndGet(Long otpId) {
+        // Clear cache trước để đảm bảo đọc giá trị mới nhất từ database
+        entityManager.clear();
+        
+        // Reload entity từ database trong transaction mới
         PasswordResetOtp otp = otpRepository.findById(otpId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "OTP not found"));
         
