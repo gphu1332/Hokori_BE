@@ -10,6 +10,8 @@ import com.hokori.web.dto.auth.RegisterTeacherRequest;
 import com.hokori.web.dto.auth.ForgotPasswordRequest;
 import com.hokori.web.dto.auth.VerifyOtpRequest;
 import com.hokori.web.dto.auth.ResetPasswordRequest;
+import com.hokori.web.dto.auth.VerifyOtpErrorResponse;
+import com.hokori.web.exception.InvalidOtpException;
 import com.hokori.web.service.AuthService;
 import com.hokori.web.service.PasswordResetService;
 import com.hokori.web.constants.RoleConstants;
@@ -439,6 +441,21 @@ public class AuthController {
             response.put("verified", true);
             
             return ResponseEntity.ok(ApiResponse.success("OTP verified successfully", response));
+        } catch (InvalidOtpException e) {
+            // Trả về thông tin về failed attempts
+            VerifyOtpErrorResponse errorData = new VerifyOtpErrorResponse(
+                    "Invalid OTP code",
+                    e.getFailedAttempts(),
+                    e.getRemainingAttempts(),
+                    e.getMaxAttempts()
+            );
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("message", errorData.getMessage());
+            errorResponse.put("failedAttempts", errorData.getFailedAttempts());
+            errorResponse.put("remainingAttempts", errorData.getRemainingAttempts());
+            errorResponse.put("maxAttempts", errorData.getMaxAttempts());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Invalid OTP code", errorResponse));
         } catch (ResponseStatusException e) {
             return ResponseEntity.status(e.getStatusCode())
                     .body(ApiResponse.error(e.getReason()));

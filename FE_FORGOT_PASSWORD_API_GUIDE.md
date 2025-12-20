@@ -16,7 +16,10 @@ Hệ thống hỗ trợ reset password qua email với OTP (One-Time Password) 6
 ```
 User Request OTP
     ↓
-[POST /api/auth/forgot-password/request-otp]
+[POST /api/auth/forgot-password/request-otp]y8
+
+
+ul
     ↓
 OTP sent to email
     ↓
@@ -117,15 +120,40 @@ Content-Type: application/json
 | Status | Message | Action |
 |--------|---------|--------|
 | `400` | "Only email is supported. Please provide a valid email address." | Show validation error |
-| `400` | "Invalid OTP code" | Show error, allow retry, increment failed attempts counter |
+| `400` | "Invalid OTP code" | Show error, allow retry, display failed attempts info |
 | `400` | "Invalid or expired OTP" | Show error, suggest request new OTP |
 | `429` | "Password reset function is temporarily locked due to too many failed attempts. Please try again in X minutes." | Show error, disable form, show countdown |
 | `429` | "Too many failed attempts. Password reset function is temporarily locked for 30 minutes." | Show error, disable form, show countdown |
 | `429` | "OTP has been locked due to too many failed attempts. Password reset function is temporarily locked for 30 minutes." | Show error, disable form, show countdown |
 
+**Error Response với Failed Attempts Info (400 - Invalid OTP code):**
+
+Khi nhập sai OTP, response sẽ bao gồm thông tin về số lần đã nhập sai:
+
+```json
+{
+  "success": false,
+  "message": "Invalid OTP code",
+  "data": {
+    "message": "Invalid OTP code",
+    "failedAttempts": 2,
+    "remainingAttempts": 3,
+    "maxAttempts": 5
+  },
+  "meta": {},
+  "timestamp": "2025-12-20T13:39:37.512052204"
+}
+```
+
+**Fields trong `data`:**
+- `failedAttempts` (integer): Số lần đã nhập sai OTP (1-5)
+- `remainingAttempts` (integer): Số lần còn lại có thể thử (4-0)
+- `maxAttempts` (integer): Tổng số lần tối đa được phép (5)
+
 **Lưu ý quan trọng:**
 - Sau khi nhập sai OTP **5 lần**, lần thứ 6 sẽ trả về **429 (TOO_MANY_REQUESTS)** với lockout message, KHÔNG phải 400
 - Lockout được áp dụng ngay lập tức sau lần sai thứ 5
+- FE nên hiển thị `remainingAttempts` để user biết còn bao nhiêu lần thử lại
 
 **Lưu ý:**
 - OTP có hiệu lực trong 15 phút
@@ -298,6 +326,20 @@ async function verifyOtp(email, otpCode) {
       };
     }
   } catch (error) {
+    // Check if error response contains failed attempts info
+    if (error.response && error.response.data && error.response.data.data) {
+      const errorData = error.response.data.data;
+      if (errorData.failedAttempts !== undefined) {
+        return {
+          success: false,
+          error: 'INVALID_OTP',
+          message: error.response.data.message || 'Invalid OTP code',
+          failedAttempts: errorData.failedAttempts,
+          remainingAttempts: errorData.remainingAttempts,
+          maxAttempts: errorData.maxAttempts
+        };
+      }
+    }
     return handleError(error);
   }
 }
@@ -411,8 +453,12 @@ function parseLockoutMinutes(message) {
 5. Nếu sai → Show error, increment failed attempts counter
 
 **Failed Attempts Tracking:**
-- Hiển thị: "X attempts remaining" (5 - failedAttempts)
-- Khi đạt 5 lần sai → Lockout triggered → Show lockout message
+- API trả về thông tin trong `data` object:
+  - `failedAttempts`: Số lần đã nhập sai (1-5)
+  - `remainingAttempts`: Số lần còn lại (4-0)
+  - `maxAttempts`: Tổng số lần tối đa (5)
+- Hiển thị: "X attempts remaining" sử dụng `remainingAttempts` từ response
+- Khi đạt 5 lần sai → Lockout triggered → Show lockout message (429 error)
 
 **Error Handling:**
 - Invalid OTP → Show error, allow retry

@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.hokori.web.exception.InvalidOtpException;
+
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.security.SecureRandom;
@@ -156,7 +158,9 @@ public class PasswordResetService {
             
             // Kiểm tra lại sau khi increment - nếu đạt max thì tạo lockout
             PasswordResetOtp updatedOtp = otpRepository.findById(otp.getId()).orElse(otp);
-            if (updatedOtp.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+            int newFailedAttempts = updatedOtp.getFailedAttempts();
+            
+            if (newFailedAttempts >= MAX_FAILED_ATTEMPTS) {
                 createLockout(email, ipAddress, "Too many failed OTP attempts");
                 long minutesRemaining = LOCKOUT_DURATION_MINUTES;
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
@@ -164,7 +168,8 @@ public class PasswordResetService {
                                 minutesRemaining));
             }
             
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
+            // Throw exception với thông tin về failed attempts
+            throw new InvalidOtpException(newFailedAttempts, MAX_FAILED_ATTEMPTS);
         }
 
         // Đánh dấu OTP đã sử dụng (đã verify)
