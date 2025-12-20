@@ -45,8 +45,9 @@ public class PasswordResetService {
     private static final int OTP_LENGTH = 6;
     private static final int MAX_FAILED_ATTEMPTS = 5;
     private static final int LOCKOUT_DURATION_MINUTES = 30; // Khóa trong 30 phút
-    private static final int MAX_OTP_REQUESTS_PER_MINUTES = 3; // Tối đa 3 lần request OTP trong 5 phút
-    private static final int OTP_REQUEST_RATE_LIMIT_MINUTES = 5; // Rate limit window: 5 phút
+    // Rate limiting đã được bỏ để tránh lỗi cho user
+    // private static final int MAX_OTP_REQUESTS_PER_MINUTES = 3;
+    // private static final int OTP_REQUEST_RATE_LIMIT_MINUTES = 5;
     private static final SecureRandom random = new SecureRandom();
 
     /**
@@ -93,21 +94,8 @@ public class PasswordResetService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is deactivated");
         }
 
-        // Rate limiting: Kiểm tra số lần request OTP trong 5 phút gần đây
-        LocalDateTime rateLimitSince = now.minusMinutes(OTP_REQUEST_RATE_LIMIT_MINUTES);
-        Long otpRequestCount = otpRepository.countOtpRequestsByEmailSince(email, rateLimitSince);
-        
-        log.info("Email: {}, OTP requests in last {} minutes: {}/{}", 
-                email, OTP_REQUEST_RATE_LIMIT_MINUTES, otpRequestCount, MAX_OTP_REQUESTS_PER_MINUTES);
-        
-        if (otpRequestCount >= MAX_OTP_REQUESTS_PER_MINUTES) {
-            long minutesRemaining = OTP_REQUEST_RATE_LIMIT_MINUTES;
-            log.warn("OTP request blocked due to rate limit for email: {}, requests: {}/{}", 
-                    email, otpRequestCount, MAX_OTP_REQUESTS_PER_MINUTES);
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
-                    String.format("Too many OTP requests. Please wait %d minutes before requesting a new OTP.", 
-                            minutesRemaining));
-        }
+        // Rate limiting đã được bỏ để tránh lỗi cho user
+        // User có thể request OTP bao nhiêu lần cũng được, chỉ cần không bị lockout
 
         // Invalidate các OTP cũ chưa sử dụng của email này khi request OTP mới
         // Đảm bảo chỉ có 1 OTP active tại một thời điểm
