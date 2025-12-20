@@ -183,18 +183,18 @@ public class PasswordResetService {
             // Increment failed attempts ngay khi OTP sai
             otpRepository.incrementFailedAttempts(otp.getId());
             
-            // Clear entity manager cache để đảm bảo reload đúng giá trị từ database
+            // Clear entity manager cache và reload OTP để lấy giá trị mới nhất
             entityManager.clear();
+            PasswordResetOtp reloadedOtp = otpRepository.findById(otp.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "OTP not found"));
             
-            // Tính tổng số lần nhập sai OTP của email này trong 15 phút gần đây (SAU KHI increment)
-            LocalDateTime since = now.minusMinutes(15);
-            Long totalFailedAttempts = otpRepository.countTotalFailedAttemptsByEmailSince(email, since);
+            int currentFailedAttempts = reloadedOtp.getFailedAttempts();
             
-            log.info("OTP verification failed for email: {}, OTP ID: {}, total failed attempts in last 15 min: {}/{}", 
-                    email, otp.getId(), totalFailedAttempts, MAX_FAILED_ATTEMPTS);
+            log.info("OTP verification failed for email: {}, OTP ID: {}, current failed attempts: {}/{}", 
+                    email, reloadedOtp.getId(), currentFailedAttempts, MAX_FAILED_ATTEMPTS);
             
             // Kiểm tra sau khi increment: nếu >= 5 lần thì lockout
-            if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
+            if (currentFailedAttempts >= MAX_FAILED_ATTEMPTS) {
                 createLockout(email, ipAddress, "Too many failed OTP attempts");
                 long minutesRemaining = LOCKOUT_DURATION_MINUTES;
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
@@ -202,8 +202,8 @@ public class PasswordResetService {
                                 minutesRemaining));
             }
             
-            // Throw exception với thông tin về failed attempts (tổng số)
-            throw new InvalidOtpException(totalFailedAttempts.intValue(), MAX_FAILED_ATTEMPTS);
+            // Throw exception với thông tin về failed attempts
+            throw new InvalidOtpException(currentFailedAttempts, MAX_FAILED_ATTEMPTS);
         }
 
         // Đánh dấu OTP đã sử dụng (đã verify)
