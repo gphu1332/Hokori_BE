@@ -96,5 +96,19 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
     Long countTotalFailedAttemptsByEmailSince(
             @Param("email") String email,
             @Param("since") LocalDateTime since);
+    
+    /**
+     * Đếm số lần request OTP của một email trong khoảng thời gian gần đây
+     * Dùng để rate limiting - tránh spam request OTP
+     */
+    @Query("""
+            SELECT COUNT(o) 
+            FROM PasswordResetOtp o
+            WHERE o.email = :email
+            AND o.createdAt > :since
+            """)
+    Long countOtpRequestsByEmailSince(
+            @Param("email") String email,
+            @Param("since") LocalDateTime since);
 }
 
