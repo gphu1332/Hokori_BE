@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -61,7 +60,12 @@ public class AIPackage extends BaseEntity {
     @Column(name = "display_order")
     private Integer displayOrder = 0;
 
-    @OneToMany(mappedBy = "aiPackage", cascade = CascadeType.ALL, orphanRemoval = true)
+    /**
+     * Purchases of this package
+     * Note: Using PERSIST/MERGE instead of ALL to prevent accidental deletion
+     * when admin updates package. Purchases should only be deleted explicitly.
+     */
+    @OneToMany(mappedBy = "aiPackage", cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     private List<AIPackagePurchase> purchases = new ArrayList<>();
 }
 
