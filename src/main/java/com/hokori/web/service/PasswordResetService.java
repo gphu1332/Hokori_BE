@@ -251,12 +251,12 @@ public class PasswordResetService {
                 PasswordResetOtp otp = unverifiedOtpOpt.get();
                 log.debug("Found unverified OTP, verifying now. OTP expires at: {}", otp.getExpiresAt());
                 
-                // Tính tổng số lần nhập sai OTP của email này trong 15 phút gần đây
-                LocalDateTime since = now.minusMinutes(15);
-                Long totalFailedAttempts = otpRepository.countTotalFailedAttemptsByEmailSince(email, since);
+                // Đếm số lần verify sai trong 15 phút gần đây
+                LocalDateTime windowStart = now.minusMinutes(FAILED_ATTEMPTS_WINDOW_MINUTES);
+                Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, windowStart);
                 
-                // Kiểm tra tổng số lần verify sai (tính theo email, không phải theo từng OTP)
-                if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
+                // Kiểm tra số lần verify sai
+                if (failedAttemptsCount >= MAX_FAILED_ATTEMPTS) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
                 }
                 
@@ -269,12 +269,11 @@ public class PasswordResetService {
                     failedAttempt.setOtpId(otp.getId());
                     failedAttemptRepository.save(failedAttempt);
                     
-                    // Đếm số lần verify sai trong 15 phút
-                    LocalDateTime since = now.minusMinutes(FAILED_ATTEMPTS_WINDOW_MINUTES);
-                    Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, since);
+                    // Đếm lại số lần verify sai sau khi record
+                    Long newFailedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, windowStart);
                     
-                    // Kiểm tra số lần verify sai
-                    if (failedAttemptsCount >= MAX_FAILED_ATTEMPTS) {
+                    // Kiểm tra số lần verify sai sau khi record
+                    if (newFailedAttemptsCount >= MAX_FAILED_ATTEMPTS) {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
                     }
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
