@@ -115,7 +115,70 @@ CREATE INDEX IF NOT EXISTS idx_otp_code ON password_reset_otp(otp_code);
 CREATE INDEX IF NOT EXISTS idx_otp_email_created ON password_reset_otp(email, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_otp_expires ON password_reset_otp(expires_at);
 
+-- Thêm check constraints để đảm bảo data integrity
+-- Check: otp_code phải là đúng 6 chữ số (0-9)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'ck_otp_code_format' 
+        AND conrelid = 'password_reset_otp'::regclass
+    ) THEN
+        ALTER TABLE password_reset_otp 
+        ADD CONSTRAINT ck_otp_code_format 
+        CHECK (otp_code ~ '^[0-9]{6}$');
+        RAISE NOTICE 'Added check constraint: ck_otp_code_format';
+    END IF;
+END $$;
+
+-- Check: failed_attempts phải >= 0
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'ck_otp_failed_attempts' 
+        AND conrelid = 'password_reset_otp'::regclass
+    ) THEN
+        ALTER TABLE password_reset_otp 
+        ADD CONSTRAINT ck_otp_failed_attempts 
+        CHECK (failed_attempts >= 0);
+        RAISE NOTICE 'Added check constraint: ck_otp_failed_attempts';
+    END IF;
+END $$;
+
+-- Check: expires_at phải > created_at (OTP phải có thời gian hết hạn hợp lý)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'ck_otp_expires_after_created' 
+        AND conrelid = 'password_reset_otp'::regclass
+    ) THEN
+        ALTER TABLE password_reset_otp 
+        ADD CONSTRAINT ck_otp_expires_after_created 
+        CHECK (expires_at > created_at);
+        RAISE NOTICE 'Added check constraint: ck_otp_expires_after_created';
+    END IF;
+END $$;
+
+-- Check: email không được rỗng (đã có NOT NULL nhưng thêm check để đảm bảo)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'ck_otp_email_not_empty' 
+        AND conrelid = 'password_reset_otp'::regclass
+    ) THEN
+        ALTER TABLE password_reset_otp 
+        ADD CONSTRAINT ck_otp_email_not_empty 
+        CHECK (LENGTH(TRIM(email)) > 0);
+        RAISE NOTICE 'Added check constraint: ck_otp_email_not_empty';
+    END IF;
+END $$;
+
 COMMENT ON TABLE password_reset_otp IS 'Bảng lưu mã OTP cho password reset. Cho phép nhiều OTP cho cùng email (không có unique constraint).';
-COMMENT ON COLUMN password_reset_otp.email IS 'Email của user (không unique - cho phép nhiều OTP)';
-COMMENT ON COLUMN password_reset_otp.otp_code IS 'Mã OTP 6 chữ số (không unique - cho phép trùng code cho các email khác nhau)';
+COMMENT ON COLUMN password_reset_otp.email IS 'Email của user (không unique - cho phép nhiều OTP, NOT NULL)';
+COMMENT ON COLUMN password_reset_otp.otp_code IS 'Mã OTP 6 chữ số (không unique - cho phép trùng code cho các email khác nhau, format: ^[0-9]{6}$)';
+COMMENT ON COLUMN password_reset_otp.failed_attempts IS 'Số lần verify sai (>= 0, default: 0)';
+COMMENT ON COLUMN password_reset_otp.expires_at IS 'Thời gian hết hạn (phải > created_at)';
 
