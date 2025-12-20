@@ -102,6 +102,10 @@ public class PasswordResetService {
         log.debug("Email: {}, OTP requests in last {} minutes: {}/{}", 
                 email, OTP_REQUEST_RATE_LIMIT_MINUTES, otpRequestCount, MAX_OTP_REQUESTS_PER_MINUTES);
 
+        // Invalidate các OTP cũ chưa sử dụng của email này khi request OTP mới
+        // Đảm bảo chỉ có 1 OTP active tại một thời điểm
+        otpRepository.invalidateOldOtpsForEmail(email, now);
+        
         // Tạo OTP
         String otpCode = generateOtp();
         LocalDateTime expiresAt = now.plusMinutes(15);
@@ -114,6 +118,8 @@ public class PasswordResetService {
         otp.setIsUsed(false);
         otp.setFailedAttempts(0);
         otpRepository.save(otp);
+        
+        log.info("OTP created for email: {}, OTP code: {}, expires at: {}", email, otpCode, expiresAt);
 
         // Gửi email
         emailService.sendOtpEmail(email, otpCode);

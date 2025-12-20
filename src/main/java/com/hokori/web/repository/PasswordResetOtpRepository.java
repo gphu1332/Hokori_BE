@@ -110,5 +110,22 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
     Long countOtpRequestsByEmailSince(
             @Param("email") String email,
             @Param("since") LocalDateTime since);
+    
+    /**
+     * Invalidate các OTP cũ chưa sử dụng của email này khi request OTP mới
+     * Đánh dấu isUsed = true để không thể verify OTP cũ nữa
+     * Đảm bảo chỉ có 1 OTP active tại một thời điểm
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            UPDATE PasswordResetOtp o 
+            SET o.isUsed = true 
+            WHERE o.email = :email
+            AND o.isUsed = false
+            AND o.expiresAt > :now
+            """)
+    void invalidateOldOtpsForEmail(
+            @Param("email") String email,
+            @Param("now") LocalDateTime now);
 }
 
