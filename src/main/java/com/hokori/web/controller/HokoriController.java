@@ -5,6 +5,7 @@ import com.hokori.web.entity.PasswordResetOtp;
 import com.hokori.web.entity.PasswordResetLockout;
 import com.hokori.web.repository.PasswordResetOtpRepository;
 import com.hokori.web.repository.PasswordResetLockoutRepository;
+import com.hokori.web.repository.PasswordResetFailedAttemptRepository;
 import io.jsonwebtoken.Claims;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -30,6 +31,9 @@ public class HokoriController {
     
     @Autowired
     private PasswordResetLockoutRepository lockoutRepository;
+    
+    @Autowired
+    private PasswordResetFailedAttemptRepository failedAttemptRepository;
 
     @GetMapping("/health")
     @Operation(summary = "Health check", description = "Check if the API is running")
@@ -175,12 +179,16 @@ public class HokoriController {
                 latestOtp.put("id", otp.getId());
                 latestOtp.put("email", otp.getEmail());
                 latestOtp.put("otpCode", otp.getOtpCode());
-                latestOtp.put("failedAttempts", otp.getFailedAttempts());
                 latestOtp.put("isUsed", otp.getIsUsed());
                 latestOtp.put("createdAt", otp.getCreatedAt());
                 latestOtp.put("expiresAt", otp.getExpiresAt());
                 latestOtp.put("isExpired", otp.getExpiresAt().isBefore(now));
                 latestOtp.put("minutesUntilExpiry", java.time.Duration.between(now, otp.getExpiresAt()).toMinutes());
+                
+                // Đếm số lần verify sai trong 15 phút gần đây
+                LocalDateTime windowStart = now.minusMinutes(15);
+                Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(checkEmail, windowStart);
+                latestOtp.put("failedAttemptsInLast15Min", failedAttemptsCount);
             } else {
                 latestOtp.put("found", false);
                 latestOtp.put("message", "No valid OTP found");
@@ -199,7 +207,6 @@ public class HokoriController {
                 Map<String, Object> otpData = new HashMap<>();
                 otpData.put("id", otp.getId());
                 otpData.put("otpCode", otp.getOtpCode());
-                otpData.put("failedAttempts", otp.getFailedAttempts());
                 otpData.put("isUsed", otp.getIsUsed());
                 otpData.put("createdAt", otp.getCreatedAt());
                 otpData.put("expiresAt", otp.getExpiresAt());
@@ -241,11 +248,14 @@ public class HokoriController {
             summary.put("hasValidOtp", latestOtpOpt.isPresent());
             summary.put("hasActiveLockout", !lockoutList.isEmpty());
             summary.put("totalOtpsInLast10", otpList.size());
-            if (latestOtpOpt.isPresent()) {
-                summary.put("currentFailedAttempts", latestOtpOpt.get().getFailedAttempts());
-                summary.put("maxFailedAttempts", 5);
-                summary.put("shouldBeLocked", latestOtpOpt.get().getFailedAttempts() >= 5);
-            }
+            
+            // Đếm số lần verify sai trong 15 phút gần đây
+            LocalDateTime windowStart = now.minusMinutes(15);
+            Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(checkEmail, windowStart);
+            summary.put("currentFailedAttempts", failedAttemptsCount);
+            summary.put("maxFailedAttempts", 5);
+            summary.put("shouldBeLocked", failedAttemptsCount >= 5);
+            
             response.put("summary", summary);
             
             response.put("success", true);
