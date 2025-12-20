@@ -194,19 +194,26 @@ public class PasswordResetService {
     /**
      * Increment failed attempts trong transaction riêng để commit trước khi throw exception
      * Sử dụng REQUIRES_NEW để không bị rollback khi throw exception trong transaction chính
+     * Dùng native query để update trực tiếp trong database, đảm bảo commit
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     private int incrementFailedAttempts(Long otpId) {
-        PasswordResetOtp otp = otpRepository.findById(otpId)
+        // Đọc giá trị cũ trước khi increment
+        PasswordResetOtp otpBefore = otpRepository.findById(otpId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "OTP not found"));
+        int oldFailedAttempts = otpBefore.getFailedAttempts();
         
-        int oldFailedAttempts = otp.getFailedAttempts();
-        otp.setFailedAttempts(oldFailedAttempts + 1);
-        otpRepository.save(otp);
+        // Dùng native query để update trực tiếp trong database (bypass JPA cache và đảm bảo commit)
+        otpRepository.incrementFailedAttemptsNative(otpId);
         
-        log.info("Incremented failed attempts for OTP ID: {}, old: {}, new: {}", otpId, oldFailedAttempts, otp.getFailedAttempts());
+        // Reload từ database để lấy giá trị mới nhất
+        PasswordResetOtp otpAfter = otpRepository.findById(otpId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "OTP not found"));
+        int newFailedAttempts = otpAfter.getFailedAttempts();
         
-        return otp.getFailedAttempts();
+        log.info("Incremented failed attempts for OTP ID: {}, old: {}, new: {}", otpId, oldFailedAttempts, newFailedAttempts);
+        
+        return newFailedAttempts;
     }
     
     /**
