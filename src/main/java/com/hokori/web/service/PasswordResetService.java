@@ -180,18 +180,12 @@ public class PasswordResetService {
                     email, existingFailedAttempts, totalFailedAttempts, MAX_FAILED_ATTEMPTS, since, now);
             
             // Record failed attempt: insert một record mới
-            PasswordResetFailedAttempt failedAttempt = new PasswordResetFailedAttempt();
-            failedAttempt.setEmail(email);
-            failedAttempt.setIpAddress(ipAddress);
-            failedAttempt.setAttemptedAt(now);
-            failedAttempt.setOtpId(otp.getId());
-            failedAttemptRepository.save(failedAttempt);
+            // QUAN TRỌNG: Phải insert và commit TRƯỚC KHI throw exception
+            // Vì @Transactional sẽ rollback khi có exception
+            recordFailedAttempt(email, ipAddress, now, otp.getId());
             
             // Kiểm tra: nếu >= 5 lần trong 15 phút thì lockout
             if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
-                // Flush để đảm bảo record được ghi vào database
-                entityManager.flush();
-                
                 createLockout(email, ipAddress, "Too many failed OTP attempts");
                 long minutesRemaining = LOCKOUT_DURATION_MINUTES;
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
@@ -208,6 +202,23 @@ public class PasswordResetService {
 
         // Return email để dùng trong reset password
         return email;
+    }
+    
+    /**
+     * Record failed attempt trong transaction riêng
+     * REQUIRES_NEW để đảm bảo commit ngay cả khi transaction cha rollback
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void recordFailedAttempt(String email, String ipAddress, LocalDateTime attemptedAt, Long otpId) {
+        PasswordResetFailedAttempt failedAttempt = new PasswordResetFailedAttempt();
+        failedAttempt.setEmail(email);
+        failedAttempt.setIpAddress(ipAddress);
+        failedAttempt.setAttemptedAt(attemptedAt);
+        failedAttempt.setOtpId(otpId);
+        failedAttemptRepository.save(failedAttempt);
+        
+        log.debug("Recorded failed OTP attempt for email: {}, IP: {}, attemptedAt: {}", 
+                email, ipAddress, attemptedAt);
     }
     
     /**
@@ -272,17 +283,11 @@ public class PasswordResetService {
                     // Tính tổng số lần sai (bao gồm lần hiện tại)
                     Long totalFailedAttempts = existingFailedAttempts + 1;
                     
-                    // Record failed attempt
-                    PasswordResetFailedAttempt failedAttempt = new PasswordResetFailedAttempt();
-                    failedAttempt.setEmail(email);
-                    failedAttempt.setAttemptedAt(now);
-                    failedAttempt.setOtpId(otp.getId());
-                    failedAttemptRepository.save(failedAttempt);
+                    // Record failed attempt trong transaction riêng
+                    recordFailedAttempt(email, null, now, otp.getId());
                     
                     // Kiểm tra số lần verify sai sau khi tính tổng
                     if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
-                        // Flush để đảm bảo record được ghi vào database
-                        entityManager.flush();
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
                     }
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
