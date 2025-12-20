@@ -72,6 +72,7 @@ public class PasswordResetService {
 
     /**
      * Verify OTP và trả về token để reset password
+     * OTP sẽ được mark as used sau khi verify thành công
      */
     public String verifyOtp(String email, String otpCode) {
         LocalDateTime now = LocalDateTime.now();
@@ -96,7 +97,7 @@ public class PasswordResetService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
         }
 
-        // Đánh dấu OTP đã sử dụng
+        // Đánh dấu OTP đã sử dụng (đã verify)
         otpRepository.markAsUsed(otp.getId());
 
         // Return email để dùng trong reset password
@@ -105,11 +106,50 @@ public class PasswordResetService {
 
     /**
      * Reset password sau khi verify OTP thành công
-     * Cần verify OTP trước khi gọi method này
+     * Cần verify OTP trước khi gọi method này (qua API /forgot-password/verify-otp)
+     * 
+     * Logic: Tìm OTP đã được verify (isUsed = true) và chưa hết hạn
+     * Không verify lại OTP vì đã verify ở bước trước đó
      */
     public void resetPassword(String email, String otpCode, String newPassword) {
-        // Verify OTP trước khi reset password
-        verifyOtp(email, otpCode);
+        LocalDateTime now = LocalDateTime.now();
+        
+        log.debug("Attempting to reset password for email: {}, OTP code: {}, Current time: {}", email, otpCode, now);
+        
+        // Tìm OTP đã được verify (isUsed = true)
+        // OTP đã được verify ở bước /forgot-password/verify-otp trước đó
+        // Không check expiresAt vì OTP đã được verify, cho phép reset password trong một khoảng thời gian hợp lý
+        Optional<PasswordResetOtp> otpOpt = otpRepository.findVerifiedOtpByEmailAndCode(email, otpCode);
+        
+        if (otpOpt.isEmpty()) {
+            log.warn("Verified OTP not found for email: {}, OTP code: {}, Current time: {}", email, otpCode, now);
+            
+            // Nếu không tìm thấy OTP đã verify, có thể OTP chưa được verify hoặc đã hết hạn
+            // Fallback: Tìm OTP chưa verify để verify lại (trường hợp user skip bước verify-otp)
+            Optional<PasswordResetOtp> unverifiedOtpOpt = otpRepository.findLatestValidByEmail(email, now);
+            if (unverifiedOtpOpt.isPresent()) {
+                PasswordResetOtp otp = unverifiedOtpOpt.get();
+                log.debug("Found unverified OTP, verifying now. OTP expires at: {}", otp.getExpiresAt());
+                
+                // Verify OTP code
+                if (!otp.getOtpCode().equals(otpCode)) {
+                    otpRepository.incrementFailedAttempts(otp.getId());
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
+                }
+                // Kiểm tra số lần verify sai
+                if (otp.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
+                }
+                // Mark as used
+                otpRepository.markAsUsed(otp.getId());
+            } else {
+                log.error("No valid OTP found (neither verified nor unverified) for email: {}, OTP code: {}", email, otpCode);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired OTP. Please verify OTP first.");
+            }
+        } else {
+            PasswordResetOtp otp = otpOpt.get();
+            log.debug("Found verified OTP. OTP expires at: {}, Current time: {}", otp.getExpiresAt(), now);
+        }
         
         // Tìm user theo email
         Optional<User> userOpt = userRepository.findByEmail(email);

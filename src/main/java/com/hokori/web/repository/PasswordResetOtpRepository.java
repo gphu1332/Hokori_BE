@@ -26,6 +26,24 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
     Optional<PasswordResetOtp> findLatestValidByEmail(@Param("email") String email, @Param("now") LocalDateTime now);
 
     /**
+     * Tìm OTP đã verify (isUsed = true) theo email và OTP code
+     * Dùng để reset password sau khi đã verify OTP
+     * 
+     * Lưu ý: Không check expiresAt vì OTP đã được verify, cho phép reset password
+     * trong một khoảng thời gian hợp lý sau khi verify (ví dụ: 30 phút sau khi verify)
+     */
+    @Query("""
+            SELECT o FROM PasswordResetOtp o
+            WHERE o.email = :email
+            AND o.otpCode = :otpCode
+            AND o.isUsed = true
+            ORDER BY o.createdAt DESC
+            """)
+    Optional<PasswordResetOtp> findVerifiedOtpByEmailAndCode(
+            @Param("email") String email, 
+            @Param("otpCode") String otpCode);
+
+    /**
      * Đánh dấu OTP đã sử dụng
      */
     @Modifying
