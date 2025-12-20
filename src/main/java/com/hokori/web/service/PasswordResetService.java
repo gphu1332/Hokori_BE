@@ -199,26 +199,29 @@ public class PasswordResetService {
     /**
      * Increment failed attempts trong transaction riêng để đảm bảo commit trước khi throw exception
      * Sử dụng REQUIRES_NEW để không bị rollback khi throw exception trong transaction chính
+     * Dùng native query để update trực tiếp trong database
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     private int incrementFailedAttemptsAndGet(Long otpId) {
-        // Clear cache trước để đảm bảo đọc giá trị mới nhất từ database
-        entityManager.clear();
-        
-        // Reload entity từ database trong transaction mới
-        PasswordResetOtp otp = otpRepository.findById(otpId)
+        // Đọc giá trị cũ trước khi increment
+        PasswordResetOtp otpBefore = otpRepository.findById(otpId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "OTP not found"));
+        int oldFailedAttempts = otpBefore.getFailedAttempts();
         
-        int oldFailedAttempts = otp.getFailedAttempts();
-        otp.setFailedAttempts(oldFailedAttempts + 1);
-        otpRepository.save(otp);
+        // Dùng native query để update trực tiếp trong database và trả về giá trị mới
+        Integer newFailedAttempts = otpRepository.incrementFailedAttemptsAndReturn(otpId);
         
-        // Force flush để đảm bảo update được commit ngay lập tức
-        entityManager.flush();
+        if (newFailedAttempts == null) {
+            // Fallback: nếu native query không trả về giá trị, reload từ database
+            entityManager.clear();
+            PasswordResetOtp otpAfter = otpRepository.findById(otpId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "OTP not found"));
+            newFailedAttempts = otpAfter.getFailedAttempts();
+        }
         
-        log.info("Incremented failed attempts for OTP ID: {}, old: {}, new: {}", otpId, oldFailedAttempts, otp.getFailedAttempts());
+        log.info("Incremented failed attempts for OTP ID: {}, old: {}, new: {}", otpId, oldFailedAttempts, newFailedAttempts);
         
-        return otp.getFailedAttempts();
+        return newFailedAttempts;
     }
     
     /**
