@@ -374,11 +374,6 @@ public class AIPackageService {
         aiPackage.setCurrency(req.getCurrency() != null ? req.getCurrency() : "VND");
         aiPackage.setDurationDays(req.getDurationDays());
         aiPackage.setTotalRequests(req.getTotalRequests());
-        // Legacy fields (deprecated)
-        aiPackage.setGrammarQuota(req.getGrammarQuota());
-        aiPackage.setKaiwaQuota(req.getKaiwaQuota());
-        aiPackage.setPronunQuota(req.getPronunQuota());
-        aiPackage.setConversationQuota(req.getConversationQuota());
         aiPackage.setIsActive(req.getIsActive() != null ? req.getIsActive() : true);
         aiPackage.setDisplayOrder(req.getDisplayOrder() != null ? req.getDisplayOrder() : 0);
         
@@ -414,19 +409,6 @@ public class AIPackageService {
         }
         if (req.getTotalRequests() != null) {
             aiPackage.setTotalRequests(req.getTotalRequests());
-        }
-        // Legacy fields (deprecated)
-        if (req.getGrammarQuota() != null) {
-            aiPackage.setGrammarQuota(req.getGrammarQuota());
-        }
-        if (req.getKaiwaQuota() != null) {
-            aiPackage.setKaiwaQuota(req.getKaiwaQuota());
-        }
-        if (req.getPronunQuota() != null) {
-            aiPackage.setPronunQuota(req.getPronunQuota());
-        }
-        if (req.getConversationQuota() != null) {
-            aiPackage.setConversationQuota(req.getConversationQuota());
         }
         if (req.getIsActive() != null) {
             aiPackage.setIsActive(req.getIsActive());
@@ -499,11 +481,6 @@ public class AIPackageService {
                 .currency(pkg.getCurrency())
                 .durationDays(pkg.getDurationDays())
                 .totalRequests(pkg.getTotalRequests())
-                // Legacy fields (deprecated)
-                .grammarQuota(pkg.getGrammarQuota())
-                .kaiwaQuota(pkg.getKaiwaQuota())
-                .pronunQuota(pkg.getPronunQuota())
-                .conversationQuota(pkg.getConversationQuota())
                 .isActive(pkg.getIsActive())
                 .displayOrder(pkg.getDisplayOrder())
                 .build();

@@ -41,12 +41,6 @@ public class AIPackageCreateReq {
      */
     private Integer totalRequests;
 
-    // Legacy fields (deprecated)
-    private Integer grammarQuota;      // Deprecated
-    private Integer kaiwaQuota;        // Deprecated
-    private Integer pronunQuota;       // Deprecated
-    private Integer conversationQuota; // Deprecated
-
     @Builder.Default
     private Boolean isActive = true;
 
