@@ -439,6 +439,13 @@ public class AIPackageService {
                     "Cannot delete package with active purchases. Please deactivate it instead.");
         }
         
+        // Check total purchases (including expired)
+        long totalPurchases = purchaseRepo.countByAiPackage_Id(packageId);
+        if (totalPurchases > 0) {
+            log.warn("Deleting package {} with {} expired purchases (no active purchases)", 
+                    packageId, totalPurchases);
+        }
+        
         packageRepo.delete(aiPackage);
         
         log.info("Deleted AI package: id={}, name={}", packageId, aiPackage.getName());

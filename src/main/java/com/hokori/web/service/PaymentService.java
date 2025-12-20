@@ -855,6 +855,18 @@ public class PaymentService {
             return;
         }
         
+        // Deactivate all other active purchases for this user (only one active purchase at a time)
+        var user = purchase.getUser();
+        var existingActivePurchases = aiPackagePurchaseRepo.findByUser_IdAndIsActiveTrue(user.getId());
+        for (var existingPurchase : existingActivePurchases) {
+            if (!existingPurchase.getId().equals(purchase.getId())) {
+                existingPurchase.setIsActive(false);
+                aiPackagePurchaseRepo.save(existingPurchase);
+                log.info("Deactivated old purchase {} for user {} when activating new purchase {}", 
+                        existingPurchase.getId(), user.getId(), purchase.getId());
+            }
+        }
+        
         // Activate purchase
         purchase.setIsActive(true);
         purchase.setPaymentStatus(com.hokori.web.Enum.PaymentStatus.PAID);
@@ -865,7 +877,6 @@ public class PaymentService {
         
         // Allocate quotas to user
         var aiPackage = purchase.getAiPackage();
-        var user = purchase.getUser();
         
         // Allocate unified request pool
         if (aiPackage.getTotalRequests() != null) {
@@ -878,14 +889,45 @@ public class PaymentService {
     
     /**
      * Allocate unified request pool quota for user
+     * If user already has an active package, ADD requests to existing quota
+     * Otherwise, RESET quota to new package value
      */
     private void allocateUnifiedQuota(Long userId, Integer totalRequests) {
         var existingQuota = aiQuotaRepo.findByUser_Id(userId);
         
         if (existingQuota.isPresent()) {
-            // Update existing unified quota
             var quotaEntity = existingQuota.get();
-            quotaEntity.initializeQuota(totalRequests);
+            
+            // Check if user has active paid package
+            var purchaseOpt = aiPackagePurchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
+            if (purchaseOpt.isPresent() && purchaseOpt.get().getPaymentStatus() == PaymentStatus.PAID) {
+                // User đang có package active → ADD thêm requests (không reset)
+                Integer currentTotal = quotaEntity.getTotalRequests();
+                Integer currentUsed = quotaEntity.getUsedRequests() != null ? quotaEntity.getUsedRequests() : 0;
+                
+                if (currentTotal != null && totalRequests != null) {
+                    // Add new requests to existing quota
+                    Integer newTotal = currentTotal + totalRequests;
+                    quotaEntity.setTotalRequests(newTotal);
+                    quotaEntity.setRemainingRequests(Math.max(0, newTotal - currentUsed));
+                    log.info("Added {} requests to existing quota for user {}: {} -> {} (used: {})", 
+                            totalRequests, userId, currentTotal, newTotal, currentUsed);
+                } else if (currentTotal == null && totalRequests != null) {
+                    // Current is unlimited, new is limited → Keep unlimited
+                    quotaEntity.setTotalRequests(null);
+                    quotaEntity.setRemainingRequests(null);
+                    log.info("User {} has unlimited quota, keeping unlimited after adding package", userId);
+                } else {
+                    // Both unlimited or other cases → Reset
+                    quotaEntity.initializeQuota(totalRequests);
+                    log.info("Reset quota for user {} to {}", userId, totalRequests);
+                }
+            } else {
+                // User không có package active → RESET về package mới
+                quotaEntity.initializeQuota(totalRequests);
+                log.info("Reset quota for user {} (no active package) to {}", userId, totalRequests);
+            }
+            
             aiQuotaRepo.save(quotaEntity);
         } else {
             // Create new unified quota
@@ -895,6 +937,7 @@ public class PaymentService {
             quotaEntity.initializeQuota(totalRequests);
             quotaEntity.setDeletedFlag(false);
             aiQuotaRepo.save(quotaEntity);
+            log.info("Created new quota for user {}: {}", userId, totalRequests);
         }
     }
     

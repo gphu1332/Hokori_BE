@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_otp_email", columnList = "email"),
                 @Index(name = "idx_otp_code", columnList = "otp_code")
         })
+@org.hibernate.annotations.DynamicUpdate
 public class PasswordResetOtp {
 
     @Id
@@ -45,12 +46,6 @@ public class PasswordResetOtp {
      */
     @Column(name = "is_used", nullable = false)
     private Boolean isUsed = false;
-
-    /**
-     * Số lần verify sai (để chặn brute force)
-     */
-    @Column(name = "failed_attempts", nullable = false)
-    private Integer failedAttempts = 0;
 
     /**
      * Thời gian tạo OTP

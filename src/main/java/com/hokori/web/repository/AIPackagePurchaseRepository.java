@@ -52,5 +52,10 @@ public interface AIPackagePurchaseRepository extends JpaRepository<AIPackagePurc
      * Count active purchases for a package
      */
     long countByAiPackage_IdAndIsActiveTrue(Long packageId);
+    
+    /**
+     * Count all purchases for a package (including expired)
+     */
+    long countByAiPackage_Id(Long packageId);
 }
 

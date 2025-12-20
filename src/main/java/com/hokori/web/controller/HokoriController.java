@@ -1,6 +1,11 @@
 package com.hokori.web.controller;
 
 import com.hokori.web.config.JwtConfig;
+import com.hokori.web.entity.PasswordResetOtp;
+import com.hokori.web.entity.PasswordResetLockout;
+import com.hokori.web.repository.PasswordResetOtpRepository;
+import com.hokori.web.repository.PasswordResetLockoutRepository;
+import com.hokori.web.repository.PasswordResetFailedAttemptRepository;
 import io.jsonwebtoken.Claims;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -20,6 +25,15 @@ public class HokoriController {
 
     @Autowired
     private JwtConfig jwtConfig;
+    
+    @Autowired
+    private PasswordResetOtpRepository otpRepository;
+    
+    @Autowired
+    private PasswordResetLockoutRepository lockoutRepository;
+    
+    @Autowired
+    private PasswordResetFailedAttemptRepository failedAttemptRepository;
 
     @GetMapping("/health")
     @Operation(summary = "Health check", description = "Check if the API is running")
@@ -143,6 +157,120 @@ public class HokoriController {
         }
         
         response.put("timestamp", LocalDateTime.now());
+        return response;
+    }
+    
+    @GetMapping("/debug/otp-check")
+    @Operation(summary = "Debug OTP database check", description = "Temporary endpoint to check password_reset_otp database (no auth required)")
+    public Map<String, Object> debugOtpCheck(
+            @Parameter(description = "Email to check") @RequestParam(required = false) String email) {
+        Map<String, Object> response = new HashMap<>();
+        LocalDateTime now = LocalDateTime.now();
+        
+        try {
+            String checkEmail = email != null ? email : "khoacaper@gmail.com";
+            
+            // 1. Get latest OTP for email
+            Optional<PasswordResetOtp> latestOtpOpt = otpRepository.findLatestValidByEmail(checkEmail, now);
+            
+            Map<String, Object> latestOtp = new HashMap<>();
+            if (latestOtpOpt.isPresent()) {
+                PasswordResetOtp otp = latestOtpOpt.get();
+                latestOtp.put("id", otp.getId());
+                latestOtp.put("email", otp.getEmail());
+                latestOtp.put("otpCode", otp.getOtpCode());
+                latestOtp.put("isUsed", otp.getIsUsed());
+                latestOtp.put("createdAt", otp.getCreatedAt());
+                latestOtp.put("expiresAt", otp.getExpiresAt());
+                latestOtp.put("isExpired", otp.getExpiresAt().isBefore(now));
+                latestOtp.put("minutesUntilExpiry", java.time.Duration.between(now, otp.getExpiresAt()).toMinutes());
+                
+                // Đếm số lần verify sai trong 15 phút gần đây
+                LocalDateTime windowStart = now.minusMinutes(15);
+                Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(checkEmail, windowStart);
+                latestOtp.put("failedAttemptsInLast15Min", failedAttemptsCount);
+            } else {
+                latestOtp.put("found", false);
+                latestOtp.put("message", "No valid OTP found");
+            }
+            response.put("latestOtp", latestOtp);
+            
+            // 2. Get all OTPs for email (last 10)
+            List<PasswordResetOtp> allOtps = otpRepository.findAll().stream()
+                    .filter(o -> o.getEmail().equals(checkEmail))
+                    .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                    .limit(10)
+                    .collect(java.util.stream.Collectors.toList());
+            
+            List<Map<String, Object>> otpList = new ArrayList<>();
+            for (PasswordResetOtp otp : allOtps) {
+                Map<String, Object> otpData = new HashMap<>();
+                otpData.put("id", otp.getId());
+                otpData.put("otpCode", otp.getOtpCode());
+                otpData.put("isUsed", otp.getIsUsed());
+                otpData.put("createdAt", otp.getCreatedAt());
+                otpData.put("expiresAt", otp.getExpiresAt());
+                otpData.put("status", otp.getExpiresAt().isBefore(now) ? "EXPIRED" : 
+                           (otp.getIsUsed() ? "USED" : "VALID"));
+                otpList.add(otpData);
+            }
+            response.put("allOtps", otpList);
+            response.put("totalOtpsFound", otpList.size());
+            
+            // 3. Get active lockouts
+            List<PasswordResetLockout> activeLockouts = lockoutRepository.findAll().stream()
+                    .filter(l -> (l.getEmail() != null && l.getEmail().equals(checkEmail)) || 
+                                (l.getEmail() == null && l.getIpAddress() != null))
+                    .filter(l -> !l.getIsUnlocked() && l.getUnlockAt().isAfter(now))
+                    .sorted((a, b) -> b.getLockedAt().compareTo(a.getLockedAt()))
+                    .limit(5)
+                    .collect(java.util.stream.Collectors.toList());
+            
+            List<Map<String, Object>> lockoutList = new ArrayList<>();
+            for (PasswordResetLockout lockout : activeLockouts) {
+                Map<String, Object> lockoutData = new HashMap<>();
+                lockoutData.put("id", lockout.getId());
+                lockoutData.put("email", lockout.getEmail());
+                lockoutData.put("ipAddress", lockout.getIpAddress());
+                lockoutData.put("lockedAt", lockout.getLockedAt());
+                lockoutData.put("unlockAt", lockout.getUnlockAt());
+                lockoutData.put("reason", lockout.getReason());
+                lockoutData.put("isUnlocked", lockout.getIsUnlocked());
+                lockoutData.put("minutesUntilUnlock", java.time.Duration.between(now, lockout.getUnlockAt()).toMinutes());
+                lockoutList.add(lockoutData);
+            }
+            response.put("activeLockouts", lockoutList);
+            response.put("hasActiveLockout", !lockoutList.isEmpty());
+            
+            // 4. Summary
+            Map<String, Object> summary = new HashMap<>();
+            summary.put("email", checkEmail);
+            summary.put("hasValidOtp", latestOtpOpt.isPresent());
+            summary.put("hasActiveLockout", !lockoutList.isEmpty());
+            summary.put("totalOtpsInLast10", otpList.size());
+            
+            // Đếm số lần verify sai trong 15 phút gần đây
+            LocalDateTime windowStart = now.minusMinutes(15);
+            Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(checkEmail, windowStart);
+            summary.put("currentFailedAttempts", failedAttemptsCount);
+            summary.put("maxFailedAttempts", 5);
+            summary.put("shouldBeLocked", failedAttemptsCount >= 5);
+            
+            response.put("summary", summary);
+            
+            response.put("success", true);
+            response.put("checkedAt", now);
+            
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            response.put("errorType", e.getClass().getName());
+            if (e.getCause() != null) {
+                response.put("cause", e.getCause().getMessage());
+            }
+            e.printStackTrace();
+        }
+        
         return response;
     }
 }

@@ -36,6 +36,8 @@ public class EmailService {
      * Gửi OTP qua email
      */
     public void sendOtpEmail(String toEmail, String otpCode) {
+        log.info("EmailService.sendOtpEmail called - emailEnabled: {}, fromEmail: {}", emailEnabled, fromEmail);
+        
         if (!emailEnabled) {
             log.warn("Email service is disabled. OTP for {}: {}", toEmail, otpCode);
             throw new RuntimeException("Email service is disabled");
