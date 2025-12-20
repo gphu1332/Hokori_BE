@@ -110,6 +110,7 @@ message.txt
 !README.md
 !SETUP_GUIDE.md
 !FORGOT_PASSWORD_DOCUMENTATION.md
+!FE_FORGOT_PASSWORD_API_GUIDE.md
 *.txt
 !*.sql.template
 
