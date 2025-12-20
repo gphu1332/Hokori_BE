@@ -94,17 +94,16 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
     void markAsUsed(@Param("id") Long id);
 
     /**
-     * Tăng số lần verify sai và trả về giá trị mới
-     * Dùng native query để update trực tiếp trong database và trả về giá trị mới
+     * Tăng số lần verify sai bằng native query
+     * Dùng native query để update trực tiếp trong database, bypass JPA cache
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
             UPDATE password_reset_otp 
             SET failed_attempts = failed_attempts + 1 
             WHERE id = :id
-            RETURNING failed_attempts
             """, nativeQuery = true)
-    Integer incrementFailedAttemptsAndReturn(@Param("id") Long id);
+    void incrementFailedAttemptsNative(@Param("id") Long id);
     
     /**
      * Tăng số lần verify sai (backward compatibility)
