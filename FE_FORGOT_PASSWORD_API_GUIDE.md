@@ -121,6 +121,11 @@ Content-Type: application/json
 | `400` | "Invalid or expired OTP" | Show error, suggest request new OTP |
 | `429` | "Password reset function is temporarily locked due to too many failed attempts. Please try again in X minutes." | Show error, disable form, show countdown |
 | `429` | "Too many failed attempts. Password reset function is temporarily locked for 30 minutes." | Show error, disable form, show countdown |
+| `429` | "OTP has been locked due to too many failed attempts. Password reset function is temporarily locked for 30 minutes." | Show error, disable form, show countdown |
+
+**Lưu ý quan trọng:**
+- Sau khi nhập sai OTP **5 lần**, lần thứ 6 sẽ trả về **429 (TOO_MANY_REQUESTS)** với lockout message, KHÔNG phải 400
+- Lockout được áp dụng ngay lập tức sau lần sai thứ 5
 
 **Lưu ý:**
 - OTP có hiệu lực trong 15 phút

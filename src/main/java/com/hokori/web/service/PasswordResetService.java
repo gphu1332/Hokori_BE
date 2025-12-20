@@ -11,9 +11,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -33,6 +36,9 @@ public class PasswordResetService {
     private final PasswordResetLockoutRepository lockoutRepository;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
+    
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private static final int OTP_LENGTH = 6;
     private static final int MAX_FAILED_ATTEMPTS = 5;
@@ -170,7 +176,10 @@ public class PasswordResetService {
     
     /**
      * Tạo lockout cho email/IP khi brute-force attack
+     * Sử dụng REQUIRES_NEW để đảm bảo lockout được commit ngay lập tức,
+     * không bị rollback khi throw exception trong transaction chính
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     private void createLockout(String email, String ipAddress, String reason) {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime unlockAt = now.plusMinutes(LOCKOUT_DURATION_MINUTES);
@@ -184,6 +193,7 @@ public class PasswordResetService {
         lockout.setIsUnlocked(false);
         
         lockoutRepository.save(lockout);
+        entityManager.flush(); // Force flush để đảm bảo commit ngay
         
         log.warn("Password reset lockout created for email: {}, IP: {}, reason: {}, unlock at: {}", 
                 email, ipAddress, reason, unlockAt);
