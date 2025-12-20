@@ -175,46 +175,26 @@ public class PasswordResetService {
 
         PasswordResetOtp otp = otpOpt.get();
 
-        // Tính tổng số lần nhập sai OTP của email này trong 15 phút gần đây
-        // (không phải chỉ của OTP hiện tại, mà tổng của tất cả OTP trong khoảng thời gian)
-        // Lưu ý: Tính cả OTP đã bị invalidate (isUsed = true) vì failed attempts vẫn được tính
-        LocalDateTime since = now.minusMinutes(15);
-        Long totalFailedAttempts = otpRepository.countTotalFailedAttemptsByEmailSince(email, since);
-        
-        log.info("Email: {}, Current OTP ID: {}, Total failed attempts in last 15 minutes: {}/{}", 
-                email, otp.getId(), totalFailedAttempts, MAX_FAILED_ATTEMPTS);
-
-        // Kiểm tra tổng số lần verify sai (tính theo email, không phải theo từng OTP)
-        if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
-            // Tạo lockout khi đạt max failed attempts
-            createLockout(email, ipAddress, "Too many failed OTP attempts");
-            long minutesRemaining = LOCKOUT_DURATION_MINUTES;
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
-                    String.format("OTP has been locked due to too many failed attempts. Password reset function is temporarily locked for %d minutes.", 
-                            minutesRemaining));
-        }
-
         // Verify OTP code
         if (!otp.getOtpCode().equals(otpCode)) {
             log.info("OTP verification failed for email: {}, OTP ID: {}, provided code: {}, expected code: {}", 
                     email, otp.getId(), otpCode, otp.getOtpCode());
             
+            // Increment failed attempts ngay khi OTP sai
             otpRepository.incrementFailedAttempts(otp.getId());
             
             // Clear entity manager cache để đảm bảo reload đúng giá trị từ database
             entityManager.clear();
             
-            // Reload OTP để lấy failedAttempts mới nhất của OTP này
-            PasswordResetOtp reloadedOtp = otpRepository.findById(otp.getId()).orElse(otp);
-            log.info("After increment - OTP ID: {}, failedAttempts: {}", reloadedOtp.getId(), reloadedOtp.getFailedAttempts());
+            // Tính tổng số lần nhập sai OTP của email này trong 15 phút gần đây (SAU KHI increment)
+            LocalDateTime since = now.minusMinutes(15);
+            Long totalFailedAttempts = otpRepository.countTotalFailedAttemptsByEmailSince(email, since);
             
-            // Tính lại tổng số lần nhập sai sau khi increment
-            Long newTotalFailedAttempts = otpRepository.countTotalFailedAttemptsByEmailSince(email, since);
+            log.info("OTP verification failed for email: {}, OTP ID: {}, total failed attempts in last 15 min: {}/{}", 
+                    email, otp.getId(), totalFailedAttempts, MAX_FAILED_ATTEMPTS);
             
-            log.info("OTP verification failed for email: {}, OTP ID: {}, OTP failedAttempts: {}, total failed attempts in last 15 min: {}/{}", 
-                    email, reloadedOtp.getId(), reloadedOtp.getFailedAttempts(), newTotalFailedAttempts, MAX_FAILED_ATTEMPTS);
-            
-            if (newTotalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
+            // Kiểm tra sau khi increment: nếu >= 5 lần thì lockout
+            if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
                 createLockout(email, ipAddress, "Too many failed OTP attempts");
                 long minutesRemaining = LOCKOUT_DURATION_MINUTES;
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
@@ -223,7 +203,7 @@ public class PasswordResetService {
             }
             
             // Throw exception với thông tin về failed attempts (tổng số)
-            throw new InvalidOtpException(newTotalFailedAttempts.intValue(), MAX_FAILED_ATTEMPTS);
+            throw new InvalidOtpException(totalFailedAttempts.intValue(), MAX_FAILED_ATTEMPTS);
         }
 
         // Đánh dấu OTP đã sử dụng (đã verify)
