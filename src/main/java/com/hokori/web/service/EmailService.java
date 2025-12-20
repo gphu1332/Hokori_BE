@@ -38,12 +38,12 @@ public class EmailService {
     public void sendOtpEmail(String toEmail, String otpCode) {
         if (!emailEnabled) {
             log.warn("Email service is disabled. OTP for {}: {}", toEmail, otpCode);
-            return;
+            throw new RuntimeException("Email service is disabled");
         }
 
         if (fromEmail == null || fromEmail.trim().isEmpty()) {
             log.warn("Email service is not configured (missing username). OTP for {}: {}", toEmail, otpCode);
-            return;
+            throw new RuntimeException("Email service is not configured (missing username)");
         }
 
         try {
@@ -53,11 +53,10 @@ public class EmailService {
             message.setSubject("Mã OTP đặt lại mật khẩu - Hokori");
             message.setText(buildOtpEmailContent(otpCode));
 
+            log.info("Attempting to send OTP email to: {} from: {}", toEmail, fromEmail);
             mailSender.send(message);
             log.info("OTP email sent successfully to: {}", toEmail);
         } catch (org.springframework.mail.MailException e) {
-            // Log error but don't throw - allow application to continue
-            // The OTP is still valid, user can request again if email fails
             log.error("Failed to send OTP email to {}: {}. OTP code: {}", 
                     toEmail, e.getMessage(), otpCode, e);
             
@@ -73,11 +72,11 @@ public class EmailService {
                          "4) SPRING_MAIL_HOST and SPRING_MAIL_PORT environment variables");
             }
             
-            // Don't throw exception - allow user to retry or use alternative method
-            // The OTP is still valid in database
+            // Throw exception để PasswordResetService có thể handle và log đúng
+            throw new RuntimeException("Failed to send OTP email: " + e.getMessage(), e);
         } catch (Exception e) {
             log.error("Unexpected error sending OTP email to {}: {}", toEmail, e.getMessage(), e);
-            // Don't throw - allow application to continue
+            throw new RuntimeException("Unexpected error sending OTP email: " + e.getMessage(), e);
         }
     }
 
