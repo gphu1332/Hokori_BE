@@ -21,6 +21,8 @@ import org.springframework.http.ResponseEntity;
 // (Không đổi import)
 import org.springframework.http.HttpStatus; // [CHANGED]
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.HashMap;
 import java.util.List;
@@ -367,7 +369,8 @@ public class AuthController {
                     """
     )
     public ResponseEntity<ApiResponse<Map<String, Object>>> requestOtp(
-            @Valid @RequestBody ForgotPasswordRequest request) {
+            @Valid @RequestBody ForgotPasswordRequest request,
+            HttpServletRequest httpRequest) {
         try {
             String email = request.getEmailOrPhone().trim();
             
@@ -377,13 +380,19 @@ public class AuthController {
                         .body(ApiResponse.error("Only email is supported for password reset. Please provide a valid email address."));
             }
             
-            passwordResetService.requestOtpByEmail(email);
+            // Lấy IP address của client
+            String ipAddress = getClientIpAddress(httpRequest);
+            
+            passwordResetService.requestOtpByEmail(email, ipAddress);
 
             Map<String, Object> response = new HashMap<>();
             response.put("message", "OTP has been sent successfully to your email");
             response.put("method", "email");
             
             return ResponseEntity.ok(ApiResponse.success("OTP sent successfully", response));
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode())
+                    .body(ApiResponse.error(e.getReason()));
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : "Failed to send OTP";
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -405,7 +414,8 @@ public class AuthController {
                     """
     )
     public ResponseEntity<ApiResponse<Map<String, Object>>> verifyOtp(
-            @Valid @RequestBody VerifyOtpRequest request) {
+            @Valid @RequestBody VerifyOtpRequest request,
+            HttpServletRequest httpRequest) {
         try {
             String email = request.getEmailOrPhone().trim();
             
@@ -415,9 +425,13 @@ public class AuthController {
                         .body(ApiResponse.error("Only email is supported. Please provide a valid email address."));
             }
             
-            String resetToken = passwordResetService.verifyOtp(
+            // Lấy IP address của client
+            String ipAddress = getClientIpAddress(httpRequest);
+            
+            passwordResetService.verifyOtp(
                     email,
-                    request.getOtpCode().trim()
+                    request.getOtpCode().trim(),
+                    ipAddress
             );
 
             Map<String, Object> response = new HashMap<>();
@@ -425,11 +439,41 @@ public class AuthController {
             response.put("verified", true);
             
             return ResponseEntity.ok(ApiResponse.success("OTP verified successfully", response));
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode())
+                    .body(ApiResponse.error(e.getReason()));
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : "Invalid OTP";
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(ApiResponse.error(msg));
         }
+    }
+    
+    /**
+     * Lấy IP address của client từ HttpServletRequest
+     * Hỗ trợ cả X-Forwarded-For header (khi đằng sau proxy/load balancer)
+     */
+    private String getClientIpAddress(HttpServletRequest request) {
+        String ipAddress = request.getHeader("X-Forwarded-For");
+        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
+            ipAddress = request.getHeader("X-Real-IP");
+        }
+        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
+            ipAddress = request.getHeader("Proxy-Client-IP");
+        }
+        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
+            ipAddress = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
+            ipAddress = request.getRemoteAddr();
+        }
+        
+        // X-Forwarded-For có thể chứa nhiều IP, lấy IP đầu tiên
+        if (ipAddress != null && ipAddress.contains(",")) {
+            ipAddress = ipAddress.split(",")[0].trim();
+        }
+        
+        return ipAddress;
     }
 
     @PostMapping("/forgot-password/reset")

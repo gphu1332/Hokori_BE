@@ -1,7 +1,9 @@
 package com.hokori.web.service;
 
+import com.hokori.web.entity.PasswordResetLockout;
 import com.hokori.web.entity.PasswordResetOtp;
 import com.hokori.web.entity.User;
+import com.hokori.web.repository.PasswordResetLockoutRepository;
 import com.hokori.web.repository.PasswordResetOtpRepository;
 import com.hokori.web.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import java.util.Optional;
 
 /**
  * Service để quản lý password reset với OTP
+ * Có brute-force protection: khóa chức năng forgot password khi nhập sai quá 5 lần
  */
 @Slf4j
 @Service
@@ -27,17 +30,41 @@ public class PasswordResetService {
 
     private final UserRepository userRepository;
     private final PasswordResetOtpRepository otpRepository;
+    private final PasswordResetLockoutRepository lockoutRepository;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
 
     private static final int OTP_LENGTH = 6;
     private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final int LOCKOUT_DURATION_MINUTES = 30; // Khóa trong 30 phút
     private static final SecureRandom random = new SecureRandom();
 
     /**
-     * Tạo và gửi OTP qua email
+     * Tạo và gửi OTP qua email (backward compatibility - không có IP)
      */
     public void requestOtpByEmail(String email) {
+        requestOtpByEmail(email, null);
+    }
+    
+    /**
+     * Tạo và gửi OTP qua email
+     * 
+     * @param email Email của user
+     * @param ipAddress IP address của client (nullable)
+     */
+    public void requestOtpByEmail(String email, String ipAddress) {
+        LocalDateTime now = LocalDateTime.now();
+        
+        // Kiểm tra lockout cho email hoặc IP
+        Optional<PasswordResetLockout> lockoutOpt = lockoutRepository.findActiveLockoutByEmailOrIp(email, ipAddress, now);
+        if (lockoutOpt.isPresent()) {
+            PasswordResetLockout lockout = lockoutOpt.get();
+            long minutesRemaining = java.time.Duration.between(now, lockout.getUnlockAt()).toMinutes();
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
+                    String.format("Password reset function is temporarily locked due to too many failed attempts. Please try again in %d minutes.", 
+                            minutesRemaining + 1));
+        }
+        
         // Kiểm tra user tồn tại
         Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isEmpty()) {
@@ -53,7 +80,7 @@ public class PasswordResetService {
 
         // Tạo OTP
         String otpCode = generateOtp();
-        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
+        LocalDateTime expiresAt = now.plusMinutes(15);
 
         // Lưu OTP vào database
         PasswordResetOtp otp = new PasswordResetOtp();
@@ -67,15 +94,36 @@ public class PasswordResetService {
         // Gửi email
         emailService.sendOtpEmail(email, otpCode);
 
-        log.info("OTP requested for email: {}", email);
+        log.info("OTP requested for email: {}, IP: {}", email, ipAddress);
     }
 
     /**
-     * Verify OTP và trả về token để reset password
-     * OTP sẽ được mark as used sau khi verify thành công
+     * Verify OTP và trả về token để reset password (backward compatibility - không có IP)
      */
     public String verifyOtp(String email, String otpCode) {
+        return verifyOtp(email, otpCode, null);
+    }
+    
+    /**
+     * Verify OTP và trả về token để reset password
+     * OTP sẽ được mark as used sau khi verify thành công
+     * 
+     * @param email Email của user
+     * @param otpCode Mã OTP
+     * @param ipAddress IP address của client (nullable)
+     */
+    public String verifyOtp(String email, String otpCode, String ipAddress) {
         LocalDateTime now = LocalDateTime.now();
+        
+        // Kiểm tra lockout cho email hoặc IP
+        Optional<PasswordResetLockout> lockoutOpt = lockoutRepository.findActiveLockoutByEmailOrIp(email, ipAddress, now);
+        if (lockoutOpt.isPresent()) {
+            PasswordResetLockout lockout = lockoutOpt.get();
+            long minutesRemaining = java.time.Duration.between(now, lockout.getUnlockAt()).toMinutes();
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
+                    String.format("Password reset function is temporarily locked due to too many failed attempts. Please try again in %d minutes.", 
+                            minutesRemaining + 1));
+        }
 
         // Tìm OTP hợp lệ theo email
         Optional<PasswordResetOtp> otpOpt = otpRepository.findLatestValidByEmail(email, now);
@@ -88,12 +136,28 @@ public class PasswordResetService {
 
         // Kiểm tra số lần verify sai
         if (otp.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
+            // Tạo lockout khi đạt max failed attempts
+            createLockout(email, ipAddress, "Too many failed OTP attempts");
+            long minutesRemaining = LOCKOUT_DURATION_MINUTES;
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
+                    String.format("OTP has been locked due to too many failed attempts. Password reset function is temporarily locked for %d minutes.", 
+                            minutesRemaining));
         }
 
         // Verify OTP code
         if (!otp.getOtpCode().equals(otpCode)) {
             otpRepository.incrementFailedAttempts(otp.getId());
+            
+            // Kiểm tra lại sau khi increment - nếu đạt max thì tạo lockout
+            PasswordResetOtp updatedOtp = otpRepository.findById(otp.getId()).orElse(otp);
+            if (updatedOtp.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+                createLockout(email, ipAddress, "Too many failed OTP attempts");
+                long minutesRemaining = LOCKOUT_DURATION_MINUTES;
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
+                        String.format("Too many failed attempts. Password reset function is temporarily locked for %d minutes.", 
+                                minutesRemaining));
+            }
+            
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
         }
 
@@ -102,6 +166,27 @@ public class PasswordResetService {
 
         // Return email để dùng trong reset password
         return email;
+    }
+    
+    /**
+     * Tạo lockout cho email/IP khi brute-force attack
+     */
+    private void createLockout(String email, String ipAddress, String reason) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime unlockAt = now.plusMinutes(LOCKOUT_DURATION_MINUTES);
+        
+        PasswordResetLockout lockout = new PasswordResetLockout();
+        lockout.setEmail(email);
+        lockout.setIpAddress(ipAddress);
+        lockout.setLockedAt(now);
+        lockout.setUnlockAt(unlockAt);
+        lockout.setReason(reason);
+        lockout.setIsUnlocked(false);
+        
+        lockoutRepository.save(lockout);
+        
+        log.warn("Password reset lockout created for email: {}, IP: {}, reason: {}, unlock at: {}", 
+                email, ipAddress, reason, unlockAt);
     }
 
     /**
