@@ -104,3 +104,19 @@ railway.env.clean
 
 ### Log Files ###
 message.txt
+
+### Documentation and Guide Files (local only) ###
+*.md
+!README.md
+!SETUP_GUIDE.md
+*.txt
+!*.sql.template
+
+### SQL Files (ignore root level, keep migrations) ###
+/*.sql
+!src/main/resources/db/migration/*.sql
+
+### R2 Setup Files ###
+tokenR2.txt
+CLOUDFLARE_R2_SETUP.md
+REVENUE_API_DOCUMENTATION.md

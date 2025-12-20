@@ -13,9 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -83,28 +81,25 @@ public class AIPackageService {
     
     @Transactional(readOnly = true)
     public AIQuotaResponse getMyQuota(Long userId) {
-        List<AIQuota> quotas = quotaRepo.findByUser_Id(userId);
+        // Get unified quota for user
+        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_Id(userId);
         
-        Map<String, AIQuotaResponse.QuotaInfo> quotaMap = new HashMap<>();
-        
-        // Initialize all service types
-        for (AIServiceType serviceType : AIServiceType.values()) {
-            AIQuota quota = quotas.stream()
-                    .filter(q -> q.getServiceType() == serviceType)
-                    .findFirst()
-                    .orElse(null);
-            
-            AIQuotaResponse.QuotaInfo quotaInfo = AIQuotaResponse.QuotaInfo.builder()
-                    .remainingQuota(quota != null ? quota.getRemainingQuota() : null)
-                    .totalQuota(quota != null ? quota.getTotalQuota() : null)
-                    .hasQuota(quota == null || quota.hasQuota())
+        if (quotaOpt.isEmpty()) {
+            // No quota record - return unlimited
+            return AIQuotaResponse.builder()
+                    .totalRequests(null)
+                    .usedRequests(0)
+                    .remainingRequests(null)
+                    .hasQuota(true)
                     .build();
-            
-            quotaMap.put(serviceType.name(), quotaInfo);
         }
         
+        AIQuota quota = quotaOpt.get();
         return AIQuotaResponse.builder()
-                .quotas(quotaMap)
+                .totalRequests(quota.getTotalRequests())
+                .usedRequests(quota.getUsedRequests() != null ? quota.getUsedRequests() : 0)
+                .remainingRequests(quota.getRemainingRequests())
+                .hasQuota(quota.hasQuota())
                 .build();
     }
 
@@ -132,20 +127,20 @@ public class AIPackageService {
             // Check if package is expired
             boolean isExpired = purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now);
             
-            // Check if all quotas are exhausted
-            boolean allQuotasExhausted = checkAllQuotasExhausted(userId);
+            // Check if quota is exhausted
+            boolean quotaExhausted = checkQuotaExhausted(userId);
             
-            if (!isExpired && !allQuotasExhausted) {
+            if (!isExpired && !quotaExhausted) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                         "User already has an active AI package. Please wait for it to expire or quota to be exhausted before purchasing a new package.");
             }
             
-            // If expired or all quotas exhausted, allow purchase
+            // If expired or quota exhausted, allow purchase
             if (isExpired) {
                 log.info("User {} has expired package {}, allowing new purchase via createPurchase", userId, purchase.getAiPackage().getName());
             }
-            if (allQuotasExhausted) {
-                log.info("User {} has exhausted all quotas for package {}, allowing new purchase via createPurchase", userId, purchase.getAiPackage().getName());
+            if (quotaExhausted) {
+                log.info("User {} has exhausted quota for package {}, allowing new purchase via createPurchase", userId, purchase.getAiPackage().getName());
             }
         }
 
@@ -188,53 +183,50 @@ public class AIPackageService {
         Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         
         if (purchaseOpt.isPresent()) {
-            // User has active package - check package quota
+            // User has active package - check unified quota
             AIPackagePurchase purchase = purchaseOpt.get();
             Instant now = Instant.now();
             
             // Check if purchase is expired
             if (purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now)) {
                 // Package expired - fall back to free tier
-                return checkFreeTierQuota(userId, serviceType);
+                return checkFreeTierQuota(userId);
             }
             
             // Check if payment is successful
             if (purchase.getPaymentStatus() != PaymentStatus.PAID) {
                 // Payment not completed - fall back to free tier
-                return checkFreeTierQuota(userId, serviceType);
+                return checkFreeTierQuota(userId);
             }
             
-            // Check quota for specific service type
-            Optional<AIQuota> quotaOpt = quotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+            // Check unified quota
+            Optional<AIQuota> quotaOpt = quotaRepo.findByUser_Id(userId);
             if (quotaOpt.isEmpty()) {
                 // No quota record means unlimited (if package allows)
                 AIPackage aiPackage = purchase.getAiPackage();
-                Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
-                return packageQuota == null; // null = unlimited
+                return aiPackage.getTotalRequests() == null; // null = unlimited
             }
             
             AIQuota quota = quotaOpt.get();
-            return quota.hasQuota(); // Check if remaining quota > 0
+            return quota.hasQuota(); // Check if remaining requests > 0
         } else {
             // No active package - check free tier quota
-            return checkFreeTierQuota(userId, serviceType);
+            return checkFreeTierQuota(userId);
         }
     }
     
     /**
      * Check free tier quota for user
-     * Free tier: 10 Grammar, 10 Kaiwa, 10 Pronunciation, 5 Conversation per month
+     * Free tier: 50 unified requests per month
      */
-    private boolean checkFreeTierQuota(Long userId, AIServiceType serviceType) {
-        // Free tier limits per service type
-        // Conversation has lower limit because it uses more API calls
-        int freeTierLimit = (serviceType == AIServiceType.CONVERSATION) ? 5 : 10;
+    private boolean checkFreeTierQuota(Long userId) {
+        int freeTierLimit = 50; // Unified requests per month
         
-        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_Id(userId);
         
         if (quotaOpt.isEmpty()) {
-            // No quota record - initialize free tier quota
-            return true; // Allow first use, quota will be created when used
+            // No quota record - allow first use, quota will be created when used
+            return true;
         }
         
         AIQuota quota = quotaOpt.get();
@@ -244,9 +236,7 @@ public class AIPackageService {
         if (quota.getLastResetAt() == null || 
             quota.getLastResetAt().isBefore(now.minusSeconds(30L * 24 * 60 * 60))) { // 30 days ago
             // Reset free tier quota monthly
-            quota.setTotalQuota(freeTierLimit);
-            quota.setRemainingQuota(freeTierLimit);
-            quota.setLastResetAt(now);
+            quota.initializeQuota(freeTierLimit);
             quotaRepo.save(quota);
             return true;
         }
@@ -256,25 +246,9 @@ public class AIPackageService {
     }
     
     /**
-     * Get quota for a service type from AI Package
+     * Check if quota is exhausted for user's active package
      */
-    private Integer getQuotaForServiceType(AIPackage aiPackage, AIServiceType serviceType) {
-        return switch (serviceType) {
-            case GRAMMAR -> aiPackage.getGrammarQuota();
-            case KAIWA -> aiPackage.getKaiwaQuota();
-            case PRONUN -> aiPackage.getPronunQuota();
-            case CONVERSATION -> aiPackage.getConversationQuota();
-        };
-    }
-    
-    /**
-     * Check if all quotas are exhausted for user's active package
-     * Returns true if:
-     * - User has active package with PAID status
-     * - All service types that have quota limits are exhausted (remainingQuota = 0)
-     * - Unlimited services (null quota) are not considered exhausted
-     */
-    private boolean checkAllQuotasExhausted(Long userId) {
+    private boolean checkQuotaExhausted(Long userId) {
         Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         if (purchaseOpt.isEmpty()) {
             return false; // No active package, not exhausted
@@ -285,37 +259,15 @@ public class AIPackageService {
             return false; // Payment not completed, not exhausted
         }
         
-        AIPackage aiPackage = purchase.getAiPackage();
-        List<AIQuota> quotas = quotaRepo.findByUser_Id(userId);
-        
-        // Check each service type
-        for (AIServiceType serviceType : AIServiceType.values()) {
-            Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
-            
-            // If package has unlimited quota (null), skip check
-            if (packageQuota == null) {
-                continue;
-            }
-            
-            // Find quota for this service type
-            Optional<AIQuota> quotaOpt = quotas.stream()
-                    .filter(q -> q.getServiceType() == serviceType)
-                    .findFirst();
-            
-            if (quotaOpt.isPresent()) {
-                AIQuota quota = quotaOpt.get();
-                // If remaining quota > 0, not exhausted
-                if (quota.getRemainingQuota() != null && quota.getRemainingQuota() > 0) {
-                    return false;
-                }
-            } else {
-                // No quota record means quota hasn't been allocated yet (not exhausted)
-                return false;
-            }
+        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_Id(userId);
+        if (quotaOpt.isEmpty()) {
+            // No quota record means unlimited (not exhausted)
+            return false;
         }
         
-        // All quota-limited services are exhausted
-        return true;
+        AIQuota quota = quotaOpt.get();
+        // If remaining requests > 0, not exhausted
+        return quota.getRemainingRequests() != null && quota.getRemainingRequests() <= 0;
     }
     
     // =========================
@@ -326,7 +278,7 @@ public class AIPackageService {
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
-        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_Id(userId);
         AIQuota quota;
         
         if (quotaOpt.isEmpty()) {
@@ -337,47 +289,39 @@ public class AIPackageService {
                 // User has paid package - allocate quota from package
                 AIPackagePurchase purchase = purchaseOpt.get();
                 AIPackage aiPackage = purchase.getAiPackage();
-                Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
+                Integer packageRequests = aiPackage.getTotalRequests();
                 
-                if (packageQuota == null) {
+                if (packageRequests == null) {
                     // Unlimited quota - no need to track
                     log.info("Used AI service (unlimited): userId={}, serviceType={}, amount={}", 
                             userId, serviceType, amount);
                     return;
                 }
                 
-                // Create quota from package
+                // Create unified quota from package
                 quota = new AIQuota();
                 quota.setUser(user);
-                quota.setServiceType(serviceType);
-                quota.setTotalQuota(packageQuota);
-                quota.setRemainingQuota(packageQuota);
-                quota.setLastResetAt(Instant.now());
-                quota.setDeletedFlag(false); // Set deleted_flag explicitly
+                quota.initializeQuota(packageRequests);
+                quota.setDeletedFlag(false);
             } else {
-                // Use free tier - initialize with quota based on service type
-                // Conversation is more resource-intensive, so lower limit (5/month)
-                int freeTierLimit = (serviceType == AIServiceType.CONVERSATION) ? 5 : 10;
+                // Use free tier - initialize with 50 unified requests per month
+                int freeTierLimit = 50;
                 quota = new AIQuota();
                 quota.setUser(user);
-                quota.setServiceType(serviceType);
-                quota.setTotalQuota(freeTierLimit);
-                quota.setRemainingQuota(freeTierLimit);
-                quota.setLastResetAt(Instant.now());
-                quota.setDeletedFlag(false); // Set deleted_flag explicitly
+                quota.initializeQuota(freeTierLimit);
+                quota.setDeletedFlag(false);
             }
         } else {
             quota = quotaOpt.get();
             
             // Check if free tier quota needs monthly reset
             Instant now = Instant.now();
-            int freeTierLimit = (serviceType == AIServiceType.CONVERSATION) ? 5 : 10;
-            if (quota.getTotalQuota() != null && quota.getTotalQuota() == freeTierLimit && 
+            int freeTierLimit = 50;
+            if (quota.getTotalRequests() != null && quota.getTotalRequests() == freeTierLimit && 
                 quota.getLastResetAt() != null &&
                 quota.getLastResetAt().isBefore(now.minusSeconds(30L * 24 * 60 * 60))) {
                 // Reset free tier quota monthly
-                quota.setRemainingQuota(freeTierLimit);
-                quota.setLastResetAt(now);
+                quota.initializeQuota(freeTierLimit);
             }
         }
         
@@ -389,16 +333,16 @@ public class AIPackageService {
                         "Free tier quota exhausted. Please purchase an AI package to continue using this feature.");
             } else {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                        "Quota exhausted for service: " + serviceType.name() + ". Please upgrade your package.");
+                        "Request quota exhausted. Please upgrade your package.");
             }
         }
         
-        // Deduct quota
-        quota.useQuota(amount);
+        // Deduct requests (amount = number of requests to use)
+        quota.useRequests(amount);
         quotaRepo.save(quota);
         
-        log.info("Used AI service quota: userId={}, serviceType={}, amount={}, remaining={}, total={}", 
-                userId, serviceType, amount, quota.getRemainingQuota(), quota.getTotalQuota());
+        log.info("Used AI service requests: userId={}, serviceType={}, amount={}, remaining={}, total={}", 
+                userId, serviceType, amount, quota.getRemainingRequests(), quota.getTotalRequests());
     }
 
     // =========================
@@ -412,6 +356,8 @@ public class AIPackageService {
         aiPackage.setPriceCents(req.getPriceCents());
         aiPackage.setCurrency(req.getCurrency() != null ? req.getCurrency() : "VND");
         aiPackage.setDurationDays(req.getDurationDays());
+        aiPackage.setTotalRequests(req.getTotalRequests());
+        // Legacy fields (deprecated)
         aiPackage.setGrammarQuota(req.getGrammarQuota());
         aiPackage.setKaiwaQuota(req.getKaiwaQuota());
         aiPackage.setPronunQuota(req.getPronunQuota());
@@ -449,6 +395,10 @@ public class AIPackageService {
         if (req.getDurationDays() != null) {
             aiPackage.setDurationDays(req.getDurationDays());
         }
+        if (req.getTotalRequests() != null) {
+            aiPackage.setTotalRequests(req.getTotalRequests());
+        }
+        // Legacy fields (deprecated)
         if (req.getGrammarQuota() != null) {
             aiPackage.setGrammarQuota(req.getGrammarQuota());
         }
@@ -531,6 +481,8 @@ public class AIPackageService {
                 .priceCents(pkg.getPriceCents())
                 .currency(pkg.getCurrency())
                 .durationDays(pkg.getDurationDays())
+                .totalRequests(pkg.getTotalRequests())
+                // Legacy fields (deprecated)
                 .grammarQuota(pkg.getGrammarQuota())
                 .kaiwaQuota(pkg.getKaiwaQuota())
                 .pronunQuota(pkg.getPronunQuota())

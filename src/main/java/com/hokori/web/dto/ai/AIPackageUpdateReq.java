@@ -30,10 +30,17 @@ public class AIPackageUpdateReq {
     @Min(value = 1, message = "Duration must be at least 1 day")
     private Integer durationDays;
 
-    private Integer grammarQuota;
-    private Integer kaiwaQuota;
-    private Integer pronunQuota;
-    private Integer conversationQuota;
+    /**
+     * Total unified requests in package
+     * null = unlimited
+     */
+    private Integer totalRequests;
+
+    // Legacy fields (deprecated)
+    private Integer grammarQuota;      // Deprecated
+    private Integer kaiwaQuota;        // Deprecated
+    private Integer pronunQuota;       // Deprecated
+    private Integer conversationQuota; // Deprecated
 
     private Boolean isActive;
     private Integer displayOrder;

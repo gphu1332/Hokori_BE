@@ -36,20 +36,24 @@ public class AIPackage extends BaseEntity {
     private Integer durationDays;
 
     /**
-     * Quota for each service type (stored as JSON or separate table)
-     * For simplicity, we'll use separate columns for each service
+     * Total unified requests in package
+     * null = unlimited
      */
+    @Column(name = "total_requests")
+    private Integer totalRequests;
+
+    // Legacy columns (deprecated, will be removed in future migration)
     @Column(name = "grammar_quota")
-    private Integer grammarQuota;  // null = unlimited
+    private Integer grammarQuota;  // Deprecated - kept for migration compatibility
 
     @Column(name = "kaiwa_quota")
-    private Integer kaiwaQuota;  // null = unlimited
+    private Integer kaiwaQuota;  // Deprecated - kept for migration compatibility
 
     @Column(name = "pronun_quota")
-    private Integer pronunQuota;  // null = unlimited
+    private Integer pronunQuota;  // Deprecated - kept for migration compatibility
 
     @Column(name = "conversation_quota")
-    private Integer conversationQuota;  // null = unlimited
+    private Integer conversationQuota;  // Deprecated - kept for migration compatibility
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;

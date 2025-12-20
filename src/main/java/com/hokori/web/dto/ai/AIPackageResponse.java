@@ -21,10 +21,17 @@ public class AIPackageResponse {
     private String currency;
     private Integer durationDays;
     
-    private Integer grammarQuota;      // null = unlimited
-    private Integer kaiwaQuota;        // null = unlimited
-    private Integer pronunQuota;       // null = unlimited
-    private Integer conversationQuota; // null = unlimited
+    /**
+     * Total unified requests in package
+     * null = unlimited
+     */
+    private Integer totalRequests;
+    
+    // Legacy fields (deprecated)
+    private Integer grammarQuota;      // Deprecated
+    private Integer kaiwaQuota;        // Deprecated
+    private Integer pronunQuota;       // Deprecated
+    private Integer conversationQuota; // Deprecated
     
     private Boolean isActive;
     private Integer displayOrder;

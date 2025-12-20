@@ -253,7 +253,7 @@ public class AdminPaymentService {
     }
     
     /**
-     * Tính tổng admin commission trong tháng
+     * Tính tổng admin commission trong tháng (optimized với JPQL query)
      */
     public Long getAdminCommissionForMonth(String yearMonth) {
         // Validate yearMonth format
@@ -264,13 +264,8 @@ public class AdminPaymentService {
                     "Invalid yearMonth format. Expected format: YYYY-MM (e.g., 2025-01)");
         }
         
-        List<TeacherRevenue> revenues = revenueRepo.findAll().stream()
-                .filter(r -> r.getYearMonth().equals(yearMonth))
-                .collect(Collectors.toList());
-        
-        return revenues.stream()
-                .mapToLong(TeacherRevenue::getAdminCommissionCents)
-                .sum();
+        // Sử dụng JPQL query thay vì load tất cả rồi filter (hiệu quả hơn nhiều)
+        return revenueRepo.sumAdminCommissionByYearMonth(yearMonth);
     }
 }
 

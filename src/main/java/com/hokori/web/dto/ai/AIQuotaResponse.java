@@ -5,10 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Map;
-
 /**
- * Response DTO for user's AI quotas
+ * Response DTO for user's unified AI request pool
  */
 @Data
 @Builder
@@ -17,20 +15,25 @@ import java.util.Map;
 public class AIQuotaResponse {
     
     /**
-     * Map of service type to quota info
-     * Key: GRAMMAR, KAIWA, PRONUN, CONVERSATION
-     * Value: QuotaInfo
+     * Total unified requests allocated to user
+     * null = unlimited
      */
-    private Map<String, QuotaInfo> quotas;
+    private Integer totalRequests;
     
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class QuotaInfo {
-        private Integer remainingQuota;  // null = unlimited
-        private Integer totalQuota;     // null = unlimited
-        private Boolean hasQuota;       // true if can use
-    }
+    /**
+     * Number of requests used by user
+     */
+    private Integer usedRequests;
+    
+    /**
+     * Remaining requests available
+     * null = unlimited
+     */
+    private Integer remainingRequests;
+    
+    /**
+     * Whether user has quota available
+     */
+    private Boolean hasQuota;
 }
 

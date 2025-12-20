@@ -280,20 +280,20 @@ public class PaymentService {
                 // Check if package is expired
                 boolean isExpired = purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now);
                 
-                // Check if all quotas are exhausted
-                boolean allQuotasExhausted = checkAllQuotasExhausted(userId);
+                // Check if quota is exhausted
+                boolean quotaExhausted = checkQuotaExhausted(userId);
                 
-                if (!isExpired && !allQuotasExhausted) {
+                if (!isExpired && !quotaExhausted) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                             "User already has an active AI package. Please wait for it to expire or quota to be exhausted before purchasing a new package.");
                 }
                 
-                // If expired or all quotas exhausted, allow purchase
+                // If expired or quota exhausted, allow purchase
                 if (isExpired) {
                     log.info("User {} has expired package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
                 }
-                if (allQuotasExhausted) {
-                    log.info("User {} has exhausted all quotas for package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
+                if (quotaExhausted) {
+                    log.info("User {} has exhausted quota for package {}, allowing new purchase", userId, purchase.getAiPackage().getName());
                 }
             }
         }
@@ -867,118 +867,35 @@ public class PaymentService {
         var aiPackage = purchase.getAiPackage();
         var user = purchase.getUser();
         
-        // Allocate grammar quota
-        if (aiPackage.getGrammarQuota() != null) {
-            allocateQuota(user.getId(), AIServiceType.GRAMMAR, aiPackage.getGrammarQuota());
+        // Allocate unified request pool
+        if (aiPackage.getTotalRequests() != null) {
+            allocateUnifiedQuota(user.getId(), aiPackage.getTotalRequests());
         }
         
-        // Allocate kaiwa quota
-        if (aiPackage.getKaiwaQuota() != null) {
-            allocateQuota(user.getId(), AIServiceType.KAIWA, aiPackage.getKaiwaQuota());
-        }
-        
-        // Allocate pronunciation quota
-        if (aiPackage.getPronunQuota() != null) {
-            allocateQuota(user.getId(), AIServiceType.PRONUN, aiPackage.getPronunQuota());
-        }
-        
-        // Allocate conversation quota
-        if (aiPackage.getConversationQuota() != null) {
-            allocateQuota(user.getId(), AIServiceType.CONVERSATION, aiPackage.getConversationQuota());
-        }
-        
-        log.info("Activated AI package purchase: userId={}, packageId={}, purchaseId={}", 
-                user.getId(), aiPackage.getId(), purchase.getId());
+        log.info("Activated AI package purchase: userId={}, packageId={}, purchaseId={}, totalRequests={}", 
+                user.getId(), aiPackage.getId(), purchase.getId(), aiPackage.getTotalRequests());
     }
     
     /**
-     * Allocate quota for a service type
+     * Allocate unified request pool quota for user
      */
-    private void allocateQuota(Long userId, AIServiceType serviceType, Integer quota) {
-        var existingQuota = aiQuotaRepo.findByUser_IdAndServiceType(userId, serviceType);
+    private void allocateUnifiedQuota(Long userId, Integer totalRequests) {
+        var existingQuota = aiQuotaRepo.findByUser_Id(userId);
         
         if (existingQuota.isPresent()) {
-            // Update existing quota
+            // Update existing unified quota
             var quotaEntity = existingQuota.get();
-            quotaEntity.setTotalQuota(quota);
-            quotaEntity.setRemainingQuota(quota);
-            quotaEntity.setLastResetAt(Instant.now());
+            quotaEntity.initializeQuota(totalRequests);
             aiQuotaRepo.save(quotaEntity);
         } else {
-            // Create new quota
+            // Create new unified quota
             var quotaEntity = new AIQuota();
             quotaEntity.setUser(userRepo.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found")));
-            quotaEntity.setServiceType(serviceType);
-            quotaEntity.setTotalQuota(quota);
-            quotaEntity.setRemainingQuota(quota);
-            quotaEntity.setLastResetAt(Instant.now());
-            quotaEntity.setDeletedFlag(false); // Set deleted_flag explicitly
+            quotaEntity.initializeQuota(totalRequests);
+            quotaEntity.setDeletedFlag(false);
             aiQuotaRepo.save(quotaEntity);
         }
-    }
-    
-    /**
-     * Check if all quotas are exhausted for user's active package
-     * Returns true if:
-     * - User has active package with PAID status
-     * - All service types that have quota limits are exhausted (remainingQuota = 0)
-     * - Unlimited services (null quota) are not considered exhausted
-     */
-    private boolean checkAllQuotasExhausted(Long userId) {
-        var purchaseOpt = aiPackagePurchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
-        if (purchaseOpt.isEmpty()) {
-            return false; // No active package, not exhausted
-        }
-        
-        var purchase = purchaseOpt.get();
-        if (purchase.getPaymentStatus() != PaymentStatus.PAID) {
-            return false; // Payment not completed, not exhausted
-        }
-        
-        var aiPackage = purchase.getAiPackage();
-        var quotas = aiQuotaRepo.findByUser_Id(userId);
-        
-        // Check each service type
-        for (AIServiceType serviceType : AIServiceType.values()) {
-            Integer packageQuota = getQuotaForServiceType(aiPackage, serviceType);
-            
-            // If package has unlimited quota (null), skip check
-            if (packageQuota == null) {
-                continue;
-            }
-            
-            // Find quota for this service type
-            var quotaOpt = quotas.stream()
-                    .filter(q -> q.getServiceType() == serviceType)
-                    .findFirst();
-            
-            if (quotaOpt.isPresent()) {
-                var quota = quotaOpt.get();
-                // If remaining quota > 0, not exhausted
-                if (quota.getRemainingQuota() != null && quota.getRemainingQuota() > 0) {
-                    return false;
-                }
-            } else {
-                // No quota record means quota hasn't been allocated yet (not exhausted)
-                return false;
-            }
-        }
-        
-        // All quota-limited services are exhausted
-        return true;
-    }
-    
-    /**
-     * Get quota for a service type from AI Package
-     */
-    private Integer getQuotaForServiceType(AIPackage aiPackage, AIServiceType serviceType) {
-        return switch (serviceType) {
-            case GRAMMAR -> aiPackage.getGrammarQuota();
-            case KAIWA -> aiPackage.getKaiwaQuota();
-            case PRONUN -> aiPackage.getPronunQuota();
-            case CONVERSATION -> aiPackage.getConversationQuota();
-        };
     }
     
     /**

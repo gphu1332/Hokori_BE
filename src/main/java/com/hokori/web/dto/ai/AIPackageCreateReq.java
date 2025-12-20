@@ -35,10 +35,17 @@ public class AIPackageCreateReq {
     @Min(value = 1, message = "Duration must be at least 1 day")
     private Integer durationDays;  // e.g., 30 = 1 month
 
-    private Integer grammarQuota;      // null = unlimited
-    private Integer kaiwaQuota;        // null = unlimited
-    private Integer pronunQuota;       // null = unlimited
-    private Integer conversationQuota; // null = unlimited
+    /**
+     * Total unified requests in package
+     * null = unlimited
+     */
+    private Integer totalRequests;
+
+    // Legacy fields (deprecated)
+    private Integer grammarQuota;      // Deprecated
+    private Integer kaiwaQuota;        // Deprecated
+    private Integer pronunQuota;       // Deprecated
+    private Integer conversationQuota; // Deprecated
 
     @Builder.Default
     private Boolean isActive = true;

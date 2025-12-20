@@ -6,7 +6,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
@@ -74,5 +73,12 @@ public interface TeacherRevenueRepository extends JpaRepository<TeacherRevenue, 
      * Đếm số revenue chưa được chuyển tiền của teacher
      */
     long countByTeacher_IdAndIsPaidFalse(Long teacherId);
+    
+    /**
+     * Tính tổng admin commission trong tháng (optimized query)
+     */
+    @Query("SELECT COALESCE(SUM(tr.adminCommissionCents), 0) FROM TeacherRevenue tr " +
+           "WHERE tr.yearMonth = :yearMonth")
+    Long sumAdminCommissionByYearMonth(@Param("yearMonth") String yearMonth);
 }
 
