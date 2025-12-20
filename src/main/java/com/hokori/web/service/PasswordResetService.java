@@ -100,7 +100,7 @@ public class PasswordResetService {
             log.warn("OTP request blocked due to active lockout for email: {}, IP: {}, unlock at: {}, minutes remaining: {}", 
                     email, ipAddress, lockout.getUnlockAt(), minutesRemaining);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
-                    String.format("Password reset function is temporarily locked due to too many failed attempts. Please try again in %d minutes.", 
+                    String.format("Chức năng quên mật khẩu đã bị khóa tạm thời do nhập sai quá nhiều lần. Vui lòng thử lại sau %d phút.", 
                             minutesRemaining + 1));
         }
         
@@ -115,7 +115,7 @@ public class PasswordResetService {
         User user = userOpt.get();
         if (Boolean.FALSE.equals(user.getIsActive())) {
             log.warn("OTP request blocked for deactivated account: {}", email);
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is deactivated");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tài khoản đã bị vô hiệu hóa");
         }
 
         // Rate limiting đã được bỏ để tránh lỗi cho user
@@ -146,7 +146,7 @@ public class PasswordResetService {
         } catch (Exception e) {
             log.error("Failed to send OTP email to {}: {}", email, e.getMessage(), e);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
-                    "Failed to send OTP email. Please try again later.");
+                    "Không thể gửi mã OTP qua email. Vui lòng thử lại sau.");
         }
 
         log.info("OTP requested successfully for email: {}, IP: {}, OTP ID: {}", email, ipAddress, otp.getId());
@@ -176,14 +176,14 @@ public class PasswordResetService {
             PasswordResetLockout lockout = lockoutOpt.get();
             long minutesRemaining = java.time.Duration.between(now, lockout.getUnlockAt()).toMinutes();
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
-                    String.format("Password reset function is temporarily locked due to too many failed attempts. Please try again in %d minutes.", 
+                    String.format("Chức năng quên mật khẩu đã bị khóa tạm thời do nhập sai quá nhiều lần. Vui lòng thử lại sau %d phút.", 
                             minutesRemaining + 1));
         }
 
         // Tìm OTP mới nhất của email này (dùng để track failed attempts)
         Optional<PasswordResetOtp> latestOtpOpt = otpRepository.findLatestValidByEmail(email, now);
         if (latestOtpOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired OTP");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã OTP không hợp lệ hoặc đã hết hạn");
         }
         
         PasswordResetOtp otp = latestOtpOpt.get();
@@ -211,10 +211,10 @@ public class PasswordResetService {
             
             // Kiểm tra: nếu >= 5 lần trong 15 phút thì lockout
             if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
-                createLockout(email, ipAddress, "Too many failed OTP attempts");
+                createLockout(email, ipAddress, "Nhập sai OTP quá nhiều lần");
                 long minutesRemaining = LOCKOUT_DURATION_MINUTES;
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
-                        String.format("Too many failed attempts. Password reset function is temporarily locked for %d minutes.", 
+                        String.format("Bạn đã nhập sai quá nhiều lần. Chức năng quên mật khẩu đã bị khóa trong %d phút.", 
                                 minutesRemaining));
             }
             
@@ -300,7 +300,7 @@ public class PasswordResetService {
                 
                 // Kiểm tra số lần verify sai
                 if (existingFailedAttempts >= MAX_FAILED_ATTEMPTS) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã OTP đã bị khóa do nhập sai quá nhiều lần");
                 }
                 
                 // Verify OTP code
@@ -314,15 +314,15 @@ public class PasswordResetService {
                     
                     // Kiểm tra số lần verify sai sau khi tính tổng
                     if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
-                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã OTP đã bị khóa do nhập sai quá nhiều lần");
                     }
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã OTP không đúng");
                 }
                 // Mark as used
                 otpRepository.markAsUsed(otp.getId());
             } else {
                 log.error("No valid OTP found (neither verified nor unverified) for email: {}, OTP code: {}", email, otpCode);
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired OTP. Please verify OTP first.");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã OTP không hợp lệ hoặc đã hết hạn. Vui lòng xác thực OTP trước.");
             }
         } else {
             PasswordResetOtp otp = otpOpt.get();
@@ -333,7 +333,7 @@ public class PasswordResetService {
         Optional<User> userOpt = userRepository.findByEmail(email);
 
         if (userOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng");
         }
 
         User user = userOpt.get();
