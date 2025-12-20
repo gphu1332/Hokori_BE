@@ -19,46 +19,71 @@ public interface PasswordResetLockoutRepository extends JpaRepository<PasswordRe
      * - isUnlocked = false
      * - unlockAt > now (chưa hết hạn)
      */
-    @Query("""
+    @Query(value = """
             SELECT l FROM PasswordResetLockout l
             WHERE l.email = :email
             AND l.isUnlocked = false
             AND l.unlockAt > :now
-            ORDER BY l.lockedAt DESC
+            ORDER BY l.lockedAt DESC, l.id DESC
             """)
-    Optional<PasswordResetLockout> findActiveLockoutByEmail(
+    java.util.List<PasswordResetLockout> findActiveLockoutByEmailList(
             @Param("email") String email, 
             @Param("now") LocalDateTime now);
+    
+    /**
+     * Tìm lockout đang active cho email (wrapper method)
+     */
+    default Optional<PasswordResetLockout> findActiveLockoutByEmail(String email, LocalDateTime now) {
+        java.util.List<PasswordResetLockout> list = findActiveLockoutByEmailList(email, now);
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    }
 
     /**
      * Tìm lockout đang active cho IP address
      */
-    @Query("""
+    @Query(value = """
             SELECT l FROM PasswordResetLockout l
             WHERE l.ipAddress = :ipAddress
             AND l.isUnlocked = false
             AND l.unlockAt > :now
-            ORDER BY l.lockedAt DESC
+            ORDER BY l.lockedAt DESC, l.id DESC
             """)
-    Optional<PasswordResetLockout> findActiveLockoutByIpAddress(
+    java.util.List<PasswordResetLockout> findActiveLockoutByIpAddressList(
             @Param("ipAddress") String ipAddress, 
             @Param("now") LocalDateTime now);
+    
+    /**
+     * Tìm lockout đang active cho IP address (wrapper method)
+     */
+    default Optional<PasswordResetLockout> findActiveLockoutByIpAddress(String ipAddress, LocalDateTime now) {
+        java.util.List<PasswordResetLockout> list = findActiveLockoutByIpAddressList(ipAddress, now);
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    }
 
     /**
      * Tìm lockout đang active cho email HOẶC IP address
      * Dùng để check lockout khi request OTP hoặc verify OTP
+     * Trả về lockout mới nhất (theo lockedAt DESC, sau đó theo id DESC để đảm bảo unique)
      */
-    @Query("""
+    @Query(value = """
             SELECT l FROM PasswordResetLockout l
             WHERE (l.email = :email OR l.ipAddress = :ipAddress)
             AND l.isUnlocked = false
             AND l.unlockAt > :now
-            ORDER BY l.lockedAt DESC
+            ORDER BY l.lockedAt DESC, l.id DESC
             """)
-    Optional<PasswordResetLockout> findActiveLockoutByEmailOrIp(
+    java.util.List<PasswordResetLockout> findActiveLockoutByEmailOrIpList(
             @Param("email") String email,
             @Param("ipAddress") String ipAddress,
             @Param("now") LocalDateTime now);
+    
+    /**
+     * Tìm lockout đang active cho email HOẶC IP address (wrapper method)
+     */
+    default Optional<PasswordResetLockout> findActiveLockoutByEmailOrIp(String email, String ipAddress, LocalDateTime now) {
+        java.util.List<PasswordResetLockout> list = findActiveLockoutByEmailOrIpList(email, ipAddress, now);
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    }
 
     /**
      * Mở khóa thủ công (admin có thể dùng)

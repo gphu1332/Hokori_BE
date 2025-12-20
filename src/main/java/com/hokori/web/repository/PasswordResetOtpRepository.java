@@ -15,15 +15,24 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
 
     /**
      * Tìm OTP chưa hết hạn và chưa sử dụng theo email
+     * Trả về OTP mới nhất (theo createdAt DESC, sau đó theo id DESC để đảm bảo unique)
      */
-    @Query("""
+    @Query(value = """
             SELECT o FROM PasswordResetOtp o
             WHERE o.email = :email
             AND o.isUsed = false
             AND o.expiresAt > :now
-            ORDER BY o.createdAt DESC
+            ORDER BY o.createdAt DESC, o.id DESC
             """)
-    Optional<PasswordResetOtp> findLatestValidByEmail(@Param("email") String email, @Param("now") LocalDateTime now);
+    java.util.List<PasswordResetOtp> findLatestValidByEmailList(@Param("email") String email, @Param("now") LocalDateTime now);
+    
+    /**
+     * Tìm OTP chưa hết hạn và chưa sử dụng theo email (wrapper method)
+     */
+    default Optional<PasswordResetOtp> findLatestValidByEmail(String email, LocalDateTime now) {
+        java.util.List<PasswordResetOtp> list = findLatestValidByEmailList(email, now);
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    }
 
     /**
      * Tìm OTP đã verify (isUsed = true) theo email và OTP code
@@ -31,17 +40,26 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
      * 
      * Lưu ý: Không check expiresAt vì OTP đã được verify, cho phép reset password
      * trong một khoảng thời gian hợp lý sau khi verify (ví dụ: 30 phút sau khi verify)
+     * Trả về OTP mới nhất (theo createdAt DESC, sau đó theo id DESC để đảm bảo unique)
      */
-    @Query("""
+    @Query(value = """
             SELECT o FROM PasswordResetOtp o
             WHERE o.email = :email
             AND o.otpCode = :otpCode
             AND o.isUsed = true
-            ORDER BY o.createdAt DESC
+            ORDER BY o.createdAt DESC, o.id DESC
             """)
-    Optional<PasswordResetOtp> findVerifiedOtpByEmailAndCode(
+    java.util.List<PasswordResetOtp> findVerifiedOtpByEmailAndCodeList(
             @Param("email") String email, 
             @Param("otpCode") String otpCode);
+    
+    /**
+     * Tìm OTP đã verify theo email và OTP code (wrapper method)
+     */
+    default Optional<PasswordResetOtp> findVerifiedOtpByEmailAndCode(String email, String otpCode) {
+        java.util.List<PasswordResetOtp> list = findVerifiedOtpByEmailAndCodeList(email, otpCode);
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    }
 
     /**
      * Đánh dấu OTP đã sử dụng
