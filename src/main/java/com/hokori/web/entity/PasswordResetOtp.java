@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_otp_email", columnList = "email"),
                 @Index(name = "idx_otp_code", columnList = "otp_code")
         })
+@org.hibernate.annotations.DynamicUpdate
 public class PasswordResetOtp {
 
     @Id

@@ -280,13 +280,11 @@ public class PasswordResetService {
                 
                 // Verify OTP code
                 if (!otp.getOtpCode().equals(otpCode)) {
-                    otpRepository.incrementFailedAttempts(otp.getId());
-                    // Clear entity manager cache để đảm bảo reload đúng giá trị từ database
-                    entityManager.clear();
-                    // Tính lại tổng số lần nhập sai sau khi increment
-                    Long newTotalFailedAttempts = otpRepository.countTotalFailedAttemptsByEmailSince(email, since);
+                    // Increment failed attempts trong transaction riêng để đảm bảo commit
+                    int currentFailedAttempts = incrementFailedAttemptsAndGet(otp.getId());
+                    
                     // Kiểm tra số lần verify sai sau khi increment
-                    if (newTotalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
+                    if (currentFailedAttempts >= MAX_FAILED_ATTEMPTS) {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
                     }
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
