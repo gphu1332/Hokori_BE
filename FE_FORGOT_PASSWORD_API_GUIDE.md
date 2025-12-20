@@ -7,7 +7,17 @@ Hệ thống hỗ trợ reset password qua email với OTP (One-Time Password) 6
 2. **Verify OTP** - User nhập mã OTP để xác thực
 3. **Reset Password** - User đặt lại mật khẩu mới
 
-**Base URL:** `https://api.hokori-backend.org` (hoặc URL của bạn)
+**Base URL:** 
+- **Production:** `https://api.hokori-backend.org` (hoặc Railway URL của bạn)
+- **Local Development:** `http://localhost:8080` (khi chạy backend local)
+
+**Lưu ý về CORS:**
+- ✅ **FE local (localhost) CÓ THỂ gọi API** - Backend đã cấu hình CORS để cho phép localhost
+- ✅ **FE deployed trên Vercel CÓ THỂ gọi API** - Backend cho phép tất cả origins
+- ⚠️ **Nếu FE local không gọi được API**, kiểm tra:
+  1. Backend có đang chạy không? (http://localhost:8080/api/health)
+  2. FE có đang dùng đúng API endpoint không?
+  3. Browser console có lỗi CORS không?
 
 ---
 
@@ -278,7 +288,11 @@ Lockout được check tại:
 // Example với axios
 import axios from 'axios';
 
-const API_BASE_URL = 'https://api.hokori-backend.org';
+// Detect environment: local development or production
+const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_BASE_URL = isDevelopment 
+  ? 'http://localhost:8080'  // Local backend
+  : 'https://api.hokori-backend.org';  // Production backend (Railway)
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -286,6 +300,18 @@ const apiClient = axios.create({
     'Content-Type': 'application/json'
   }
 });
+```
+
+**Hoặc sử dụng environment variable:**
+
+```javascript
+// .env.local (cho local development)
+// NEXT_PUBLIC_API_URL=http://localhost:8080
+
+// .env.production (cho production)
+// NEXT_PUBLIC_API_URL=https://api.hokori-backend.org
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.hokori-backend.org';
 ```
 
 ### 2. Request OTP Function
