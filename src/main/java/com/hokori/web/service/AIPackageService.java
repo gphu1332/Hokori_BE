@@ -275,7 +275,23 @@ public class AIPackageService {
     // 6. Use AI service (deduct quota)
     // =========================
     
+    /**
+     * Get cost (in requests) for a service type
+     * Conversation costs more because it uses multiple API calls
+     */
+    private int getServiceCost(AIServiceType serviceType) {
+        return switch (serviceType) {
+            case GRAMMAR -> 1;      // 1 request
+            case KAIWA -> 1;        // 1 request
+            case PRONUN -> 1;       // 1 request
+            case CONVERSATION -> 3; // 3 requests (more complex, uses multiple APIs)
+        };
+    }
+    
     public void useAIService(Long userId, AIServiceType serviceType, int amount) {
+        // Calculate actual cost based on service type
+        int serviceCost = getServiceCost(serviceType);
+        int totalCost = serviceCost * amount; // Multiply by amount if needed
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
@@ -338,12 +354,12 @@ public class AIPackageService {
             }
         }
         
-        // Deduct requests (amount = number of requests to use)
-        quota.useRequests(amount);
+        // Deduct requests (use calculated cost)
+        quota.useRequests(totalCost);
         quotaRepo.save(quota);
         
-        log.info("Used AI service requests: userId={}, serviceType={}, amount={}, remaining={}, total={}", 
-                userId, serviceType, amount, quota.getRemainingRequests(), quota.getTotalRequests());
+        log.info("Used AI service requests: userId={}, serviceType={}, serviceCost={}, amount={}, totalCost={}, remaining={}, total={}", 
+                userId, serviceType, serviceCost, amount, totalCost, quota.getRemainingRequests(), quota.getTotalRequests());
     }
 
     // =========================

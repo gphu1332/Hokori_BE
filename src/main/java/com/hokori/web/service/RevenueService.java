@@ -224,6 +224,16 @@ public class RevenueService {
     
     /**
      * Đánh dấu tất cả revenue chưa được chuyển tiền của teacher trong tháng là đã chuyển
+     * 
+     * Business Logic:
+     * - Admin chỉ trả tiền một lần vào cuối tháng cho tất cả revenue của teacher trong tháng đó
+     * - Khi gọi method này → tất cả revenue của teacher trong tháng đó → FULLY_PAID
+     * - Sang tháng mới thì tính tiếp revenue mới
+     * 
+     * @param teacherId ID của teacher
+     * @param yearMonth Tháng cần đánh dấu (format: "2025-01")
+     * @param adminUserId ID của admin thực hiện đánh dấu
+     * @param note Ghi chú khi chuyển tiền
      */
     @Transactional
     public void markTeacherMonthRevenueAsPaid(Long teacherId, String yearMonth, Long adminUserId, String note) {
@@ -234,6 +244,7 @@ public class RevenueService {
             throw new RuntimeException("No unpaid revenue found for teacher " + teacherId + " in " + yearMonth);
         }
         
+        // Đánh dấu TẤT CẢ revenue của teacher trong tháng đó → luôn FULLY_PAID
         markRevenueAsPaid(revenues.stream().map(TeacherRevenue::getId).toList(), adminUserId, note);
     }
 }

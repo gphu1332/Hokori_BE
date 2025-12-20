@@ -276,14 +276,25 @@ public class AdminPaymentService {
     
     /**
      * Đánh dấu revenue đã được chuyển tiền
+     * 
+     * Business Logic:
+     * - Admin chỉ trả tiền một lần vào cuối tháng cho tất cả revenue của teacher trong tháng đó
+     * - Khi admin bấm "xác nhận chuyển" ở tổng (teacher level) → tất cả revenue của teacher trong tháng đó → FULLY_PAID
+     * - Sang tháng mới thì tính tiếp revenue mới
+     * 
+     * @param req Request chứa teacherId + yearMonth (recommended) hoặc revenueIds (edge cases)
+     * @param adminUserId ID của admin thực hiện đánh dấu
      */
     @Transactional
     public void markPayoutAsPaid(MarkPayoutPaidReq req, Long adminUserId) {
         if (req.getRevenueIds() != null && !req.getRevenueIds().isEmpty()) {
-            // Option 1: Đánh dấu theo danh sách revenue IDs
+            // Option 1: Đánh dấu theo danh sách revenue IDs cụ thể (chỉ dùng cho edge cases/debugging)
+            // ⚠️ Có thể gây PARTIALLY_PAID nếu chỉ đánh dấu một phần revenue
             revenueService.markRevenueAsPaid(req.getRevenueIds(), adminUserId, req.getNote());
         } else if (req.getTeacherId() != null && req.getYearMonth() != null) {
-            // Option 2: Đánh dấu tất cả revenue chưa được chuyển tiền của teacher trong tháng
+            // Option 2: Đánh dấu TẤT CẢ revenue chưa được chuyển tiền của teacher trong tháng (RECOMMENDED)
+            // ✅ Luôn FULLY_PAID vì đánh dấu tất cả revenue của teacher trong tháng đó
+            // Đây là cách admin thường dùng: bấm "xác nhận chuyển" ở tổng → trả một lần vào cuối tháng
             revenueService.markTeacherMonthRevenueAsPaid(
                     req.getTeacherId(), req.getYearMonth(), adminUserId, req.getNote());
         } else {
