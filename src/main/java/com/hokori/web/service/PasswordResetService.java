@@ -169,7 +169,17 @@ public class PasswordResetService {
             log.info("OTP verification failed for email: {}, OTP ID: {}, provided code: {}, expected code: {}", 
                     email, otp.getId(), otpCode, otp.getOtpCode());
             
-            // Record failed attempt: insert một record mới (đơn giản)
+            // Đếm số lần verify sai TRƯỚC KHI insert record mới
+            LocalDateTime since = now.minusMinutes(FAILED_ATTEMPTS_WINDOW_MINUTES);
+            Long existingFailedAttempts = failedAttemptRepository.countFailedAttemptsByEmailSince(email, since);
+            
+            // Tính tổng số lần sai (bao gồm lần hiện tại)
+            Long totalFailedAttempts = existingFailedAttempts + 1;
+            
+            log.info("OTP verification failed for email: {}, existing failed attempts: {}, total (including current): {}/{}, since: {}, now: {}", 
+                    email, existingFailedAttempts, totalFailedAttempts, MAX_FAILED_ATTEMPTS, since, now);
+            
+            // Record failed attempt: insert một record mới
             PasswordResetFailedAttempt failedAttempt = new PasswordResetFailedAttempt();
             failedAttempt.setEmail(email);
             failedAttempt.setIpAddress(ipAddress);
@@ -177,21 +187,11 @@ public class PasswordResetService {
             failedAttempt.setOtpId(otp.getId());
             failedAttemptRepository.save(failedAttempt);
             
-            // Flush để đảm bảo record được ghi vào database trước khi đếm
-            entityManager.flush();
-            
-            // Clear để đảm bảo query đếm sẽ chạy trực tiếp vào database, không cache
-            entityManager.clear();
-            
-            // Đếm số lần verify sai trong 15 phút gần đây
-            LocalDateTime since = now.minusMinutes(FAILED_ATTEMPTS_WINDOW_MINUTES);
-            Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, since);
-            
-            log.info("OTP verification failed for email: {}, failed attempts in last {} minutes: {}/{}, since: {}, now: {}", 
-                    email, FAILED_ATTEMPTS_WINDOW_MINUTES, failedAttemptsCount, MAX_FAILED_ATTEMPTS, since, now);
-            
             // Kiểm tra: nếu >= 5 lần trong 15 phút thì lockout
-            if (failedAttemptsCount >= MAX_FAILED_ATTEMPTS) {
+            if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
+                // Flush để đảm bảo record được ghi vào database
+                entityManager.flush();
+                
                 createLockout(email, ipAddress, "Too many failed OTP attempts");
                 long minutesRemaining = LOCKOUT_DURATION_MINUTES;
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
@@ -200,7 +200,7 @@ public class PasswordResetService {
             }
             
             // Throw exception với thông tin về failed attempts
-            throw new InvalidOtpException(failedAttemptsCount.intValue(), MAX_FAILED_ATTEMPTS);
+            throw new InvalidOtpException(totalFailedAttempts.intValue(), MAX_FAILED_ATTEMPTS);
         }
 
         // Đánh dấu OTP đã sử dụng (đã verify)
@@ -258,17 +258,20 @@ public class PasswordResetService {
                 PasswordResetOtp otp = unverifiedOtpOpt.get();
                 log.debug("Found unverified OTP, verifying now. OTP expires at: {}", otp.getExpiresAt());
                 
-                // Đếm số lần verify sai trong 15 phút gần đây
+                // Đếm số lần verify sai trong 15 phút gần đây TRƯỚC KHI insert
                 LocalDateTime windowStart = now.minusMinutes(FAILED_ATTEMPTS_WINDOW_MINUTES);
-                Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, windowStart);
+                Long existingFailedAttempts = failedAttemptRepository.countFailedAttemptsByEmailSince(email, windowStart);
                 
                 // Kiểm tra số lần verify sai
-                if (failedAttemptsCount >= MAX_FAILED_ATTEMPTS) {
+                if (existingFailedAttempts >= MAX_FAILED_ATTEMPTS) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
                 }
                 
                 // Verify OTP code
                 if (!otp.getOtpCode().equals(otpCode)) {
+                    // Tính tổng số lần sai (bao gồm lần hiện tại)
+                    Long totalFailedAttempts = existingFailedAttempts + 1;
+                    
                     // Record failed attempt
                     PasswordResetFailedAttempt failedAttempt = new PasswordResetFailedAttempt();
                     failedAttempt.setEmail(email);
@@ -276,17 +279,10 @@ public class PasswordResetService {
                     failedAttempt.setOtpId(otp.getId());
                     failedAttemptRepository.save(failedAttempt);
                     
-                    // Flush để đảm bảo record được ghi vào database trước khi đếm
-                    entityManager.flush();
-                    
-                    // Clear để đảm bảo query đếm sẽ chạy trực tiếp vào database, không cache
-                    entityManager.clear();
-                    
-                    // Đếm lại số lần verify sai sau khi record
-                    Long newFailedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, windowStart);
-                    
-                    // Kiểm tra số lần verify sai sau khi record
-                    if (newFailedAttemptsCount >= MAX_FAILED_ATTEMPTS) {
+                    // Kiểm tra số lần verify sai sau khi tính tổng
+                    if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
+                        // Flush để đảm bảo record được ghi vào database
+                        entityManager.flush();
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
                     }
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
