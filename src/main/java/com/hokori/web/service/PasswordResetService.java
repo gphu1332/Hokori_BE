@@ -8,6 +8,7 @@ import com.hokori.web.repository.PasswordResetFailedAttemptRepository;
 import com.hokori.web.repository.PasswordResetLockoutRepository;
 import com.hokori.web.repository.PasswordResetOtpRepository;
 import com.hokori.web.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -38,6 +39,7 @@ public class PasswordResetService {
     private final PasswordResetFailedAttemptRepository failedAttemptRepository;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
+    private final EntityManager entityManager;
 
     private static final int OTP_LENGTH = 6;
     private static final int MAX_FAILED_ATTEMPTS = 5;
@@ -175,6 +177,9 @@ public class PasswordResetService {
             failedAttempt.setOtpId(otp.getId());
             failedAttemptRepository.save(failedAttempt);
             
+            // Flush để đảm bảo record được ghi vào database trước khi đếm
+            entityManager.flush();
+            
             // Đếm số lần verify sai trong 15 phút gần đây
             LocalDateTime since = now.minusMinutes(FAILED_ATTEMPTS_WINDOW_MINUTES);
             Long failedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, since);
@@ -267,6 +272,9 @@ public class PasswordResetService {
                     failedAttempt.setAttemptedAt(now);
                     failedAttempt.setOtpId(otp.getId());
                     failedAttemptRepository.save(failedAttempt);
+                    
+                    // Flush để đảm bảo record được ghi vào database trước khi đếm
+                    entityManager.flush();
                     
                     // Đếm lại số lần verify sai sau khi record
                     Long newFailedAttemptsCount = failedAttemptRepository.countFailedAttemptsByEmailSince(email, windowStart);
