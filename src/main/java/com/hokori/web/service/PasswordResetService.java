@@ -170,18 +170,23 @@ public class PasswordResetService {
             log.info("OTP verification failed for email: {}, OTP ID: {}, provided code: {}, expected code: {}", 
                     email, otp.getId(), otpCode, otp.getOtpCode());
             
-            // Increment failed attempts ngay khi OTP sai
-            otpRepository.incrementFailedAttempts(otp.getId());
+            // Increment failed attempts trực tiếp trên entity để đảm bảo update được commit
+            int oldFailedAttempts = otp.getFailedAttempts();
+            otp.setFailedAttempts(oldFailedAttempts + 1);
+            otpRepository.save(otp);
             
-            // Clear entity manager cache và reload OTP để lấy giá trị mới nhất
+            // Force flush để đảm bảo update được commit ngay lập tức
+            entityManager.flush();
             entityManager.clear();
+            
+            // Reload OTP để lấy giá trị mới nhất từ database
             PasswordResetOtp reloadedOtp = otpRepository.findById(otp.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "OTP not found"));
             
             int currentFailedAttempts = reloadedOtp.getFailedAttempts();
             
-            log.info("OTP verification failed for email: {}, OTP ID: {}, current failed attempts: {}/{}", 
-                    email, reloadedOtp.getId(), currentFailedAttempts, MAX_FAILED_ATTEMPTS);
+            log.info("OTP verification failed for email: {}, OTP ID: {}, old failed attempts: {}, new failed attempts: {}/{}", 
+                    email, reloadedOtp.getId(), oldFailedAttempts, currentFailedAttempts, MAX_FAILED_ATTEMPTS);
             
             // Kiểm tra sau khi increment: nếu >= 5 lần thì lockout
             if (currentFailedAttempts >= MAX_FAILED_ATTEMPTS) {
