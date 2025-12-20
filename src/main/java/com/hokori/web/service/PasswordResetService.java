@@ -156,9 +156,15 @@ public class PasswordResetService {
         if (!otp.getOtpCode().equals(otpCode)) {
             otpRepository.incrementFailedAttempts(otp.getId());
             
+            // Clear entity manager cache để đảm bảo reload đúng giá trị từ database
+            entityManager.clear();
+            
             // Kiểm tra lại sau khi increment - nếu đạt max thì tạo lockout
             PasswordResetOtp updatedOtp = otpRepository.findById(otp.getId()).orElse(otp);
             int newFailedAttempts = updatedOtp.getFailedAttempts();
+            
+            log.debug("OTP verification failed for email: {}, failedAttempts: {}/{}", 
+                    email, newFailedAttempts, MAX_FAILED_ATTEMPTS);
             
             if (newFailedAttempts >= MAX_FAILED_ATTEMPTS) {
                 createLockout(email, ipAddress, "Too many failed OTP attempts");
@@ -234,6 +240,14 @@ public class PasswordResetService {
                 // Verify OTP code
                 if (!otp.getOtpCode().equals(otpCode)) {
                     otpRepository.incrementFailedAttempts(otp.getId());
+                    // Clear entity manager cache để đảm bảo reload đúng giá trị từ database
+                    entityManager.clear();
+                    // Reload OTP để lấy failedAttempts mới nhất
+                    PasswordResetOtp reloadedOtp = otpRepository.findById(otp.getId()).orElse(otp);
+                    // Kiểm tra số lần verify sai sau khi increment
+                    if (reloadedOtp.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP has been locked due to too many failed attempts");
+                    }
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
                 }
                 // Kiểm tra số lần verify sai

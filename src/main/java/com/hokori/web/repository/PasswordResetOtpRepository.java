@@ -70,8 +70,9 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
 
     /**
      * Tăng số lần verify sai
+     * flushAutomatically = true để đảm bảo changes được flush ngay lập tức
      */
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE PasswordResetOtp o SET o.failedAttempts = o.failedAttempts + 1 WHERE o.id = :id")
     void incrementFailedAttempts(@Param("id") Long id);
 
