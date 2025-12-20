@@ -11,6 +11,8 @@ import com.hokori.web.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,7 +31,6 @@ import java.util.Optional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class PasswordResetService {
 
@@ -40,6 +41,29 @@ public class PasswordResetService {
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
     private final EntityManager entityManager;
+    
+    // Self-injection để @Transactional(REQUIRES_NEW) hoạt động
+    private PasswordResetService self;
+    
+    @Autowired
+    public PasswordResetService(
+            UserRepository userRepository,
+            PasswordResetOtpRepository otpRepository,
+            PasswordResetLockoutRepository lockoutRepository,
+            PasswordResetFailedAttemptRepository failedAttemptRepository,
+            EmailService emailService,
+            PasswordEncoder passwordEncoder,
+            EntityManager entityManager,
+            @Lazy PasswordResetService self) {
+        this.userRepository = userRepository;
+        this.otpRepository = otpRepository;
+        this.lockoutRepository = lockoutRepository;
+        this.failedAttemptRepository = failedAttemptRepository;
+        this.emailService = emailService;
+        this.passwordEncoder = passwordEncoder;
+        this.entityManager = entityManager;
+        this.self = self;
+    }
 
     private static final int OTP_LENGTH = 6;
     private static final int MAX_FAILED_ATTEMPTS = 5;
@@ -182,7 +206,8 @@ public class PasswordResetService {
             // Record failed attempt: insert một record mới
             // QUAN TRỌNG: Phải insert và commit TRƯỚC KHI throw exception
             // Vì @Transactional sẽ rollback khi có exception
-            recordFailedAttempt(email, ipAddress, now, otp.getId());
+            // Gọi qua self để Spring AOP intercept được (tránh self-invocation issue)
+            self.recordFailedAttempt(email, ipAddress, now, otp.getId());
             
             // Kiểm tra: nếu >= 5 lần trong 15 phút thì lockout
             if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
@@ -284,7 +309,8 @@ public class PasswordResetService {
                     Long totalFailedAttempts = existingFailedAttempts + 1;
                     
                     // Record failed attempt trong transaction riêng
-                    recordFailedAttempt(email, null, now, otp.getId());
+                    // Gọi qua self để Spring AOP intercept được
+                    self.recordFailedAttempt(email, null, now, otp.getId());
                     
                     // Kiểm tra số lần verify sai sau khi tính tổng
                     if (totalFailedAttempts >= MAX_FAILED_ATTEMPTS) {
