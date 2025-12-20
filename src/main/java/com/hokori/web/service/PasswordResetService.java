@@ -155,11 +155,20 @@ public class PasswordResetService {
                             minutesRemaining + 1));
         }
 
-        // Tìm OTP hợp lệ theo email
-        Optional<PasswordResetOtp> otpOpt = otpRepository.findLatestValidByEmail(email, now);
-
+        // Tìm OTP theo email và OTP code mà user nhập vào
+        // Đảm bảo verify đúng OTP mà user đang nhập, không phải OTP mới nhất
+        Optional<PasswordResetOtp> otpOpt = otpRepository.findValidOtpByEmailAndCode(email, otpCode, now);
+        
+        // Nếu không tìm thấy OTP với code đó, có thể user đang nhập OTP cũ đã bị invalidate
+        // Hoặc OTP code không đúng
         if (otpOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired OTP");
+            // Fallback: Tìm OTP mới nhất để check xem có OTP nào valid không
+            Optional<PasswordResetOtp> latestOtpOpt = otpRepository.findLatestValidByEmail(email, now);
+            if (latestOtpOpt.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired OTP");
+            }
+            // Nếu có OTP mới nhất nhưng code không khớp, đó là invalid code
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
         }
 
         PasswordResetOtp otp = otpOpt.get();

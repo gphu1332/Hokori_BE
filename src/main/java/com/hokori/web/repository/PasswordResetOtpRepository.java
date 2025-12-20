@@ -33,6 +33,31 @@ public interface PasswordResetOtpRepository extends JpaRepository<PasswordResetO
         java.util.List<PasswordResetOtp> list = findLatestValidByEmailList(email, now);
         return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }
+    
+    /**
+     * Tìm OTP theo email và OTP code (dùng để verify đúng OTP mà user nhập vào)
+     * Tìm trong các OTP chưa hết hạn và chưa sử dụng
+     */
+    @Query(value = """
+            SELECT o FROM PasswordResetOtp o
+            WHERE o.email = :email
+            AND o.otpCode = :otpCode
+            AND o.isUsed = false
+            AND o.expiresAt > :now
+            ORDER BY o.createdAt DESC, o.id DESC
+            """)
+    java.util.List<PasswordResetOtp> findValidOtpByEmailAndCodeList(
+            @Param("email") String email,
+            @Param("otpCode") String otpCode,
+            @Param("now") LocalDateTime now);
+    
+    /**
+     * Tìm OTP theo email và OTP code (wrapper method)
+     */
+    default Optional<PasswordResetOtp> findValidOtpByEmailAndCode(String email, String otpCode, LocalDateTime now) {
+        java.util.List<PasswordResetOtp> list = findValidOtpByEmailAndCodeList(email, otpCode, now);
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    }
 
     /**
      * Tìm OTP đã verify (isUsed = true) theo email và OTP code
