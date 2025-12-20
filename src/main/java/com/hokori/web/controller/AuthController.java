@@ -379,7 +379,7 @@ public class AuthController {
             // Chỉ hỗ trợ email, không hỗ trợ phone number
             if (!email.contains("@")) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(ApiResponse.error("Only email is supported for password reset. Please provide a valid email address."));
+                        .body(ApiResponse.error("Chỉ hỗ trợ reset mật khẩu qua email. Vui lòng nhập địa chỉ email hợp lệ."));
             }
             
             // Lấy IP address của client
@@ -388,10 +388,10 @@ public class AuthController {
             passwordResetService.requestOtpByEmail(email, ipAddress);
 
             Map<String, Object> response = new HashMap<>();
-            response.put("message", "OTP has been sent successfully to your email");
+            response.put("message", "Mã OTP đã được gửi đến email của bạn");
             response.put("method", "email");
             
-            return ResponseEntity.ok(ApiResponse.success("OTP sent successfully", response));
+            return ResponseEntity.ok(ApiResponse.success("Gửi mã OTP thành công", response));
         } catch (ResponseStatusException e) {
             return ResponseEntity.status(e.getStatusCode())
                     .body(ApiResponse.error(e.getReason()));
@@ -437,14 +437,20 @@ public class AuthController {
             );
 
             Map<String, Object> response = new HashMap<>();
-            response.put("message", "OTP verified successfully");
+            response.put("message", "Xác thực mã OTP thành công");
             response.put("verified", true);
             
-            return ResponseEntity.ok(ApiResponse.success("OTP verified successfully", response));
+            return ResponseEntity.ok(ApiResponse.success("Xác thực mã OTP thành công", response));
         } catch (InvalidOtpException e) {
             // Trả về thông tin về failed attempts
+            String errorMessage = String.format("Mã OTP không đúng. Còn %d/%d lần thử (đã sai %d/%d).",
+                    e.getRemainingAttempts(),
+                    e.getMaxAttempts(),
+                    e.getFailedAttempts(),
+                    e.getMaxAttempts());
+            
             VerifyOtpErrorResponse errorData = new VerifyOtpErrorResponse(
-                    "Invalid OTP code",
+                    errorMessage,
                     e.getFailedAttempts(),
                     e.getRemainingAttempts(),
                     e.getMaxAttempts()
@@ -455,7 +461,7 @@ public class AuthController {
             errorResponse.put("remainingAttempts", errorData.getRemainingAttempts());
             errorResponse.put("maxAttempts", errorData.getMaxAttempts());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(ApiResponse.error("Invalid OTP code", errorResponse));
+                    .body(ApiResponse.error(errorMessage, errorResponse));
         } catch (ResponseStatusException e) {
             return ResponseEntity.status(e.getStatusCode())
                     .body(ApiResponse.error(e.getReason()));
