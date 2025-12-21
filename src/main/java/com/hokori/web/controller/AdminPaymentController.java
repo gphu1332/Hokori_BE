@@ -86,5 +86,20 @@ public class AdminPaymentController {
         Long commission = paymentService.getAdminCommissionForMonth(yearMonth);
         return ResponseEntity.ok(ApiResponse.success("OK", commission));
     }
+    
+    @Operation(summary = "Lấy chi tiết admin commission trong tháng",
+               description = "Bao gồm: doanh thu dự kiến (20% từ revenue chưa trả tiền) và doanh thu đã chuyển tiền (20% từ revenue đã trả tiền)")
+    @GetMapping("/admin-commission-details")
+    public ResponseEntity<ApiResponse<AdminCommissionRes>> getAdminCommissionDetails(
+            @RequestParam(required = false) String yearMonth) {
+        
+        // Default to current month if not provided
+        if (yearMonth == null || yearMonth.trim().isEmpty()) {
+            yearMonth = YearMonth.now().format(YEAR_MONTH_FORMATTER);
+        }
+        
+        AdminCommissionRes commission = paymentService.getAdminCommissionDetails(yearMonth);
+        return ResponseEntity.ok(ApiResponse.success("OK", commission));
+    }
 }
 

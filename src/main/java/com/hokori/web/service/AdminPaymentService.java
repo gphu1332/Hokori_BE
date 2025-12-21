@@ -136,9 +136,20 @@ public class AdminPaymentService {
                 totalPendingRevenueCents += courseRevenueCents;
                 totalPendingSales += courseRevenues.size();
                 
+                // Tính tổng admin commission và original course price từ TeacherRevenue
+                long totalAdminCommissionCents = courseRevenues.stream()
+                        .mapToLong(TeacherRevenue::getAdminCommissionCents)
+                        .sum();
+                
+                long totalOriginalCoursePriceCents = courseRevenues.stream()
+                        .mapToLong(TeacherRevenue::getCoursePriceCents)
+                        .sum();
+                
                 courses.add(CourseRevenueRes.builder()
                         .courseId(courseId)
                         .courseTitle(courseTitle)
+                        .originalCoursePriceCents(totalOriginalCoursePriceCents)
+                        .adminCommissionCents(totalAdminCommissionCents)
                         .revenueCents(courseRevenueCents)
                         .paidRevenueCents(0L)
                         .unpaidRevenueCents(courseRevenueCents)
@@ -173,6 +184,7 @@ public class AdminPaymentService {
                     .yearMonth(yearMonth)
                     .totalPendingRevenueCents(totalPendingRevenueCents)
                     .totalPendingSales(totalPendingSales)
+                    .courseCount(courses.size()) // Số lượng courses có revenue chưa trả
                     .payoutStatus("PENDING") // Luôn là PENDING vì đây là pending payouts
                     .courses(courses)
                     .build());
@@ -230,9 +242,20 @@ public class AdminPaymentService {
             
             totalPendingRevenueCents += courseRevenueCents;
             
+            // Tính tổng admin commission và original course price từ TeacherRevenue
+            long totalAdminCommissionCents = courseRevenues.stream()
+                    .mapToLong(TeacherRevenue::getAdminCommissionCents)
+                    .sum();
+            
+            long totalOriginalCoursePriceCents = courseRevenues.stream()
+                    .mapToLong(TeacherRevenue::getCoursePriceCents)
+                    .sum();
+            
             courses.add(CourseRevenueRes.builder()
                     .courseId(courseId)
                     .courseTitle(courseTitle)
+                    .originalCoursePriceCents(totalOriginalCoursePriceCents)
+                    .adminCommissionCents(totalAdminCommissionCents)
                     .revenueCents(courseRevenueCents)
                     .paidRevenueCents(0L)
                     .unpaidRevenueCents(courseRevenueCents)
@@ -269,6 +292,7 @@ public class AdminPaymentService {
                 .yearMonth(yearMonth)
                 .totalPendingRevenueCents(totalPendingRevenueCents)
                 .totalPendingSales(unpaidRevenues.size())
+                .courseCount(courses.size()) // Số lượng courses có revenue chưa trả
                 .payoutStatus("PENDING") // Luôn là PENDING vì đây là pending payouts
                 .courses(courses)
                 .build();
@@ -317,6 +341,45 @@ public class AdminPaymentService {
         
         // Sử dụng JPQL query thay vì load tất cả rồi filter (hiệu quả hơn nhiều)
         return revenueRepo.sumAdminCommissionByYearMonth(yearMonth);
+    }
+    
+    /**
+     * Lấy chi tiết admin commission trong tháng
+     * Bao gồm: doanh thu dự kiến (chưa trả tiền) và doanh thu đã chuyển tiền
+     */
+    public AdminCommissionRes getAdminCommissionDetails(String yearMonth) {
+        // Validate yearMonth format
+        try {
+            YearMonth.parse(yearMonth, YEAR_MONTH_FORMATTER);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Invalid yearMonth format. Expected format: YYYY-MM (e.g., 2025-01)");
+        }
+        
+        // Tính doanh thu dự kiến (20% từ revenue chưa được trả tiền)
+        Long expectedRevenueCents = revenueRepo.sumUnpaidAdminCommissionByYearMonth(yearMonth);
+        if (expectedRevenueCents == null) {
+            expectedRevenueCents = 0L;
+        }
+        
+        // Tính doanh thu đã chuyển tiền (20% từ revenue đã được trả tiền)
+        Long paidRevenueCents = revenueRepo.sumPaidAdminCommissionByYearMonth(yearMonth);
+        if (paidRevenueCents == null) {
+            paidRevenueCents = 0L;
+        }
+        
+        // Tổng doanh thu
+        Long totalRevenueCents = expectedRevenueCents + paidRevenueCents;
+        
+        log.info("📊 Admin commission for {}: expected={}, paid={}, total={}", 
+                yearMonth, expectedRevenueCents, paidRevenueCents, totalRevenueCents);
+        
+        return AdminCommissionRes.builder()
+                .yearMonth(yearMonth)
+                .expectedRevenueCents(expectedRevenueCents)
+                .paidRevenueCents(paidRevenueCents)
+                .totalRevenueCents(totalRevenueCents)
+                .build();
     }
 }
 

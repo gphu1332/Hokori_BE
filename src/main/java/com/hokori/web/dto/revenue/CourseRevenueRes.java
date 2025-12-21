@@ -22,7 +22,9 @@ public class CourseRevenueRes {
     // For revenue tracking (new)
     private Long courseId;
     private String courseTitle;
-    private Long revenueCents; // 80% của course price
+    private Long originalCoursePriceCents; // Giá gốc khóa học (tổng tiền từ payment cho course này)
+    private Long adminCommissionCents; // 20% commission của admin
+    private Long revenueCents; // 80% của course price (tiền teacher)
     private Long paidRevenueCents; // Revenue đã được trả tiền
     private Long unpaidRevenueCents; // Revenue chưa được trả tiền
     private Integer salesCount; // Số lượng bán được

@@ -91,5 +91,19 @@ public interface TeacherRevenueRepository extends JpaRepository<TeacherRevenue, 
     @Query("SELECT COALESCE(SUM(tr.adminCommissionCents), 0) FROM TeacherRevenue tr " +
            "WHERE tr.yearMonth = :yearMonth")
     Long sumAdminCommissionByYearMonth(@Param("yearMonth") String yearMonth);
+    
+    /**
+     * Tính tổng admin commission từ revenue chưa được trả tiền trong tháng (doanh thu dự kiến)
+     */
+    @Query("SELECT COALESCE(SUM(tr.adminCommissionCents), 0) FROM TeacherRevenue tr " +
+           "WHERE tr.yearMonth = :yearMonth AND tr.isPaid = false")
+    Long sumUnpaidAdminCommissionByYearMonth(@Param("yearMonth") String yearMonth);
+    
+    /**
+     * Tính tổng admin commission từ revenue đã được trả tiền trong tháng (doanh thu đã chuyển tiền)
+     */
+    @Query("SELECT COALESCE(SUM(tr.adminCommissionCents), 0) FROM TeacherRevenue tr " +
+           "WHERE tr.yearMonth = :yearMonth AND tr.isPaid = true")
+    Long sumPaidAdminCommissionByYearMonth(@Param("yearMonth") String yearMonth);
 }
 
