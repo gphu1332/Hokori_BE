@@ -356,7 +356,8 @@ public class PaymentService {
                 .price(aiPackage.getPriceCents())
                 .build());
         
-        String description = String.format("Thanh toán gói AI: %s", aiPackage.getName());
+        // PayOS requires description max 25 characters
+        String description = "Thanh toan goi AI"; // 18 chars - safe for PayOS limit
         Long expiredAt = Instant.now().plusSeconds(30 * 60).getEpochSecond();
         
         // Create payment link via PayOS
