@@ -15,54 +15,54 @@ import java.util.*;
  */
 @Service
 public class ConversationPracticeService {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(ConversationPracticeService.class);
-    
+
     @Autowired(required = false)
     private GeminiService geminiService;
-    
+
     @Autowired(required = false)
     private AIService aiService;
-    
+
     @Value("${google.cloud.enabled:false}")
     private boolean googleCloudEnabled;
-    
+
     /**
      * Start a new conversation practice session
      * AI asks the first question based on scenario and level
      */
     public Map<String, Object> startConversation(String level, String scenario) {
         if (!googleCloudEnabled || geminiService == null) {
-            throw new AIServiceException("Conversation Practice", 
-                "Conversation practice service is not available", 
-                "SERVICE_DISABLED");
+            throw new AIServiceException("Conversation Practice",
+                    "Conversation practice service is not available",
+                    "SERVICE_DISABLED");
         }
-        
+
         String normalizedLevel = normalizeLevel(level);
         String normalizedScenario = normalizeScenario(scenario);
         String originalScenario = scenario; // Keep original for display
-        
-        logger.info("Starting conversation practice: level={}, originalScenario={}, normalizedScenario={}", 
-            normalizedLevel, originalScenario, normalizedScenario);
-        
+
+        logger.info("Starting conversation practice: level={}, originalScenario={}, normalizedScenario={}",
+                normalizedLevel, originalScenario, normalizedScenario);
+
         // Build system prompt for conversation (use original scenario if it's a detailed description)
         String systemPrompt = buildSystemPrompt(normalizedLevel, normalizedScenario, originalScenario);
-        
+
         // Generate first question from AI
         String aiQuestion = geminiService.generateConversationResponse(systemPrompt, new ArrayList<>());
-        
+
         if (aiQuestion == null || aiQuestion.trim().isEmpty()) {
-            throw new AIServiceException("Conversation Practice", 
-                "Failed to generate conversation question", 
-                "GENERATION_FAILED");
+            throw new AIServiceException("Conversation Practice",
+                    "Failed to generate conversation question",
+                    "GENERATION_FAILED");
         }
-        
+
         // Translate to Vietnamese for display
         String aiQuestionVi = translateToVietnamese(aiQuestion);
-        
+
         // Generate audio for AI question
         Map<String, Object> audioResult = generateAudio(aiQuestion);
-        
+
         // Build conversation history
         List<Map<String, String>> conversationHistory = new ArrayList<>();
         Map<String, String> aiMessage = new HashMap<>();
@@ -70,10 +70,10 @@ public class ConversationPracticeService {
         aiMessage.put("text", aiQuestion);
         aiMessage.put("textVi", aiQuestionVi);
         conversationHistory.add(aiMessage);
-        
+
         // Generate learning materials for this scenario
         Map<String, Object> learningMaterials = generateLearningMaterials(normalizedLevel, normalizedScenario, originalScenario);
-        
+
         // Build response
         Map<String, Object> result = new HashMap<>();
         result.put("conversationId", generateConversationId()); // Temporary ID
@@ -87,17 +87,17 @@ public class ConversationPracticeService {
         result.put("conversationHistory", conversationHistory);
         result.put("turnNumber", 1);
         result.put("maxTurns", 7);
-        
+
         // Add new learning fields
         result.put("scenarioDescription", learningMaterials.get("scenarioDescription"));
         result.put("vocabularyPreview", learningMaterials.get("vocabularyPreview"));
         result.put("grammarPoints", learningMaterials.get("grammarPoints"));
         result.put("tips", learningMaterials.get("tips"));
-        
+
         logger.debug("Conversation started successfully: conversationId={}", result.get("conversationId"));
         return result;
     }
-    
+
     /**
      * Respond to conversation and get next AI question
      * FE sends full conversation history, BE processes user audio and generates next question
@@ -110,36 +110,36 @@ public class ConversationPracticeService {
             String language,
             String level,
             String scenario) {
-        
+
         if (!googleCloudEnabled || geminiService == null || aiService == null) {
-            throw new AIServiceException("Conversation Practice", 
-                "Conversation practice service is not available", 
-                "SERVICE_DISABLED");
+            throw new AIServiceException("Conversation Practice",
+                    "Conversation practice service is not available",
+                    "SERVICE_DISABLED");
         }
-        
+
         String normalizedLevel = normalizeLevel(level);
         String normalizedScenario = normalizeScenario(scenario);
         String normalizedLanguage = (language != null && !language.isEmpty()) ? language : "ja-JP";
         String normalizedAudioFormat = (audioFormat != null && !audioFormat.isEmpty()) ? audioFormat : "wav";
-        
-        logger.info("Processing conversation response: conversationId={}, historySize={}, level={}, scenario={}", 
-            conversationId, conversationHistory.size(), normalizedLevel, normalizedScenario);
-        
+
+        logger.info("Processing conversation response: conversationId={}, historySize={}, level={}, scenario={}",
+                conversationId, conversationHistory.size(), normalizedLevel, normalizedScenario);
+
         // Validate audio data before processing
         if (audioData == null || audioData.trim().isEmpty()) {
-            throw new AIServiceException("Conversation Practice", 
-                "Audio data is empty. Please record your response before submitting.", 
-                "EMPTY_AUDIO");
+            throw new AIServiceException("Conversation Practice",
+                    "Audio data is empty. Please record your response before submitting.",
+                    "EMPTY_AUDIO");
         }
-        
+
         // Check minimum audio data length (base64 string should be at least 500 chars for valid audio)
         String trimmedAudio = audioData.trim();
         if (trimmedAudio.length() < 500) {
-            throw new AIServiceException("Conversation Practice", 
-                "Audio recording is too short or empty. Please record your response (at least 1-2 seconds) before submitting.", 
-                "AUDIO_TOO_SHORT");
+            throw new AIServiceException("Conversation Practice",
+                    "Audio recording is too short or empty. Please record your response (at least 1-2 seconds) before submitting.",
+                    "AUDIO_TOO_SHORT");
         }
-        
+
         // Step 1: Convert user audio to text
         Map<String, Object> speechToTextResult = aiService.speechToText(audioData, normalizedLanguage, normalizedAudioFormat);
         String userTranscript = (String) speechToTextResult.get("transcript");
@@ -148,25 +148,25 @@ public class ConversationPracticeService {
         if (confidenceObj != null) {
             confidence = ((Number) confidenceObj).doubleValue();
         }
-        
+
         if (userTranscript == null || userTranscript.isEmpty()) {
-            throw new AIServiceException("Conversation Practice", 
-                "Could not transcribe audio. The recording may be empty, too quiet, or unclear. Please try again with clearer pronunciation.", 
-                "TRANSCRIPTION_FAILED");
+            throw new AIServiceException("Conversation Practice",
+                    "Could not transcribe audio. The recording may be empty, too quiet, or unclear. Please try again with clearer pronunciation.",
+                    "TRANSCRIPTION_FAILED");
         }
-        
+
         // Additional check: if transcript is too short (just noise or silence)
         if (userTranscript.trim().length() < 2) {
-            throw new AIServiceException("Conversation Practice", 
-                "Could not detect any speech in the recording. Please speak clearly and try again.", 
-                "NO_SPEECH_DETECTED");
+            throw new AIServiceException("Conversation Practice",
+                    "Could not detect any speech in the recording. Please speak clearly and try again.",
+                    "NO_SPEECH_DETECTED");
         }
-        
+
         logger.debug("User transcript: {}, confidence: {}", userTranscript, confidence);
-        
+
         // Step 2: Translate user transcript to Vietnamese for display
         String userTranscriptVi = translateToVietnamese(userTranscript);
-        
+
         // Step 3: Add user message to history
         List<Map<String, String>> updatedHistory = new ArrayList<>(conversationHistory);
         Map<String, String> userMessage = new HashMap<>();
@@ -174,45 +174,45 @@ public class ConversationPracticeService {
         userMessage.put("text", userTranscript);
         userMessage.put("textVi", userTranscriptVi);
         updatedHistory.add(userMessage);
-        
+
         // Step 4: Check if conversation should end (max turns reached)
         int currentTurn = updatedHistory.size() / 2; // Each turn = AI question + user response
         if (currentTurn >= 7) {
             // End conversation
             return buildEndConversationResponse(conversationId, updatedHistory, normalizedLevel, normalizedScenario);
         }
-        
+
         // Step 5: Generate next AI question based on conversation history
         // Use original scenario if available in history metadata, otherwise use normalized
         String originalScenario = scenario; // Could be extracted from history if stored
         String systemPrompt = buildSystemPrompt(normalizedLevel, normalizedScenario, originalScenario);
-        
+
         // Convert conversation history to format expected by Gemini
         List<Map<String, String>> geminiHistory = convertToGeminiHistory(updatedHistory);
         String aiNextQuestion = geminiService.generateConversationResponse(systemPrompt, geminiHistory);
-        
+
         if (aiNextQuestion == null || aiNextQuestion.trim().isEmpty()) {
-            throw new AIServiceException("Conversation Practice", 
-                "Failed to generate next conversation question", 
-                "GENERATION_FAILED");
+            throw new AIServiceException("Conversation Practice",
+                    "Failed to generate next conversation question",
+                    "GENERATION_FAILED");
         }
-        
+
         // Step 6: Translate AI question to Vietnamese
         String aiNextQuestionVi = translateToVietnamese(aiNextQuestion);
-        
+
         // Step 7: Generate audio for AI question
         Map<String, Object> audioResult = generateAudio(aiNextQuestion);
-        
+
         // Step 8: Add AI message to history
         Map<String, String> aiMessage = new HashMap<>();
         aiMessage.put("role", "ai");
         aiMessage.put("text", aiNextQuestion);
         aiMessage.put("textVi", aiNextQuestionVi);
         updatedHistory.add(aiMessage);
-        
+
         // Generate turn-by-turn feedback for user's response
         Map<String, Object> turnFeedback = generateTurnFeedback(userTranscript, normalizedLevel, updatedHistory);
-        
+
         // Build response
         Map<String, Object> result = new HashMap<>();
         result.put("conversationId", conversationId);
@@ -227,14 +227,14 @@ public class ConversationPracticeService {
         result.put("turnNumber", currentTurn + 1);
         result.put("maxTurns", 7);
         result.put("isEnding", false);
-        
+
         // Add turn-by-turn feedback
         result.put("turnFeedback", turnFeedback);
-        
+
         logger.debug("Conversation response processed: turnNumber={}", result.get("turnNumber"));
         return result;
     }
-    
+
     /**
      * End conversation and get AI evaluation/feedback
      */
@@ -243,28 +243,28 @@ public class ConversationPracticeService {
             List<Map<String, String>> conversationHistory,
             String level,
             String scenario) {
-        
+
         if (!googleCloudEnabled || geminiService == null) {
-            throw new AIServiceException("Conversation Practice", 
-                "Conversation practice service is not available", 
-                "SERVICE_DISABLED");
+            throw new AIServiceException("Conversation Practice",
+                    "Conversation practice service is not available",
+                    "SERVICE_DISABLED");
         }
-        
+
         String normalizedLevel = normalizeLevel(level);
         String normalizedScenario = normalizeScenario(scenario);
-        
-        logger.info("Ending conversation: conversationId={}, historySize={}, level={}, scenario={}", 
-            conversationId, conversationHistory.size(), normalizedLevel, normalizedScenario);
-        
+
+        logger.info("Ending conversation: conversationId={}, historySize={}, level={}, scenario={}",
+                conversationId, conversationHistory.size(), normalizedLevel, normalizedScenario);
+
         // Build evaluation prompt
         String evaluationPrompt = buildEvaluationPrompt(normalizedLevel, normalizedScenario, conversationHistory);
-        
+
         // Generate evaluation
         String evaluationJson = geminiService.generateContent(evaluationPrompt);
-        
+
         // Parse evaluation (simplified - in production, use proper JSON parsing)
         Map<String, Object> evaluation = parseEvaluation(evaluationJson);
-        
+
         // Build response
         Map<String, Object> result = new HashMap<>();
         result.put("conversationId", conversationId);
@@ -273,102 +273,158 @@ public class ConversationPracticeService {
         result.put("fullConversation", conversationHistory);
         result.put("evaluation", evaluation);
         result.put("turnNumber", conversationHistory.size() / 2);
-        
+
         logger.debug("Conversation ended: conversationId={}", conversationId);
         return result;
     }
-    
+
     /**
      * Build enhanced system prompt for conversation based on level and scenario
      * Improved prompt for better conversation quality and learning outcomes
+     *
      * @param originalScenario Original user input (can be a detailed description)
      */
     private String buildSystemPrompt(String level, String scenario, String originalScenario) {
         String levelDescription = getLevelDescription(level);
         String levelGuidelines = getLevelSpecificGuidelines(level);
-        
+
         // Check if originalScenario is a detailed description (long sentence)
         boolean isDetailedDescription = isDetailedScenarioDescription(originalScenario);
-        
+
         String scenarioContext;
         if (isDetailedDescription) {
             // Use original detailed description for context
             scenarioContext = String.format(
-                "**Tình huống Chi tiết:** %s\n" +
-                "Đây là một tình huống cụ thể mà người dùng muốn luyện tập. " +
-                "Hãy tạo một cuộc trò chuyện thực tế, hữu ích hướng dẫn người dùng qua tình huống này một cách tự nhiên.",
-                originalScenario
+                    "**Tình huống Chi tiết:** %s\n" +
+                            "Đây là một tình huống cụ thể mà người dùng muốn luyện tập. " +
+                            "Hãy tạo một cuộc trò chuyện thực tế, hữu ích hướng dẫn người dùng qua tình huống này một cách tự nhiên.",
+                    originalScenario
             );
         } else {
             // Use standard scenario description
             String scenarioDescription = getScenarioDescription(scenario);
             scenarioContext = String.format("**Tình huống:** %s", scenarioDescription);
         }
-        
+
         return String.format(
-            "Bạn là một đối tác trò chuyện tiếng Nhật chuyên nghiệp, kiên nhẫn và khuyến khích dành cho người Việt học tiếng Nhật. " +
-            "Mục tiêu của bạn là giúp người dùng luyện tập tiếng Nhật một cách tự nhiên trong môi trường học tập hỗ trợ.\n\n" +
-            
-            "**Ngữ cảnh:**\n" +
-            "%s\n" +
-            "**Trình độ người dùng:** %s (%s)\n\n" +
-            
-            "**Vai trò & Tính cách của bạn:**\n" +
-            "- Đóng vai người Nhật bản xứ phù hợp với tình huống này (nhân viên cửa hàng, phục vụ, bạn bè, v.v.)\n" +
-            "- Hãy ấm áp, kiên nhẫn và khuyến khích - như một giáo viên hữu ích hoặc người địa phương thân thiện\n" +
-            "- Thể hiện sự quan tâm đến phản hồi của người dùng và phát triển dựa trên những gì họ nói\n" +
-            "- Sử dụng các biểu cảm tiếng Nhật tự nhiên và cách nói lịch sự phù hợp với tình huống\n" +
-            "- Phản ứng tự nhiên với phản hồi của người dùng (thể hiện ngạc nhiên, yêu cầu làm rõ, thể hiện sự hiểu biết)\n\n" +
-            
-            "**Hướng dẫn Ngôn ngữ:**\n" +
-            "%s\n\n" +
-            
-            "**Quy tắc Trò chuyện:**\n" +
-            "1. **Chỉ dùng tiếng Nhật:** Chỉ nói bằng tiếng Nhật. KHÔNG BAO GIỜ dùng tiếng Việt, tiếng Anh hay bất kỳ ngôn ngữ nào khác.\n" +
-            "2. **Kiểm soát độ dài:** Giữ phản hồi ngắn gọn:\n" +
-            "   - N5/N4: 1 câu, tối đa 30 ký tự\n" +
-            "   - N3: 1-2 câu, tối đa 50 ký tự\n" +
-            "   - N2/N1: 2-3 câu, tối đa 80 ký tự\n" +
-            "3. **Luồng tự nhiên:** Làm cho cuộc trò chuyện cảm thấy tự nhiên và thực tế:\n" +
-            "   - Bắt đầu bằng lời chào phù hợp với tình huống\n" +
-            "   - Đặt câu hỏi tiếp theo dựa trên phản hồi của người dùng\n" +
-            "   - Thể hiện sự quan tâm và tham gia (\"そうですか\", \"いいですね\", \"なるほど\")\n" +
-            "   - Sử dụng các phản ứng và từ cảm thán phù hợp\n" +
-            "4. **Độ khó thích ứng:**\n" +
-            "   - Nếu người dùng gặp khó khăn: Đơn giản hóa ngôn ngữ, dùng từ vựng dễ hơn\n" +
-            "   - Nếu người dùng làm tốt: Dần dần giới thiệu các cách diễn đạt phức tạp hơn một chút\n" +
-            "   - Luôn giữ trong phạm vi trình độ %s\n" +
-            "5. **Nhận thức ngữ cảnh:**\n" +
-            "   - Nhớ những gì người dùng đã nói ở các lượt trước\n" +
-            "   - Tham chiếu tự nhiên đến các phần trước của cuộc trò chuyện\n" +
-            "   - Phát triển chủ đề trò chuyện một cách tiến bộ\n" +
-            "6. **Xử lý lỗi:**\n" +
-            "   - Nếu người dùng mắc lỗi: Tiếp tục tự nhiên, không sửa lỗi trực tiếp\n" +
-            "   - Sử dụng tiếng Nhật đúng trong phản hồi của bạn để làm mẫu cách sử dụng đúng\n" +
-            "   - Nếu không rõ: Hỏi lại một cách lịch sự (\"すみません、もう一度お願いします\")\n" +
-            "7. **Hành vi theo Tình huống:**\n" +
-            "   - Hành động phù hợp với tình huống (trang trọng ở nhà hàng, thân mật với bạn bè, v.v.)\n" +
-            "   - Sử dụng từ vựng và cách diễn đạt phù hợp với tình huống\n" +
-            "   - Hướng dẫn cuộc trò chuyện hướng tới mục tiêu tình huống một cách tự nhiên\n\n" +
-            
-            "**Phong cách Phản hồi:**\n" +
-            "- Hãy trò chuyện tự nhiên, không máy móc\n" +
-            "- Thay đổi câu hỏi và phản hồi của bạn (đừng lặp lại cùng một cấu trúc)\n" +
-            "- Sử dụng các mẫu trò chuyện tiếng Nhật tự nhiên và từ đệm khi phù hợp\n" +
-            "- Thể hiện tính cách trong khi vẫn giữ chuyên nghiệp\n\n" +
-            
-            "**Quan trọng:**\n" +
-            "- Đây là buổi LUYỆN TẬP - ưu tiên học tập hơn sự hoàn hảo\n" +
-            "- Làm cho người dùng cảm thấy thoải mái và tự tin\n" +
-            "- Tạo bầu không khí tích cực, khuyến khích\n" +
-            "- Tập trung vào tiếng Nhật thực tế, ứng dụng trong đời sống\n\n" +
-            
-            "Bây giờ, hãy bắt đầu cuộc trò chuyện với một mở đầu phù hợp, tự nhiên cho tình huống này. " +
-            "Hãy làm cho nó cảm thấy như một cuộc trò chuyện thật, không phải một bài kiểm tra.",
-            scenarioContext, level, levelDescription, levelGuidelines, level
+                "Bạn là một đối tác trò chuyện tiếng Nhật chuyên nghiệp, kiên nhẫn và khuyến khích dành cho người Việt học tiếng Nhật. " +
+                        "Mục tiêu của bạn là giúp người dùng luyện tập tiếng Nhật một cách tự nhiên trong môi trường học tập hỗ trợ.\n\n" +
+
+                        "**Ngữ cảnh:**\n" +
+                        "%s\n" +
+                        "**Trình độ người dùng:** %s (%s)\n\n" +
+
+                        "**Vai trò & Tính cách của bạn:**\n" +
+                        "- Đóng vai người Nhật bản xứ phù hợp với tình huống này (nhân viên cửa hàng, phục vụ, bạn bè, v.v.)\n" +
+                        "- Hãy ấm áp, kiên nhẫn và khuyến khích - như một giáo viên hữu ích hoặc người địa phương thân thiện\n" +
+                        "- Thể hiện sự quan tâm đến phản hồi của người dùng và phát triển dựa trên những gì họ nói\n" +
+                        "- Sử dụng các biểu cảm tiếng Nhật tự nhiên và cách nói lịch sự phù hợp với tình huống\n" +
+                        "- Phản ứng tự nhiên với phản hồi của người dùng (thể hiện ngạc nhiên, yêu cầu làm rõ, thể hiện sự hiểu biết)\n\n" +
+
+                        "**Hướng dẫn Ngôn ngữ:**\n" +
+                        "%s\n\n" +
+
+                        "**Quy tắc Trò chuyện:**\n" +
+                        "1. **Chỉ dùng tiếng Nhật:** Chỉ nói bằng tiếng Nhật. KHÔNG BAO GIỜ dùng tiếng Việt, tiếng Anh hay bất kỳ ngôn ngữ nào khác.\n" +
+                        "2. **Kiểm soát độ dài:** Giữ phản hồi ngắn gọn:\n" +
+                        "   - N5/N4: 1 câu, tối đa 30 ký tự\n" +
+                        "   - N3: 1-2 câu, tối đa 50 ký tự\n" +
+                        "   - N2/N1: 2-3 câu, tối đa 80 ký tự\n" +
+
+                        "3. **Luồng tự nhiên:** Làm cho cuộc trò chuyện cảm thấy tự nhiên và thực tế:\n" +
+                        "   - Bắt đầu bằng lời chào phù hợp với tình huống\n" +
+                        "   - Đặt câu hỏi tiếp theo dựa trên phản hồi của người dùng\n" +
+                        "   - Thể hiện sự quan tâm và tham gia (\"そうですか\", \"いいですね\", \"なるほど\")\n" +
+                        "   - Sử dụng các phản ứng và từ cảm thán phù hợp\n" +
+
+                        "4. **Độ khó thích ứng:**\n" +
+                        "   - Nếu người dùng gặp khó khăn: Đơn giản hóa ngôn ngữ, dùng từ vựng dễ hơn\n" +
+                        "   - Nếu người dùng làm tốt: Dần dần giới thiệu các cách diễn đạt phức tạp hơn một chút\n" +
+                        "   - Luôn giữ trong phạm vi trình độ %s\n" +
+
+                        "5. **Nhận thức ngữ cảnh:**\n" +
+                        "   - Nhớ những gì người dùng đã nói ở các lượt trước\n" +
+                        "   - Tham chiếu tự nhiên đến các phần trước của cuộc trò chuyện\n" +
+                        "   - Phát triển chủ đề trò chuyện một cách tiến bộ\n" +
+
+                        "6. **Xử lý lỗi:**\n" +
+                        "   - Nếu người dùng mắc lỗi: Tiếp tục tự nhiên, không sửa lỗi trực tiếp\n" +
+                        "   - Sử dụng tiếng Nhật đúng trong phản hồi của bạn để làm mẫu cách sử dụng đúng\n" +
+                        "   - Nếu không rõ: Hỏi lại một cách lịch sự (\"すみません、もう一度お願いします\")\n" +
+
+                        "7. **Hành vi theo Tình huống:**\n" +
+                        "   - Hành động phù hợp với tình huống (trang trọng ở nhà hàng, thân mật với bạn bè, v.v.)\n" +
+                        "   - Sử dụng từ vựng và cách diễn đạt phù hợp với tình huống\n" +
+                        "   - Hướng dẫn cuộc trò chuyện hướng tới mục tiêu tình huống một cách tự nhiên\n" +
+
+                        "8. **Bám sát phản hồi người dùng:**\n" +
+                        "- Luôn dựa trực tiếp vào câu trả lời gần nhất của người dùng\n" +
+                        "- Nếu người dùng nhắc đến một chi tiết (thời gian, địa điểm, món ăn, cảm xúc),\n" +
+                        "hãy hỏi sâu thêm về chính chi tiết đó\n" +
+                        "- Tránh đặt câu hỏi chung chung, không liên quan đến nội dung người dùng vừa nói\n" +
+
+                        "9. **Tránh lặp lại cấu trúc câu:**\n" +
+                        "- Không lặp lại cùng một mẫu câu hoặc cách hỏi liên tiếp\n" +
+                        "- Luân phiên giữa câu hỏi mở, câu hỏi lựa chọn và phản hồi cảm xúc\n" +
+                        "- Tránh hỏi liên tục các câu có cùng đuôi hoặc cùng cấu trúc ngữ pháp\n" +
+
+                        "10. **Phản ứng tự nhiên như người thật:**\n" +
+                        "- Nếu câu trả lời ngắn: phản ứng ngạc nhiên hoặc khuyến khích trước khi hỏi tiếp\n" +
+                        "- Nếu câu trả lời tốt: khen ngắn gọn, tự nhiên rồi phát triển câu hỏi tiếp theo\n" +
+                        "- Nếu câu trả lời mơ hồ hoặc chưa rõ: hỏi làm rõ một cách lịch sự thay vì đổi chủ đề\n\n" +
+                        "11. **Duy trì mục tiêu hội thoại (Conversation Goal Awareness):**\n" +
+                        "- Luôn ghi nhớ mục tiêu chính của tình huống (gọi món, mua hàng, hỏi đường, check-in, v.v.)\n" +
+                        "- Mỗi câu hỏi tiếp theo phải giúp cuộc trò chuyện tiến gần hơn đến mục tiêu đó\n" +
+                        "- Tránh nói lan man hoặc hỏi những nội dung không phục vụ mục tiêu tình huống\n" +
+
+                        "12. **Kết nối logic giữa các lượt nói:**\n" +
+                        "- Mỗi câu phản hồi phải có liên hệ rõ ràng với lượt nói trước\n" +
+                        "- Có thể nhắc lại từ khóa hoặc ý chính người dùng vừa nói\n" +
+                        "- Tránh chuyển chủ đề đột ngột nếu chưa hoàn thành chủ đề hiện tại\n" +
+
+                        "13. **Dạy ngầm thông qua phản hồi:**\n" +
+                        "- Không giảng giải ngữ pháp trực tiếp\n" +
+                        "- Luôn thể hiện cách dùng đúng thông qua câu trả lời mẫu\n" +
+                        "- Ưu tiên cho người dùng thấy cách nói đúng thay vì chỉ ra lỗi một cách trực diện\n" +
+
+                        "14. **Khuyến khích người dùng nói nhiều hơn:**\n" +
+                        "- Nếu người dùng trả lời quá ngắn, hãy đặt câu hỏi mở để kéo dài câu trả lời\n" +
+                        "- Có thể hỏi thêm \"vì sao\", \"như thế nào\", \"khi nào\" ở mức độ phù hợp với trình độ\n" +
+                        "- Tránh kết thúc lượt hội thoại quá sớm\n" +
+
+                        "15. **Không tự kết thúc cuộc trò chuyện:**\n" +
+                        "- Không nói lời tạm biệt trừ khi được yêu cầu kết thúc\n" +
+                        "- Không tự tổng kết hoặc đánh giá trong quá trình hội thoại\n" +
+                        "- Luôn để người dùng là người chủ động kết thúc cuộc trò chuyện\n" +
+
+                        "16. **Không đóng vai giáo viên quá rõ ràng:**\n" +
+                        "- Không dùng các câu mang tính chấm điểm hoặc nhận xét học thuật\n" +
+                        "- Tránh dùng các cụm từ như \"bạn nên\", \"bạn cần\" một cách trực tiếp\n" +
+                        "- Giữ vai trò là người đối thoại trong tình huống, không phải giảng viên đứng lớp\n" +
+
+                        "17. **Ưu tiên câu dễ nghe – dễ nói:**\n" +
+                        "- Tránh dùng nhiều từ dài hoặc khó phát âm trong một câu\n" +
+                        "- Ưu tiên cấu trúc câu rõ ràng, nhịp điệu tự nhiên\n" +
+                        "- Phù hợp cho luyện nói qua giọng nói, không mang tính văn viết\n\n" +
+
+                        "**Phong cách Phản hồi:**\n" +
+                        "- Hãy trò chuyện tự nhiên, không máy móc\n" +
+                        "- Thay đổi câu hỏi và phản hồi của bạn (đừng lặp lại cùng một cấu trúc)\n" +
+                        "- Sử dụng các mẫu trò chuyện tiếng Nhật tự nhiên và từ đệm khi phù hợp\n" +
+                        "- Thể hiện tính cách trong khi vẫn giữ chuyên nghiệp\n\n" +
+
+                        "**Quan trọng:**\n" +
+                        "- Đây là buổi LUYỆN TẬP - ưu tiên học tập hơn sự hoàn hảo\n" +
+                        "- Làm cho người dùng cảm thấy thoải mái và tự tin\n" +
+                        "- Tạo bầu không khí tích cực, khuyến khích\n" +
+                        "- Tập trung vào tiếng Nhật thực tế, ứng dụng trong đời sống\n\n" +
+
+                        "Bây giờ, hãy bắt đầu cuộc trò chuyện với một mở đầu phù hợp, tự nhiên cho tình huống này. " +
+                        "Hãy làm cho nó cảm thấy như một cuộc trò chuyện thật, không phải một bài kiểm tra.",
+                scenarioContext, level, levelDescription, levelGuidelines, level
         );
     }
-    
+
     /**
      * Get level-specific language guidelines for the prompt (in Vietnamese)
      */
@@ -376,48 +432,48 @@ public class ConversationPracticeService {
         switch (level.toUpperCase()) {
             case "N5":
                 return "- Chỉ sử dụng từ vựng cơ bản (hiragana, katakana, kanji đơn giản)\n" +
-                       "- Cấu trúc câu đơn giản (Chủ ngữ-Tân ngữ-Động từ)\n" +
-                       "- Cách nói lịch sự cơ bản (です/ます)\n" +
-                       "- Chỉ các biểu cảm hàng ngày thông thường\n" +
-                       "- Tránh ngữ pháp phức tạp (không có điều kiện, không có bị động, không có sai khiến)";
-            
+                        "- Cấu trúc câu đơn giản (Chủ ngữ-Tân ngữ-Động từ)\n" +
+                        "- Cách nói lịch sự cơ bản (です/ます)\n" +
+                        "- Chỉ các biểu cảm hàng ngày thông thường\n" +
+                        "- Tránh ngữ pháp phức tạp (không có điều kiện, không có bị động, không có sai khiến)";
+
             case "N4":
                 return "- Từ vựng sơ cấp với một số kanji thông dụng\n" +
-                       "- Mẫu câu đơn giản với các liên từ cơ bản (そして, でも, から)\n" +
-                       "- Cách nói lịch sự (です/ます) và một số cách nói thân mật\n" +
-                       "- Biểu cảm thời gian cơ bản và điều kiện đơn giản (たら, と)\n" +
-                       "- Tránh các cấu trúc ngữ pháp nâng cao";
-            
+                        "- Mẫu câu đơn giản với các liên từ cơ bản (そして, でも, から)\n" +
+                        "- Cách nói lịch sự (です/ます) và một số cách nói thân mật\n" +
+                        "- Biểu cảm thời gian cơ bản và điều kiện đơn giản (たら, と)\n" +
+                        "- Tránh các cấu trúc ngữ pháp nâng cao";
+
             case "N3":
                 return "- Từ vựng trung cấp với kanji thông dụng\n" +
-                       "- Cấu trúc câu phức tạp hơn\n" +
-                       "- Kết hợp cách nói lịch sự và thân mật dựa trên ngữ cảnh\n" +
-                       "- Các dạng điều kiện (ば, たら, と, なら)\n" +
-                       "- Dạng bị động và sai khiến thỉnh thoảng\n" +
-                       "- Mẫu trò chuyện tự nhiên";
-            
+                        "- Cấu trúc câu phức tạp hơn\n" +
+                        "- Kết hợp cách nói lịch sự và thân mật dựa trên ngữ cảnh\n" +
+                        "- Các dạng điều kiện (ば, たら, と, なら)\n" +
+                        "- Dạng bị động và sai khiến thỉnh thoảng\n" +
+                        "- Mẫu trò chuyện tự nhiên";
+
             case "N2":
                 return "- Từ vựng trung cấp cao với kanji đa dạng\n" +
-                       "- Cấu trúc câu phức tạp với nhiều mệnh đề\n" +
-                       "- Mức độ trang trọng phù hợp cho các tình huống khác nhau\n" +
-                       "- Mẫu ngữ pháp nâng cao (bị động, sai khiến, kính ngữ)\n" +
-                       "- Cách diễn đạt tự nhiên, tinh tế\n" +
-                       "- Thành ngữ khi phù hợp";
-            
+                        "- Cấu trúc câu phức tạp với nhiều mệnh đề\n" +
+                        "- Mức độ trang trọng phù hợp cho các tình huống khác nhau\n" +
+                        "- Mẫu ngữ pháp nâng cao (bị động, sai khiến, kính ngữ)\n" +
+                        "- Cách diễn đạt tự nhiên, tinh tế\n" +
+                        "- Thành ngữ khi phù hợp";
+
             case "N1":
                 return "- Từ vựng nâng cao với kanji phức tạp\n" +
-                       "- Cấu trúc câu tinh vi\n" +
-                       "- Thành thạo các mức độ trang trọng và kính ngữ\n" +
-                       "- Mẫu ngữ pháp phức tạp và cách diễn đạt tinh tế\n" +
-                       "- Trò chuyện tự nhiên, trôi chảy với nhận thức văn hóa\n" +
-                       "- Thành ngữ và cách nói thông tục nâng cao";
-            
+                        "- Cấu trúc câu tinh vi\n" +
+                        "- Thành thạo các mức độ trang trọng và kính ngữ\n" +
+                        "- Mẫu ngữ pháp phức tạp và cách diễn đạt tinh tế\n" +
+                        "- Trò chuyện tự nhiên, trôi chảy với nhận thức văn hóa\n" +
+                        "- Thành ngữ và cách nói thông tục nâng cao";
+
             default:
                 return "- Sử dụng từ vựng và ngữ pháp phù hợp với trình độ sơ cấp\n" +
-                       "- Câu đơn giản, rõ ràng";
+                        "- Câu đơn giản, rõ ràng";
         }
     }
-    
+
     /**
      * Check if scenario input is a detailed description (long sentence) rather than a simple keyword
      */
@@ -425,32 +481,32 @@ public class ConversationPracticeService {
         if (scenario == null || scenario.isEmpty()) {
             return false;
         }
-        
+
         // If it's longer than 20 characters, likely a detailed description
         if (scenario.length() > 20) {
             return true;
         }
-        
+
         // Check if it contains common Vietnamese sentence patterns
         String lowerScenario = scenario.toLowerCase();
         String[] sentenceIndicators = {
-            "đang", "tôi", "toi", "tui", "mình", "minh",
-            "nên", "nen", "cần", "can", "muốn", "muon",
-            "và", "va", "hoặc", "hoac", "với", "voi",
-            "gọi", "goi", "nói", "noi", "hỏi", "hoi"
+                "đang", "tôi", "toi", "tui", "mình", "minh",
+                "nên", "nen", "cần", "can", "muốn", "muon",
+                "và", "va", "hoặc", "hoac", "với", "voi",
+                "gọi", "goi", "nói", "noi", "hỏi", "hoi"
         };
-        
+
         int indicatorCount = 0;
         for (String indicator : sentenceIndicators) {
             if (lowerScenario.contains(indicator)) {
                 indicatorCount++;
             }
         }
-        
+
         // If contains 2+ sentence indicators, likely a detailed description
         return indicatorCount >= 2;
     }
-    
+
     /**
      * Build evaluation prompt with detailed analysis
      */
@@ -467,62 +523,62 @@ public class ConversationPracticeService {
                 turnNumber++;
             }
         }
-        
+
         String levelDescription = getLevelDescription(level);
         String scenarioDescription = getScenarioDescription(scenario);
-        
+
         return String.format(
-            "Bạn là giáo viên tiếng Nhật chuyên nghiệp. Hãy đánh giá chi tiết cuộc trò chuyện thực hành tiếng Nhật sau đây.\n\n" +
-            "**Thông tin:**\n" +
-            "- Trình độ học viên: %s (%s)\n" +
-            "- Tình huống: %s\n" +
-            "- Số lượt trò chuyện: %d\n\n" +
-            "**Cuộc trò chuyện:**\n%s\n\n" +
-            "**Yêu cầu đánh giá:**\n" +
-            "1. **Điểm số (0-100):**\n" +
-            "   - overallScore: Tổng điểm tổng thể\n" +
-            "   - accuracyScore: Độ chính xác (ngữ pháp, từ vựng, cách diễn đạt)\n" +
-            "   - fluencyScore: Độ trôi chảy (tốc độ, nhịp điệu, tự nhiên)\n" +
-            "   - grammarScore: Ngữ pháp (cấu trúc câu, chia động từ, trợ từ)\n" +
-            "   - vocabularyScore: Từ vựng (sử dụng từ phù hợp, đa dạng)\n\n" +
-            "2. **Phân tích chi tiết:**\n" +
-            "   - overallFeedbackVi: Nhận xét tổng quan về toàn bộ cuộc trò chuyện (2-3 câu)\n" +
-            "   - strengthsVi: Mảng 3-5 điểm mạnh cụ thể (ví dụ: \"Sử dụng đúng trợ từ を trong câu 'りんごを食べます'\", \"Phát âm rõ ràng các từ khó\")\n" +
-            "   - improvementsVi: Mảng 3-5 điểm cần cải thiện cụ thể với ví dụ (ví dụ: \"Lỗi chia động từ: '食べる' nên là '食べます' trong ngữ cảnh lịch sự\", \"Thiếu trợ từ に khi nói về địa điểm\")\n" +
-            "   - suggestionsVi: Mảng 3-5 gợi ý cụ thể để cải thiện (ví dụ: \"Luyện tập thêm cách sử dụng trợ từ に và で\", \"Học thêm từ vựng về chủ đề nhà hàng\")\n" +
-            "   - detailedAnalysisVi: Phân tích chi tiết từng lượt trả lời của học viên, chỉ ra lỗi cụ thể và cách sửa (mảng các object với format: {\"turn\": số lượt, \"userResponse\": \"câu trả lời của học viên\", \"errors\": [\"lỗi 1\", \"lỗi 2\"], \"corrections\": [\"cách sửa 1\", \"cách sửa 2\"], \"betterResponse\": \"câu trả lời tốt hơn\"})\n\n" +
-            "**Lưu ý:**\n" +
-            "- Đánh giá dựa trên trình độ %s, không quá khắt khe nhưng cũng không quá dễ dãi\n" +
-            "- Chỉ ra lỗi cụ thể với ví dụ từ cuộc trò chuyện\n" +
-            "- Đưa ra gợi ý thực tế, có thể áp dụng ngay\n" +
-            "- Tất cả feedback phải bằng tiếng Việt\n" +
-            "- Phân tích chi tiết phải cụ thể, không chung chung\n\n" +
-            "Trả về kết quả dưới dạng JSON hợp lệ:\n" +
-            "{\n" +
-            "  \"overallScore\": số (0-100),\n" +
-            "  \"accuracyScore\": số (0-100),\n" +
-            "  \"fluencyScore\": số (0-100),\n" +
-            "  \"grammarScore\": số (0-100),\n" +
-            "  \"vocabularyScore\": số (0-100),\n" +
-            "  \"overallFeedbackVi\": \"chuỗi\",\n" +
-            "  \"strengthsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
-            "  \"improvementsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
-            "  \"suggestionsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
-            "  \"detailedAnalysisVi\": [\n" +
-            "    {\"turn\": số, \"userResponse\": \"chuỗi\", \"errors\": [\"chuỗi\"], \"corrections\": [\"chuỗi\"], \"betterResponse\": \"chuỗi\"},\n" +
-            "    ...\n" +
-            "  ]\n" +
-            "}",
-            level, levelDescription, scenarioDescription, turnNumber - 1, historyText.toString(), level
+                "Bạn là giáo viên tiếng Nhật chuyên nghiệp. Hãy đánh giá chi tiết cuộc trò chuyện thực hành tiếng Nhật sau đây.\n\n" +
+                        "**Thông tin:**\n" +
+                        "- Trình độ học viên: %s (%s)\n" +
+                        "- Tình huống: %s\n" +
+                        "- Số lượt trò chuyện: %d\n\n" +
+                        "**Cuộc trò chuyện:**\n%s\n\n" +
+                        "**Yêu cầu đánh giá:**\n" +
+                        "1. **Điểm số (0-100):**\n" +
+                        "   - overallScore: Tổng điểm tổng thể\n" +
+                        "   - accuracyScore: Độ chính xác (ngữ pháp, từ vựng, cách diễn đạt)\n" +
+                        "   - fluencyScore: Độ trôi chảy (tốc độ, nhịp điệu, tự nhiên)\n" +
+                        "   - grammarScore: Ngữ pháp (cấu trúc câu, chia động từ, trợ từ)\n" +
+                        "   - vocabularyScore: Từ vựng (sử dụng từ phù hợp, đa dạng)\n\n" +
+                        "2. **Phân tích chi tiết:**\n" +
+                        "   - overallFeedbackVi: Nhận xét tổng quan về toàn bộ cuộc trò chuyện (2-3 câu)\n" +
+                        "   - strengthsVi: Mảng 3-5 điểm mạnh cụ thể (ví dụ: \"Sử dụng đúng trợ từ を trong câu 'りんごを食べます'\", \"Phát âm rõ ràng các từ khó\")\n" +
+                        "   - improvementsVi: Mảng 3-5 điểm cần cải thiện cụ thể với ví dụ (ví dụ: \"Lỗi chia động từ: '食べる' nên là '食べます' trong ngữ cảnh lịch sự\", \"Thiếu trợ từ に khi nói về địa điểm\")\n" +
+                        "   - suggestionsVi: Mảng 3-5 gợi ý cụ thể để cải thiện (ví dụ: \"Luyện tập thêm cách sử dụng trợ từ に và で\", \"Học thêm từ vựng về chủ đề nhà hàng\")\n" +
+                        "   - detailedAnalysisVi: Phân tích chi tiết từng lượt trả lời của học viên, chỉ ra lỗi cụ thể và cách sửa (mảng các object với format: {\"turn\": số lượt, \"userResponse\": \"câu trả lời của học viên\", \"errors\": [\"lỗi 1\", \"lỗi 2\"], \"corrections\": [\"cách sửa 1\", \"cách sửa 2\"], \"betterResponse\": \"câu trả lời tốt hơn\"})\n\n" +
+                        "**Lưu ý:**\n" +
+                        "- Đánh giá dựa trên trình độ %s, không quá khắt khe nhưng cũng không quá dễ dãi\n" +
+                        "- Chỉ ra lỗi cụ thể với ví dụ từ cuộc trò chuyện\n" +
+                        "- Đưa ra gợi ý thực tế, có thể áp dụng ngay\n" +
+                        "- Tất cả feedback phải bằng tiếng Việt\n" +
+                        "- Phân tích chi tiết phải cụ thể, không chung chung\n\n" +
+                        "Trả về kết quả dưới dạng JSON hợp lệ:\n" +
+                        "{\n" +
+                        "  \"overallScore\": số (0-100),\n" +
+                        "  \"accuracyScore\": số (0-100),\n" +
+                        "  \"fluencyScore\": số (0-100),\n" +
+                        "  \"grammarScore\": số (0-100),\n" +
+                        "  \"vocabularyScore\": số (0-100),\n" +
+                        "  \"overallFeedbackVi\": \"chuỗi\",\n" +
+                        "  \"strengthsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
+                        "  \"improvementsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
+                        "  \"suggestionsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
+                        "  \"detailedAnalysisVi\": [\n" +
+                        "    {\"turn\": số, \"userResponse\": \"chuỗi\", \"errors\": [\"chuỗi\"], \"corrections\": [\"chuỗi\"], \"betterResponse\": \"chuỗi\"},\n" +
+                        "    ...\n" +
+                        "  ]\n" +
+                        "}",
+                level, levelDescription, scenarioDescription, turnNumber - 1, historyText.toString(), level
         );
     }
-    
+
     /**
      * Parse evaluation JSON response
      */
     private Map<String, Object> parseEvaluation(String evaluationJson) {
         Map<String, Object> evaluation = new HashMap<>();
-        
+
         // Simple parsing (in production, use proper JSON parsing)
         try {
             // Try to extract JSON from markdown if present
@@ -540,12 +596,12 @@ public class ConversationPracticeService {
                     jsonText = evaluationJson.substring(start, end).trim();
                 }
             }
-            
+
             // Use GeminiService's JSON parsing if available
             if (geminiService != null) {
                 try {
                     com.fasterxml.jackson.databind.JsonNode jsonNode = geminiService.generateContentAsJson(
-                        "Parse this JSON: " + jsonText
+                            "Parse this JSON: " + jsonText
                     );
                     if (jsonNode != null) {
                         // Extract fields from JSON node
@@ -618,7 +674,7 @@ public class ConversationPracticeService {
         } catch (Exception e) {
             logger.warn("Failed to parse evaluation JSON", e);
         }
-        
+
         // Fallback: return basic evaluation
         evaluation.put("overallScore", 75.0);
         evaluation.put("accuracyScore", 75.0);
@@ -630,10 +686,10 @@ public class ConversationPracticeService {
         evaluation.put("improvementsVi", Arrays.asList("Tiếp tục luyện tập phát âm và từ vựng", "Chú ý hơn đến ngữ pháp và cách sử dụng trợ từ"));
         evaluation.put("suggestionsVi", Arrays.asList("Thử các tình huống khác nhau để mở rộng vốn từ", "Luyện tập thêm các mẫu câu thông dụng"));
         evaluation.put("detailedAnalysisVi", new ArrayList<>()); // Empty detailed analysis in fallback
-        
+
         return evaluation;
     }
-    
+
     /**
      * Convert conversation history to Gemini format
      */
@@ -648,7 +704,7 @@ public class ConversationPracticeService {
         }
         return geminiHistory;
     }
-    
+
     /**
      * Build end conversation response
      */
@@ -667,7 +723,7 @@ public class ConversationPracticeService {
         result.put("message", "Cuộc trò chuyện đã đạt số lượt tối đa. Vui lòng kết thúc để xem đánh giá.");
         return result;
     }
-    
+
     /**
      * Translate Japanese text to Vietnamese
      */
@@ -675,7 +731,7 @@ public class ConversationPracticeService {
         if (aiService == null || japaneseText == null || japaneseText.trim().isEmpty()) {
             return "";
         }
-        
+
         try {
             Map<String, Object> translationResult = aiService.translateText(japaneseText, "ja", "vi");
             String translated = (String) translationResult.get("translatedText");
@@ -685,7 +741,7 @@ public class ConversationPracticeService {
             return "";
         }
     }
-    
+
     /**
      * Generate audio from text
      */
@@ -693,7 +749,7 @@ public class ConversationPracticeService {
         if (aiService == null) {
             return new HashMap<>();
         }
-        
+
         try {
             return aiService.textToSpeech(text, "ja-JP-Standard-A", "normal");
         } catch (Exception e) {
@@ -701,14 +757,14 @@ public class ConversationPracticeService {
             return new HashMap<>();
         }
     }
-    
+
     /**
      * Generate temporary conversation ID
      */
     private String generateConversationId() {
         return "conv-" + UUID.randomUUID().toString().substring(0, 8);
     }
-    
+
     /**
      * Normalize JLPT level
      */
@@ -717,13 +773,13 @@ public class ConversationPracticeService {
             return "N5";
         }
         String upperLevel = level.toUpperCase();
-        if (upperLevel.equals("N5") || upperLevel.equals("N4") || 
-            upperLevel.equals("N3") || upperLevel.equals("N2") || upperLevel.equals("N1")) {
+        if (upperLevel.equals("N5") || upperLevel.equals("N4") ||
+                upperLevel.equals("N3") || upperLevel.equals("N2") || upperLevel.equals("N1")) {
             return upperLevel;
         }
         return "N5";
     }
-    
+
     /**
      * Normalize scenario - detect language and map to scenario key
      * Supports Vietnamese and Japanese input, including detailed descriptions
@@ -732,25 +788,25 @@ public class ConversationPracticeService {
         if (scenario == null || scenario.isEmpty()) {
             return "greeting";
         }
-        
+
         String normalized = scenario.trim();
-        
+
         // Check if it's a detailed description (long sentence)
         // If so, keep it as-is and use a generic key, the detailed description will be used in system prompt
         if (isDetailedScenarioDescription(normalized)) {
             // Return a generic key, but the original will be preserved and used in system prompt
             return "custom"; // Generic key for custom scenarios
         }
-        
+
         // First, try to match against known scenario keys (English)
         String lowerScenario = normalized.toLowerCase();
         if (isKnownScenarioKey(lowerScenario)) {
             return lowerScenario;
         }
-        
+
         // Detect language
         String detectedLanguage = detectScenarioLanguage(normalized);
-        
+
         // Map Vietnamese scenarios to keys
         if ("vi".equals(detectedLanguage)) {
             String mappedKey = mapVietnameseToScenarioKey(normalized);
@@ -764,7 +820,7 @@ public class ConversationPracticeService {
             // Long description, use generic key
             return "custom";
         }
-        
+
         // Map Japanese scenarios to keys
         if ("ja".equals(detectedLanguage)) {
             String mappedKey = mapJapaneseToScenarioKey(normalized);
@@ -778,23 +834,23 @@ public class ConversationPracticeService {
             // Long description, use generic key
             return "custom";
         }
-        
+
         // Default fallback
         return "greeting";
     }
-    
+
     /**
      * Check if scenario is a known key
      */
     private boolean isKnownScenarioKey(String scenario) {
-        return scenario.equals("restaurant") || 
-               scenario.equals("shopping") || 
-               scenario.equals("greeting") || 
-               scenario.equals("directions") || 
-               scenario.equals("hotel") || 
-               scenario.equals("airport");
+        return scenario.equals("restaurant") ||
+                scenario.equals("shopping") ||
+                scenario.equals("greeting") ||
+                scenario.equals("directions") ||
+                scenario.equals("hotel") ||
+                scenario.equals("airport");
     }
-    
+
     /**
      * Detect language of scenario input
      */
@@ -802,48 +858,48 @@ public class ConversationPracticeService {
         if (text == null || text.isEmpty()) {
             return "unknown";
         }
-        
+
         // Check for Japanese characters
         if (text.matches(".*[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF].*")) {
             return "ja";
         }
-        
+
         // Check for Vietnamese diacritics
         if (text.matches(".*[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ].*")) {
             return "vi";
         }
-        
+
         // Check for common Vietnamese scenario keywords
         String lowerText = text.toLowerCase();
         String[] vietnameseKeywords = {
-            "nhà hàng", "nha hang", "quán ăn", "quan an",
-            "mua sắm", "mua sam", "cửa hàng", "cua hang", "siêu thị", "sieu thi",
-            "chào hỏi", "chao hoi", "giới thiệu", "gioi thieu",
-            "hỏi đường", "hoi duong", "chỉ đường", "chi duong",
-            "khách sạn", "khach san", "lễ tân", "le tan",
-            "sân bay", "san bay", "máy bay", "may bay"
+                "nhà hàng", "nha hang", "quán ăn", "quan an",
+                "mua sắm", "mua sam", "cửa hàng", "cua hang", "siêu thị", "sieu thi",
+                "chào hỏi", "chao hoi", "giới thiệu", "gioi thieu",
+                "hỏi đường", "hoi duong", "chỉ đường", "chi duong",
+                "khách sạn", "khach san", "lễ tân", "le tan",
+                "sân bay", "san bay", "máy bay", "may bay"
         };
         for (String keyword : vietnameseKeywords) {
             if (lowerText.contains(keyword)) {
                 return "vi";
             }
         }
-        
+
         // Check for common Japanese scenario keywords
         String[] japaneseKeywords = {
-            "レストラン", "食堂", "食事",
-            "ショッピング", "買い物", "店",
-            "挨拶", "紹介", "初めまして",
-            "道", "方向", "案内",
-            "ホテル", "宿泊",
-            "空港", "飛行機"
+                "レストラン", "食堂", "食事",
+                "ショッピング", "買い物", "店",
+                "挨拶", "紹介", "初めまして",
+                "道", "方向", "案内",
+                "ホテル", "宿泊",
+                "空港", "飛行機"
         };
         for (String keyword : japaneseKeywords) {
             if (text.contains(keyword)) {
                 return "ja";
             }
         }
-        
+
         // Default: assume Vietnamese if contains common Vietnamese words
         String[] commonVietnameseWords = {"tôi", "toi", "bạn", "ban", "của", "cua", "và", "va"};
         for (String word : commonVietnameseWords) {
@@ -851,106 +907,106 @@ public class ConversationPracticeService {
                 return "vi";
             }
         }
-        
+
         return "unknown";
     }
-    
+
     /**
      * Map Vietnamese scenario text to scenario key
      */
     private String mapVietnameseToScenarioKey(String vietnameseText) {
         String lowerText = vietnameseText.toLowerCase();
-        
+
         // Restaurant scenarios
-        if (lowerText.contains("nhà hàng") || lowerText.contains("nha hang") || 
-            lowerText.contains("quán ăn") || lowerText.contains("quan an") ||
-            lowerText.contains("ăn uống") || lowerText.contains("an uong") ||
-            lowerText.contains("thức ăn") || lowerText.contains("thuc an")) {
+        if (lowerText.contains("nhà hàng") || lowerText.contains("nha hang") ||
+                lowerText.contains("quán ăn") || lowerText.contains("quan an") ||
+                lowerText.contains("ăn uống") || lowerText.contains("an uong") ||
+                lowerText.contains("thức ăn") || lowerText.contains("thuc an")) {
             return "restaurant";
         }
-        
+
         // Shopping scenarios
         if (lowerText.contains("mua sắm") || lowerText.contains("mua sam") ||
-            lowerText.contains("cửa hàng") || lowerText.contains("cua hang") ||
-            lowerText.contains("siêu thị") || lowerText.contains("sieu thi") ||
-            lowerText.contains("mua đồ") || lowerText.contains("mua do")) {
+                lowerText.contains("cửa hàng") || lowerText.contains("cua hang") ||
+                lowerText.contains("siêu thị") || lowerText.contains("sieu thi") ||
+                lowerText.contains("mua đồ") || lowerText.contains("mua do")) {
             return "shopping";
         }
-        
+
         // Greeting scenarios
         if (lowerText.contains("chào hỏi") || lowerText.contains("chao hoi") ||
-            lowerText.contains("giới thiệu") || lowerText.contains("gioi thieu") ||
-            lowerText.contains("làm quen") || lowerText.contains("lam quen")) {
+                lowerText.contains("giới thiệu") || lowerText.contains("gioi thieu") ||
+                lowerText.contains("làm quen") || lowerText.contains("lam quen")) {
             return "greeting";
         }
-        
+
         // Directions scenarios
         if (lowerText.contains("hỏi đường") || lowerText.contains("hoi duong") ||
-            lowerText.contains("chỉ đường") || lowerText.contains("chi duong") ||
-            lowerText.contains("địa chỉ") || lowerText.contains("dia chi")) {
+                lowerText.contains("chỉ đường") || lowerText.contains("chi duong") ||
+                lowerText.contains("địa chỉ") || lowerText.contains("dia chi")) {
             return "directions";
         }
-        
+
         // Hotel scenarios
         if (lowerText.contains("khách sạn") || lowerText.contains("khach san") ||
-            lowerText.contains("lễ tân") || lowerText.contains("le tan") ||
-            lowerText.contains("đặt phòng") || lowerText.contains("dat phong")) {
+                lowerText.contains("lễ tân") || lowerText.contains("le tan") ||
+                lowerText.contains("đặt phòng") || lowerText.contains("dat phong")) {
             return "hotel";
         }
-        
+
         // Airport scenarios
         if (lowerText.contains("sân bay") || lowerText.contains("san bay") ||
-            lowerText.contains("máy bay") || lowerText.contains("may bay") ||
-            lowerText.contains("check-in") || lowerText.contains("checkin")) {
+                lowerText.contains("máy bay") || lowerText.contains("may bay") ||
+                lowerText.contains("check-in") || lowerText.contains("checkin")) {
             return "airport";
         }
-        
+
         return null;
     }
-    
+
     /**
      * Map Japanese scenario text to scenario key
      */
     private String mapJapaneseToScenarioKey(String japaneseText) {
         // Restaurant scenarios
-        if (japaneseText.contains("レストラン") || japaneseText.contains("食堂") || 
-            japaneseText.contains("食事") || japaneseText.contains("料理")) {
+        if (japaneseText.contains("レストラン") || japaneseText.contains("食堂") ||
+                japaneseText.contains("食事") || japaneseText.contains("料理")) {
             return "restaurant";
         }
-        
+
         // Shopping scenarios
         if (japaneseText.contains("ショッピング") || japaneseText.contains("買い物") ||
-            japaneseText.contains("店") || japaneseText.contains("デパート")) {
+                japaneseText.contains("店") || japaneseText.contains("デパート")) {
             return "shopping";
         }
-        
+
         // Greeting scenarios
         if (japaneseText.contains("挨拶") || japaneseText.contains("紹介") ||
-            japaneseText.contains("初めまして") || japaneseText.contains("自己紹介")) {
+                japaneseText.contains("初めまして") || japaneseText.contains("自己紹介")) {
             return "greeting";
         }
-        
+
         // Directions scenarios
         if (japaneseText.contains("道") || japaneseText.contains("方向") ||
-            japaneseText.contains("案内") || japaneseText.contains("場所")) {
+                japaneseText.contains("案内") || japaneseText.contains("場所")) {
             return "directions";
         }
-        
+
         // Hotel scenarios
         if (japaneseText.contains("ホテル") || japaneseText.contains("宿泊") ||
-            japaneseText.contains("チェックイン")) {
+                japaneseText.contains("チェックイン")) {
             return "hotel";
         }
-        
+
         // Airport scenarios
         if (japaneseText.contains("空港") || japaneseText.contains("飛行機") ||
-            japaneseText.contains("搭乗")) {
+                japaneseText.contains("搭乗")) {
             return "airport";
         }
-        
+
         return null;
     }
-    
+
     /**
      * Use Gemini to understand scenario from Vietnamese input
      */
@@ -958,15 +1014,15 @@ public class ConversationPracticeService {
         if (geminiService == null) {
             return "greeting"; // Fallback
         }
-        
+
         try {
             String prompt = String.format(
-                "Phân loại tình huống trò chuyện sau đây vào một trong các loại: restaurant, shopping, greeting, directions, hotel, airport. " +
-                "Chỉ trả về một từ khóa duy nhất (restaurant, shopping, greeting, directions, hotel, hoặc airport). " +
-                "Tình huống: %s",
-                vietnameseText
+                    "Phân loại tình huống trò chuyện sau đây vào một trong các loại: restaurant, shopping, greeting, directions, hotel, airport. " +
+                            "Chỉ trả về một từ khóa duy nhất (restaurant, shopping, greeting, directions, hotel, hoặc airport). " +
+                            "Tình huống: %s",
+                    vietnameseText
             );
-            
+
             String response = geminiService.generateContent(prompt);
             if (response != null) {
                 String normalized = response.trim().toLowerCase();
@@ -977,10 +1033,10 @@ public class ConversationPracticeService {
         } catch (Exception e) {
             logger.warn("Failed to understand scenario from Vietnamese: {}", e.getMessage());
         }
-        
+
         return "greeting"; // Fallback
     }
-    
+
     /**
      * Use Gemini to understand scenario from Japanese input
      */
@@ -988,15 +1044,15 @@ public class ConversationPracticeService {
         if (geminiService == null) {
             return "greeting"; // Fallback
         }
-        
+
         try {
             String prompt = String.format(
-                "以下の会話シナリオを分類してください: restaurant, shopping, greeting, directions, hotel, airport. " +
-                "1つのキーワードのみを返してください (restaurant, shopping, greeting, directions, hotel, または airport). " +
-                "シナリオ: %s",
-                japaneseText
+                    "以下の会話シナリオを分類してください: restaurant, shopping, greeting, directions, hotel, airport. " +
+                            "1つのキーワードのみを返してください (restaurant, shopping, greeting, directions, hotel, または airport). " +
+                            "シナリオ: %s",
+                    japaneseText
             );
-            
+
             String response = geminiService.generateContent(prompt);
             if (response != null) {
                 String normalized = response.trim().toLowerCase();
@@ -1007,10 +1063,10 @@ public class ConversationPracticeService {
         } catch (Exception e) {
             logger.warn("Failed to understand scenario from Japanese: {}", e.getMessage());
         }
-        
+
         return "greeting"; // Fallback
     }
-    
+
     /**
      * Get scenario description
      */
@@ -1025,7 +1081,7 @@ public class ConversationPracticeService {
         scenarios.put("custom", "tình huống tùy chỉnh (custom situation)");
         return scenarios.getOrDefault(scenario, "cuộc trò chuyện thông thường");
     }
-    
+
     /**
      * Get level description
      */
@@ -1038,50 +1094,50 @@ public class ConversationPracticeService {
         levels.put("N1", "advanced (fluent conversations)");
         return levels.getOrDefault(level, "beginner");
     }
-    
+
     /**
      * Generate learning materials (vocabulary, grammar, tips) for the scenario
      */
     private Map<String, Object> generateLearningMaterials(String level, String scenario, String originalScenario) {
         Map<String, Object> materials = new HashMap<>();
-        
+
         // Get scenario description
         String scenarioDesc = getScenarioDescription(scenario);
         if (isDetailedScenarioDescription(originalScenario)) {
             scenarioDesc = originalScenario; // Use original if it's a detailed description
         }
         materials.put("scenarioDescription", scenarioDesc);
-        
+
         // Try to generate with Gemini, fallback to static data
         try {
             if (geminiService != null && googleCloudEnabled) {
                 String prompt = String.format(
-                    "Bạn là giáo viên tiếng Nhật chuyên nghiệp. " +
-                    "Hãy tạo tài liệu học tập cho tình huống trò chuyện tiếng Nhật.\n\n" +
-                    "**Thông tin:**\n" +
-                    "- Trình độ: %s\n" +
-                    "- Tình huống: %s\n" +
-                    "- Mô tả chi tiết: %s\n\n" +
-                    "Hãy trả về JSON với format:\n" +
-                    "{\n" +
-                    "  \"vocabularyPreview\": [\"từ vựng 1\", \"từ vựng 2\", ...],\n" +
-                    "  \"grammarPoints\": [\"điểm ngữ pháp 1\", \"điểm ngữ pháp 2\", ...],\n" +
-                    "  \"tips\": [\"mẹo 1\", \"mẹo 2\", ...]\n" +
-                    "}\n\n" +
-                    "Yêu cầu:\n" +
-                    "- vocabularyPreview: 5-8 từ vựng quan trọng sẽ dùng trong tình huống này (tiếng Nhật)\n" +
-                    "- grammarPoints: 3-5 điểm ngữ pháp sẽ luyện tập (mô tả bằng tiếng Việt)\n" +
-                    "- tips: 3-5 mẹo hữu ích để thành công trong tình huống này (tiếng Việt)\n" +
-                    "- Tất cả phải phù hợp với trình độ %s",
-                    level, scenario, scenarioDesc, level
+                        "Bạn là giáo viên tiếng Nhật chuyên nghiệp. " +
+                                "Hãy tạo tài liệu học tập cho tình huống trò chuyện tiếng Nhật.\n\n" +
+                                "**Thông tin:**\n" +
+                                "- Trình độ: %s\n" +
+                                "- Tình huống: %s\n" +
+                                "- Mô tả chi tiết: %s\n\n" +
+                                "Hãy trả về JSON với format:\n" +
+                                "{\n" +
+                                "  \"vocabularyPreview\": [\"từ vựng 1\", \"từ vựng 2\", ...],\n" +
+                                "  \"grammarPoints\": [\"điểm ngữ pháp 1\", \"điểm ngữ pháp 2\", ...],\n" +
+                                "  \"tips\": [\"mẹo 1\", \"mẹo 2\", ...]\n" +
+                                "}\n\n" +
+                                "Yêu cầu:\n" +
+                                "- vocabularyPreview: 5-8 từ vựng quan trọng sẽ dùng trong tình huống này (tiếng Nhật)\n" +
+                                "- grammarPoints: 3-5 điểm ngữ pháp sẽ luyện tập (mô tả bằng tiếng Việt)\n" +
+                                "- tips: 3-5 mẹo hữu ích để thành công trong tình huống này (tiếng Việt)\n" +
+                                "- Tất cả phải phù hợp với trình độ %s",
+                        level, scenario, scenarioDesc, level
                 );
-                
+
                 String response = geminiService.generateContent(prompt);
                 if (response != null) {
                     // Try to parse JSON
                     try {
                         com.fasterxml.jackson.databind.JsonNode jsonNode = geminiService.generateContentAsJson(
-                            "Parse this JSON: " + response
+                                "Parse this JSON: " + response
                         );
                         if (jsonNode != null) {
                             if (jsonNode.has("vocabularyPreview")) {
@@ -1099,11 +1155,11 @@ public class ConversationPracticeService {
                                 jsonNode.get("tips").forEach(node -> tips.add(node.asText()));
                                 materials.put("tips", tips);
                             }
-                            
+
                             // If all fields are present, return
-                            if (materials.containsKey("vocabularyPreview") && 
-                                materials.containsKey("grammarPoints") && 
-                                materials.containsKey("tips")) {
+                            if (materials.containsKey("vocabularyPreview") &&
+                                    materials.containsKey("grammarPoints") &&
+                                    materials.containsKey("tips")) {
                                 return materials;
                             }
                         }
@@ -1115,21 +1171,21 @@ public class ConversationPracticeService {
         } catch (Exception e) {
             logger.warn("Failed to generate learning materials with Gemini, using fallback", e);
         }
-        
+
         // Fallback to static data based on scenario
         materials.put("vocabularyPreview", getDefaultVocabulary(scenario, level));
         materials.put("grammarPoints", getDefaultGrammarPoints(scenario, level));
         materials.put("tips", getDefaultTips(scenario, level));
-        
+
         return materials;
     }
-    
+
     /**
      * Generate turn-by-turn feedback for user's response
      */
     private Map<String, Object> generateTurnFeedback(String userTranscript, String level, List<Map<String, String>> conversationHistory) {
         Map<String, Object> feedback = new HashMap<>();
-        
+
         try {
             if (geminiService != null && googleCloudEnabled && userTranscript != null && !userTranscript.trim().isEmpty()) {
                 // Get last AI question for context
@@ -1143,32 +1199,32 @@ public class ConversationPracticeService {
                         }
                     }
                 }
-                
+
                 String prompt = String.format(
-                    "Đánh giá nhanh câu trả lời của học viên trong cuộc trò chuyện tiếng Nhật.\n\n" +
-                    "**Thông tin:**\n" +
-                    "- Trình độ: %s\n" +
-                    "- Câu hỏi AI: %s\n" +
-                    "- Câu trả lời học viên: %s\n\n" +
-                    "Hãy trả về JSON với format:\n" +
-                    "{\n" +
-                    "  \"isCorrect\": true/false,\n" +
-                    "  \"feedbackVi\": \"nhận xét ngắn gọn\",\n" +
-                    "  \"suggestionVi\": \"gợi ý cải thiện\"\n" +
-                    "}\n\n" +
-                    "Yêu cầu:\n" +
-                    "- Đánh giá xem câu trả lời có phù hợp với câu hỏi không\n" +
-                    "- Nhận xét ngắn gọn, khuyến khích (1-2 câu)\n" +
-                    "- Gợi ý cách cải thiện nếu có lỗi nhỏ\n" +
-                    "- Tất cả bằng tiếng Việt",
-                    level, lastAIQuestion, userTranscript
+                        "Đánh giá nhanh câu trả lời của học viên trong cuộc trò chuyện tiếng Nhật.\n\n" +
+                                "**Thông tin:**\n" +
+                                "- Trình độ: %s\n" +
+                                "- Câu hỏi AI: %s\n" +
+                                "- Câu trả lời học viên: %s\n\n" +
+                                "Hãy trả về JSON với format:\n" +
+                                "{\n" +
+                                "  \"isCorrect\": true/false,\n" +
+                                "  \"feedbackVi\": \"nhận xét ngắn gọn\",\n" +
+                                "  \"suggestionVi\": \"gợi ý cải thiện\"\n" +
+                                "}\n\n" +
+                                "Yêu cầu:\n" +
+                                "- Đánh giá xem câu trả lời có phù hợp với câu hỏi không\n" +
+                                "- Nhận xét ngắn gọn, khuyến khích (1-2 câu)\n" +
+                                "- Gợi ý cách cải thiện nếu có lỗi nhỏ\n" +
+                                "- Tất cả bằng tiếng Việt",
+                        level, lastAIQuestion, userTranscript
                 );
-                
+
                 String response = geminiService.generateContent(prompt);
                 if (response != null) {
                     try {
                         com.fasterxml.jackson.databind.JsonNode jsonNode = geminiService.generateContentAsJson(
-                            "Parse this JSON: " + response
+                                "Parse this JSON: " + response
                         );
                         if (jsonNode != null) {
                             if (jsonNode.has("isCorrect")) {
@@ -1180,7 +1236,7 @@ public class ConversationPracticeService {
                             if (jsonNode.has("suggestionVi")) {
                                 feedback.put("suggestionVi", jsonNode.get("suggestionVi").asText());
                             }
-                            
+
                             if (!feedback.isEmpty()) {
                                 return feedback;
                             }
@@ -1193,21 +1249,21 @@ public class ConversationPracticeService {
         } catch (Exception e) {
             logger.warn("Failed to generate turn feedback with Gemini", e);
         }
-        
+
         // Fallback: basic positive feedback
         feedback.put("isCorrect", true);
         feedback.put("feedbackVi", "Tốt lắm! Hãy tiếp tục.");
         feedback.put("suggestionVi", "");
-        
+
         return feedback;
     }
-    
+
     /**
      * Get default vocabulary for scenario (fallback)
      */
     private List<String> getDefaultVocabulary(String scenario, String level) {
         List<String> vocab = new ArrayList<>();
-        
+
         switch (scenario) {
             case "restaurant":
                 vocab.add("メニュー");
@@ -1256,16 +1312,16 @@ public class ConversationPracticeService {
                 vocab.add("ありがとう");
                 vocab.add("すみません");
         }
-        
+
         return vocab;
     }
-    
+
     /**
      * Get default grammar points for scenario (fallback)
      */
     private List<String> getDefaultGrammarPoints(String scenario, String level) {
         List<String> grammar = new ArrayList<>();
-        
+
         if ("N5".equals(level) || "N4".equals(level)) {
             grammar.add("Cách nói lịch sự です/ます");
             grammar.add("Câu hỏi với か");
@@ -1279,20 +1335,20 @@ public class ConversationPracticeService {
             grammar.add("Cách diễn đạt phức tạp");
             grammar.add("Thành ngữ và cách nói tự nhiên");
         }
-        
+
         return grammar;
     }
-    
+
     /**
      * Get default tips for scenario (fallback)
      */
     private List<String> getDefaultTips(String scenario, String level) {
         List<String> tips = new ArrayList<>();
-        
+
         tips.add("Hãy lắng nghe kỹ câu hỏi trước khi trả lời");
         tips.add("Sử dụng cách nói lịch sự trong các tình huống trang trọng");
         tips.add("Đừng ngại hỏi lại nếu không hiểu: \"すみません、もう一度お願いします\"");
-        
+
         switch (scenario) {
             case "restaurant":
                 tips.add("Nhớ nói \"いただきます\" trước khi ăn");
@@ -1303,7 +1359,7 @@ public class ConversationPracticeService {
                 tips.add("Có thể thử đồ bằng \"試着できますか\"");
                 break;
         }
-        
+
         return tips;
     }
 }
