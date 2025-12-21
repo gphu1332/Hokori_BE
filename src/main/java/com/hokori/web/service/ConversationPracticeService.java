@@ -29,7 +29,7 @@ public class ConversationPracticeService {
 
     /**
      * Start a new conversation practice session
-     * AI asks the first question based on scenario and level
+     * Detects if user should speak first based on scenario
      */
     public Map<String, Object> startConversation(String level, String scenario) {
         if (!googleCloudEnabled || geminiService == null) {
@@ -45,56 +45,71 @@ public class ConversationPracticeService {
         logger.info("Starting conversation practice: level={}, originalScenario={}, normalizedScenario={}",
                 normalizedLevel, originalScenario, normalizedScenario);
 
-        // Build system prompt for conversation (use original scenario if it's a detailed description)
-        String systemPrompt = buildSystemPrompt(normalizedLevel, normalizedScenario, originalScenario);
-
-        // Generate first question from AI
-        String aiQuestion = geminiService.generateConversationResponse(systemPrompt, new ArrayList<>());
-
-        if (aiQuestion == null || aiQuestion.trim().isEmpty()) {
-            throw new AIServiceException("Conversation Practice",
-                    "Failed to generate conversation question",
-                    "GENERATION_FAILED");
-        }
-
-        // Translate to Vietnamese for display
-        String aiQuestionVi = translateToVietnamese(aiQuestion);
-
-        // Generate audio for AI question
-        Map<String, Object> audioResult = generateAudio(aiQuestion);
-
-        // Build conversation history
-        List<Map<String, String>> conversationHistory = new ArrayList<>();
-        Map<String, String> aiMessage = new HashMap<>();
-        aiMessage.put("role", "ai");
-        aiMessage.put("text", aiQuestion);
-        aiMessage.put("textVi", aiQuestionVi);
-        conversationHistory.add(aiMessage);
+        // Detect if user should speak first based on scenario
+        boolean userSpeaksFirst = shouldUserSpeakFirst(originalScenario, normalizedScenario);
 
         // Generate learning materials for this scenario
         Map<String, Object> learningMaterials = generateLearningMaterials(normalizedLevel, normalizedScenario, originalScenario);
 
-        // Build response
+        // Build base response
         Map<String, Object> result = new HashMap<>();
-        result.put("conversationId", generateConversationId()); // Temporary ID
+        result.put("conversationId", generateConversationId());
         result.put("level", normalizedLevel);
-        result.put("scenario", normalizedScenario); // Normalized scenario key
-        result.put("originalScenario", originalScenario); // Original input (Vietnamese or Japanese)
-        result.put("aiQuestion", aiQuestion);
-        result.put("aiQuestionVi", aiQuestionVi);
-        result.put("audioUrl", audioResult.get("audioData"));
-        result.put("audioFormat", audioResult.get("audioFormat"));
-        result.put("conversationHistory", conversationHistory);
+        result.put("scenario", normalizedScenario);
+        result.put("originalScenario", originalScenario);
         result.put("turnNumber", 1);
         result.put("maxTurns", 7);
-
-        // Add new learning fields
+        result.put("userSpeaksFirst", userSpeaksFirst);
+        
+        // Add learning fields
         result.put("scenarioDescription", learningMaterials.get("scenarioDescription"));
         result.put("vocabularyPreview", learningMaterials.get("vocabularyPreview"));
         result.put("grammarPoints", learningMaterials.get("grammarPoints"));
         result.put("tips", learningMaterials.get("tips"));
 
-        logger.debug("Conversation started successfully: conversationId={}", result.get("conversationId"));
+        if (userSpeaksFirst) {
+            // User speaks first - generate starting suggestions
+            List<String> suggestions = generateStartingSuggestions(normalizedLevel, normalizedScenario, originalScenario);
+            
+            result.put("conversationHistory", new ArrayList<>());
+            result.put("startingSuggestions", suggestions);
+            result.put("aiQuestion", null);
+            result.put("aiQuestionVi", null);
+            result.put("audioUrl", null);
+            result.put("audioFormat", null);
+            
+            logger.debug("Conversation started (user speaks first): conversationId={}", result.get("conversationId"));
+        } else {
+            // AI speaks first - generate first question
+            String systemPrompt = buildSystemPrompt(normalizedLevel, normalizedScenario, originalScenario);
+            String aiQuestion = geminiService.generateConversationResponse(systemPrompt, new ArrayList<>());
+
+            if (aiQuestion == null || aiQuestion.trim().isEmpty()) {
+                throw new AIServiceException("Conversation Practice",
+                        "Failed to generate conversation question",
+                        "GENERATION_FAILED");
+            }
+
+            String aiQuestionVi = translateToVietnamese(aiQuestion);
+            Map<String, Object> audioResult = generateAudio(aiQuestion);
+
+            List<Map<String, String>> conversationHistory = new ArrayList<>();
+            Map<String, String> aiMessage = new HashMap<>();
+            aiMessage.put("role", "ai");
+            aiMessage.put("text", aiQuestion);
+            aiMessage.put("textVi", aiQuestionVi);
+            conversationHistory.add(aiMessage);
+
+            result.put("conversationHistory", conversationHistory);
+            result.put("startingSuggestions", null);
+            result.put("aiQuestion", aiQuestion);
+            result.put("aiQuestionVi", aiQuestionVi);
+            result.put("audioUrl", audioResult.get("audioData"));
+            result.put("audioFormat", audioResult.get("audioFormat"));
+            
+            logger.debug("Conversation started (AI speaks first): conversationId={}", result.get("conversationId"));
+        }
+
         return result;
     }
 
@@ -1093,6 +1108,125 @@ public class ConversationPracticeService {
         levels.put("N2", "upper-intermediate (complex conversations)");
         levels.put("N1", "advanced (fluent conversations)");
         return levels.getOrDefault(level, "beginner");
+    }
+    
+    /**
+     * Determine if user should speak first based on scenario
+     * Returns true if scenario requires user to initiate (asking for help, making requests, etc.)
+     */
+    private boolean shouldUserSpeakFirst(String originalScenario, String normalizedScenario) {
+        String lowerScenario = originalScenario.toLowerCase();
+        
+        // Keywords indicating user needs to initiate conversation
+        String[] userInitiatesKeywords = {
+            "hỏi", "hoi", "nhờ", "nho", "giúp", "giup",
+            "mất", "mat", "bị", "bi", "cần", "can",
+            "muốn", "muon", "xin", "gọi", "goi",
+            "rơi", "roi", "đánh", "danh", "thất lạc", "that lac"
+        };
+        
+        for (String keyword : userInitiatesKeywords) {
+            if (lowerScenario.contains(keyword)) {
+                return true; // User should speak first
+            }
+        }
+        
+        // Check for detailed scenarios (long descriptions usually require user to initiate)
+        if (isDetailedScenarioDescription(originalScenario)) {
+            return true;
+        }
+        
+        return false; // Default: AI speaks first
+    }
+    
+    /**
+     * Generate starting suggestions for user to initiate conversation
+     * Returns 3 example sentences user can say to start the conversation
+     */
+    private List<String> generateStartingSuggestions(String level, String scenario, String originalScenario) {
+        List<String> suggestions = new ArrayList<>();
+        
+        try {
+            if (geminiService != null && googleCloudEnabled) {
+                String prompt = String.format(
+                    "Bạn là giáo viên tiếng Nhật. Tạo 3 câu mẫu để học viên có thể bắt đầu cuộc trò chuyện.\n\n" +
+                    "**Thông tin:**\n" +
+                    "- Trình độ: %s\n" +
+                    "- Tình huống: %s\n" +
+                    "- Mô tả chi tiết: %s\n\n" +
+                    "Hãy trả về JSON:\n" +
+                    "{\n" +
+                    "  \"suggestions\": [\n" +
+                    "    {\"japanese\": \"câu tiếng Nhật\", \"vietnamese\": \"nghĩa tiếng Việt\", \"difficulty\": \"easy|medium|hard\"},\n" +
+                    "    ...\n" +
+                    "  ]\n" +
+                    "}\n\n" +
+                    "Yêu cầu:\n" +
+                    "- 3 câu phù hợp với trình độ %s\n" +
+                    "- Câu ngắn, thực tế, dễ nói\n" +
+                    "- Từ dễ đến khó: suggestion 1 (easy), 2 (medium), 3 (hard)\n" +
+                    "- Phù hợp với tình huống cụ thể",
+                    level, scenario, originalScenario, level
+                );
+                
+                String response = geminiService.generateContent(prompt);
+                if (response != null) {
+                    try {
+                        com.fasterxml.jackson.databind.JsonNode jsonNode = geminiService.generateContentAsJson(
+                            "Parse this JSON: " + response
+                        );
+                        if (jsonNode != null && jsonNode.has("suggestions")) {
+                            jsonNode.get("suggestions").forEach(node -> {
+                                if (node.has("japanese") && node.has("vietnamese")) {
+                                    String suggestion = node.get("japanese").asText() + " (" + 
+                                                      node.get("vietnamese").asText() + ")";
+                                    suggestions.add(suggestion);
+                                }
+                            });
+                            
+                            if (suggestions.size() >= 3) {
+                                return suggestions.subList(0, 3);
+                            }
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse starting suggestions JSON", e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to generate starting suggestions with Gemini", e);
+        }
+        
+        // Fallback: static suggestions based on scenario and level
+        return getDefaultStartingSuggestions(scenario, level);
+    }
+    
+    /**
+     * Get default starting suggestions (fallback)
+     */
+    private List<String> getDefaultStartingSuggestions(String scenario, String level) {
+        List<String> suggestions = new ArrayList<>();
+        
+        // N5 level suggestions (simple)
+        if ("N5".equals(level)) {
+            suggestions.add("すみません、助けてください。(Xin lỗi, giúp tôi với.)");
+            suggestions.add("ちょっといいですか。(Tôi hỏi chút được không?)");
+            suggestions.add("お願いします。(Làm ơn giúp tôi.)");
+        } 
+        // N4/N3 level
+        else if ("N4".equals(level) || "N3".equals(level)) {
+            suggestions.add("すみません、困っています。手伝ってくれませんか。(Xin lỗi, tôi đang gặp khó khăn. Bạn giúp tôi được không?)");
+            suggestions.add("ちょっと聞きたいことがあるんですが。(Tôi có điều muốn hỏi.)");
+            suggestions.add("お願いがあるんですが、いいですか。(Tôi có việc nhờ, được không?)");
+        }
+        // N2/N1 level (advanced)
+        else {
+            suggestions.add("すみませんが、ちょっと困ったことになりまして。(Xin lỗi, tôi đang gặp chút rắc rối.)");
+            suggestions.add("申し訳ございませんが、お願いしたいことがございます。(Xin lỗi, tôi có việc muốn nhờ.)");
+            suggestions.add("恐れ入りますが、ご協力いただけないでしょうか。(Xin lỗi làm phiền, bạn có thể giúp tôi được không?)");
+        }
+        
+        return suggestions;
     }
 
     /**
