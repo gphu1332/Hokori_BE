@@ -28,6 +28,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -145,6 +146,26 @@ public class AdminController {
         }
     }
 
+    @PostMapping("/users")
+    @Operation(summary = "Admin tạo user mới", 
+               description = "Admin tạo user mới với username/password và gán role luôn. Có thể set isActive và isVerified.")
+    public ResponseEntity<ApiResponse<UserSimpleDTO>> createUser(
+            @Valid @RequestBody com.hokori.web.dto.AdminCreateUserRequest request) {
+        try {
+            User newUser = userService.createUserByAdmin(request);
+            User userWithRole = userService.getUserWithRole(newUser.getId())
+                    .orElseThrow(() -> new RuntimeException("User not found after creation"));
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.success("User created successfully", UserSimpleDTO.from(userWithRole)));
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode())
+                    .body(ApiResponse.error("Failed to create user: " + e.getReason()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to create user: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/users/{userId}")
     @Operation(summary = "Get user by ID", description = "Retrieve a specific user by their ID")
     public ResponseEntity<ApiResponse<UserSimpleDTO>> getUserById(@PathVariable Long userId) {
@@ -212,6 +233,42 @@ public class AdminController {
             return ResponseEntity.status(404).body(ApiResponse.error("Failed to update user status: " + e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(ApiResponse.error("Failed to update user status: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/users/{userId}/ban")
+    @Operation(summary = "Ban user account", description = "Ban (deactivate) a user account. User will not be able to login.")
+    public ResponseEntity<ApiResponse<UserDetailDTO>> banUser(@PathVariable Long userId) {
+        try {
+            userService.deactivateUser(userId);
+            
+            // Load user with role for DTO conversion
+            User updated = userService.getUserWithRole(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            return ResponseEntity.ok(ApiResponse.success("User banned successfully", UserDetailDTO.from(updated)));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(ApiResponse.error("Failed to ban user: " + e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Failed to ban user: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/users/{userId}/unban")
+    @Operation(summary = "Unban user account", description = "Unban (activate) a user account. User will be able to login again.")
+    public ResponseEntity<ApiResponse<UserDetailDTO>> unbanUser(@PathVariable Long userId) {
+        try {
+            userService.activateUser(userId);
+            
+            // Load user with role for DTO conversion
+            User updated = userService.getUserWithRole(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            return ResponseEntity.ok(ApiResponse.success("User unbanned successfully", UserDetailDTO.from(updated)));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(ApiResponse.error("Failed to unban user: " + e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Failed to unban user: " + e.getMessage()));
         }
     }
 

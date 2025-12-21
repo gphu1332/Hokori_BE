@@ -1,10 +1,13 @@
 package com.hokori.web.service;
 
 import com.hokori.web.Enum.ApprovalStatus;
+import com.hokori.web.Enum.JLPTLevel;
+import com.hokori.web.dto.AdminCreateUserRequest;
 import com.hokori.web.entity.Role;
 import com.hokori.web.entity.User;
 import com.hokori.web.repository.UserRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,14 +22,17 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final RoleService roleService;
-    private final FileStorageService fileStorageService; // <-- THÊM
+    private final FileStorageService fileStorageService;
+    private final PasswordEncoder passwordEncoder;
 
     public UserService(UserRepository userRepository,
                        RoleService roleService,
-                       FileStorageService fileStorageService) { // <-- THÊM PARAM
+                       FileStorageService fileStorageService,
+                       PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.roleService = roleService;
-        this.fileStorageService = fileStorageService;     // <-- GÁN FIELD
+        this.fileStorageService = fileStorageService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /* ===== READ ===== */
@@ -91,6 +97,78 @@ public class UserService {
             Role defaultRole = roleService.getDefaultRole();
             user.setRole(defaultRole);
         }
+        return userRepository.save(user);
+    }
+    
+    /**
+     * Admin tạo user mới với username/password và gán role
+     * 
+     * Lưu ý: Không có ràng buộc về bio, kể cả khi tạo TEACHER role.
+     * Admin có thể tạo user với bất kỳ role nào mà không cần bio.
+     */
+    public User createUserByAdmin(AdminCreateUserRequest req) {
+        // Kiểm tra username đã tồn tại chưa
+        if (userRepository.findByUsername(req.getUsername()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Username already exists: " + req.getUsername());
+        }
+        
+        // Kiểm tra email đã tồn tại chưa
+        if (userRepository.findByEmail(req.getEmail()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Email already exists: " + req.getEmail());
+        }
+        
+        // Kiểm tra role có tồn tại không (không có ràng buộc bio, kể cả TEACHER)
+        Role role = roleService.getRoleByName(req.getRoleName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                        "Role not found: " + req.getRoleName()));
+        
+        // Tạo user mới
+        User user = new User();
+        user.setUsername(req.getUsername());
+        user.setEmail(req.getEmail());
+        user.setPasswordHash(passwordEncoder.encode(req.getPassword()));
+        
+        // Set display name
+        if (req.getDisplayName() != null && !req.getDisplayName().trim().isEmpty()) {
+            user.setDisplayName(req.getDisplayName().trim());
+        } else {
+            user.setDisplayName(req.getUsername());
+        }
+        
+        // Set firstName và lastName nếu có
+        if (req.getFirstName() != null) {
+            user.setFirstName(req.getFirstName());
+        }
+        if (req.getLastName() != null) {
+            user.setLastName(req.getLastName());
+        }
+        
+        // Set Firebase UID (tạo fake UID cho username/password account)
+        String firebaseUid = "username_" + req.getUsername() + "_" + System.currentTimeMillis();
+        user.setFirebaseUid(firebaseUid);
+        
+        // Set JLPT level
+        if (req.getCurrentJlptLevel() != null && !req.getCurrentJlptLevel().trim().isEmpty()) {
+            try {
+                user.setCurrentJlptLevel(JLPTLevel.valueOf(req.getCurrentJlptLevel().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                // Invalid JLPT level, use default
+                user.setCurrentJlptLevel(JLPTLevel.N5);
+            }
+        } else {
+            user.setCurrentJlptLevel(JLPTLevel.N5); // Default
+        }
+        
+        // Set status
+        user.setIsActive(req.getIsActive() != null ? req.getIsActive() : true);
+        user.setIsVerified(req.getIsVerified() != null ? req.getIsVerified() : false);
+        
+        // Gán role
+        user.setRole(role);
+        
+        // Save và return
         return userRepository.save(user);
     }
 
