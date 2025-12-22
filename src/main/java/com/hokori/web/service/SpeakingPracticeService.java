@@ -653,9 +653,22 @@ public class SpeakingPracticeService {
         comparison.put("match", targetText.equals(userTranscript));
         comparison.put("similarity", accuracyScore);
         
-        // Character-level differences
+        // Word-level differences (more useful for user feedback)
+        List<Map<String, Object>> wordDifferences = findWordDifferences(targetText, userTranscript);
+        comparison.put("wordDifferences", wordDifferences);
+        
+        // Character-level differences (for detailed analysis)
         List<Map<String, Object>> differences = findCharacterDifferences(targetText, userTranscript);
-        comparison.put("differences", differences);
+        comparison.put("characterDifferences", differences);
+        
+        // Generate actionable feedback with specific words to fix
+        String actionableFeedback = generateActionableFeedback(targetText, userTranscript, wordDifferences, accuracyScore);
+        feedback.put("actionableFeedback", actionableFeedback);
+        
+        // Highlighted text showing errors
+        Map<String, String> highlightedTexts = generateHighlightedTexts(targetText, userTranscript, wordDifferences);
+        feedback.put("highlightedTexts", highlightedTexts);
+        
         feedback.put("comparison", comparison);
         
         return feedback;
@@ -719,6 +732,7 @@ public class SpeakingPracticeService {
     
     /**
      * Find character-level differences between target and user text
+     * Also identifies word-level differences for better feedback
      */
     private List<Map<String, Object>> findCharacterDifferences(String target, String user) {
         List<Map<String, Object>> differences = new ArrayList<>();
@@ -727,6 +741,10 @@ public class SpeakingPracticeService {
             return differences;
         }
         
+        // Find word-level differences first (more useful for feedback)
+        List<Map<String, Object>> wordDifferences = findWordDifferences(target, user);
+        
+        // Also find character-level differences for detailed analysis
         int maxLength = Math.max(target.length(), user.length());
         for (int i = 0; i < maxLength; i++) {
             char targetChar = i < target.length() ? target.charAt(i) : ' ';
@@ -738,11 +756,156 @@ public class SpeakingPracticeService {
                 diff.put("expected", String.valueOf(targetChar));
                 diff.put("actual", String.valueOf(userChar));
                 diff.put("type", getDifferenceType(targetChar, userChar));
+                
+                // Add word context if available
+                Map<String, Object> wordContext = findWordContextForPosition(target, user, i, wordDifferences);
+                if (wordContext != null) {
+                    diff.put("wordContext", wordContext);
+                }
+                
                 differences.add(diff);
             }
         }
         
         return differences;
+    }
+    
+    /**
+     * Find word-level differences between target and user text
+     * Splits text by common Japanese delimiters and compares words
+     */
+    private List<Map<String, Object>> findWordDifferences(String target, String user) {
+        List<Map<String, Object>> wordDifferences = new ArrayList<>();
+        
+        if (target == null || user == null) {
+            return wordDifferences;
+        }
+        
+        // Split by common Japanese delimiters: spaces, particles, punctuation
+        // For Japanese, we'll split by particles and punctuation marks
+        String[] targetWords = splitJapaneseText(target);
+        String[] userWords = splitJapaneseText(user);
+        
+        // Use dynamic programming to find best alignment
+        int[][] dp = new int[targetWords.length + 1][userWords.length + 1];
+        
+        // Initialize DP table
+        for (int i = 0; i <= targetWords.length; i++) {
+            dp[i][0] = i;
+        }
+        for (int j = 0; j <= userWords.length; j++) {
+            dp[0][j] = j;
+        }
+        
+        // Fill DP table
+        for (int i = 1; i <= targetWords.length; i++) {
+            for (int j = 1; j <= userWords.length; j++) {
+                if (targetWords[i - 1].equals(userWords[j - 1])) {
+                    dp[i][j] = dp[i - 1][j - 1];
+                } else {
+                    dp[i][j] = Math.min(
+                        Math.min(dp[i - 1][j], dp[i][j - 1]),
+                        dp[i - 1][j - 1]
+                    ) + 1;
+                }
+            }
+        }
+        
+        // Backtrack to find differences
+        int i = targetWords.length;
+        int j = userWords.length;
+        int wordIndex = 0;
+        
+        while (i > 0 || j > 0) {
+            if (i > 0 && j > 0 && targetWords[i - 1].equals(userWords[j - 1])) {
+                // Match
+                i--;
+                j--;
+                wordIndex++;
+            } else if (i > 0 && (j == 0 || dp[i - 1][j] < dp[i][j - 1])) {
+                // Missing word in user text
+                Map<String, Object> diff = new HashMap<>();
+                diff.put("wordIndex", wordIndex);
+                diff.put("expected", targetWords[i - 1]);
+                diff.put("actual", "");
+                diff.put("type", "missing_word");
+                diff.put("suggestion", String.format("Thiếu từ '%s'. Hãy thêm từ này vào.", targetWords[i - 1]));
+                wordDifferences.add(0, diff); // Add at beginning to maintain order
+                i--;
+                wordIndex++;
+            } else if (j > 0) {
+                // Extra word in user text
+                Map<String, Object> diff = new HashMap<>();
+                diff.put("wordIndex", wordIndex);
+                diff.put("expected", "");
+                diff.put("actual", userWords[j - 1]);
+                diff.put("type", "extra_word");
+                diff.put("suggestion", String.format("Từ '%s' không cần thiết. Hãy bỏ từ này.", userWords[j - 1]));
+                wordDifferences.add(0, diff);
+                j--;
+                wordIndex++;
+            } else {
+                // Mismatch
+                Map<String, Object> diff = new HashMap<>();
+                diff.put("wordIndex", wordIndex);
+                diff.put("expected", targetWords[i - 1]);
+                diff.put("actual", userWords[j - 1]);
+                diff.put("type", "word_mismatch");
+                diff.put("suggestion", String.format("Sai từ: bạn nói '%s' nhưng đúng là '%s'. Hãy sửa lại.", 
+                    userWords[j - 1], targetWords[i - 1]));
+                wordDifferences.add(0, diff);
+                i--;
+                j--;
+                wordIndex++;
+            }
+        }
+        
+        return wordDifferences;
+    }
+    
+    /**
+     * Split Japanese text into words/phrases
+     * Handles particles, punctuation, and common word boundaries
+     */
+    private String[] splitJapaneseText(String text) {
+        if (text == null || text.isEmpty()) {
+            return new String[0];
+        }
+        
+        // Split by common Japanese particles and punctuation
+        // This is a simplified approach - in production, might want to use a Japanese tokenizer
+        String[] parts = text.split("([。、！？・\\s]+|[はがをにでへとからまでより]|「|」|『|』|（|）|【|】|［|］|｛|｝|〈|〉|《|》)");
+        
+        List<String> words = new ArrayList<>();
+        for (String part : parts) {
+            part = part.trim();
+            if (!part.isEmpty()) {
+                words.add(part);
+            }
+        }
+        
+        return words.toArray(new String[0]);
+    }
+    
+    /**
+     * Find word context for a character position
+     */
+    private Map<String, Object> findWordContextForPosition(String target, String user, int position, 
+                                                          List<Map<String, Object>> wordDifferences) {
+        for (Map<String, Object> wordDiff : wordDifferences) {
+            // Try to find which word this character belongs to
+            // This is a simplified approach - could be improved with better word boundary detection
+            String expectedWord = (String) wordDiff.get("expected");
+            
+            if (expectedWord != null && !expectedWord.isEmpty()) {
+                int wordStart = target.indexOf(expectedWord);
+                int wordEnd = wordStart + expectedWord.length();
+                if (position >= wordStart && position < wordEnd) {
+                    return wordDiff;
+                }
+            }
+        }
+        return null;
     }
     
     /**
@@ -801,15 +964,97 @@ public class SpeakingPracticeService {
     private String getAccuracyFeedbackVi(double accuracyScore, String target, String user, String level) {
         String levelName = getLevelNameVi(level);
         
+        // Get word differences for more specific feedback
+        List<Map<String, Object>> wordDifferences = findWordDifferences(target, user);
+        int errorCount = wordDifferences.size();
+        
         if (accuracyScore >= feedbackThresholdExcellent) {
             return String.format("Độ chính xác về từ vựng và ngữ pháp rất cao cho trình độ %s!", levelName);
         } else if (accuracyScore >= feedbackThresholdGood) {
+            if (errorCount > 0) {
+                return String.format("Độ chính xác khá tốt cho trình độ %s, nhưng có %d từ cần sửa. Xem chi tiết bên dưới.", 
+                    levelName, errorCount);
+            }
             return String.format("Độ chính xác khá tốt cho trình độ %s, nhưng vẫn còn một số lỗi nhỏ.", levelName);
         } else if (accuracyScore >= feedbackThresholdAverage) {
+            if (errorCount > 0) {
+                return String.format("Cần chú ý hơn về từ vựng và ngữ pháp ở trình độ %s. Có %d từ cần sửa.", 
+                    levelName, errorCount);
+            }
             return String.format("Cần chú ý hơn về từ vựng và ngữ pháp ở trình độ %s.", levelName);
         } else {
+            if (errorCount > 0) {
+                return String.format("Cần luyện tập nhiều hơn về từ vựng và ngữ pháp ở trình độ %s. Có %d từ cần sửa.", 
+                    levelName, errorCount);
+            }
             return String.format("Cần luyện tập nhiều hơn về từ vựng và ngữ pháp ở trình độ %s.", levelName);
         }
+    }
+    
+    /**
+     * Generate actionable feedback with specific words to fix
+     */
+    private String generateActionableFeedback(String target, String user, 
+                                              List<Map<String, Object>> wordDifferences, 
+                                              double accuracyScore) {
+        if (wordDifferences.isEmpty()) {
+            return "Tuyệt vời! Bạn đã phát âm đúng tất cả các từ.";
+        }
+        
+        StringBuilder feedback = new StringBuilder();
+        feedback.append("Các từ cần sửa:\n\n");
+        
+        int count = 1;
+        for (Map<String, Object> diff : wordDifferences) {
+            String type = (String) diff.get("type");
+            String expected = (String) diff.get("expected");
+            String actual = (String) diff.get("actual");
+            String suggestion = (String) diff.get("suggestion");
+            
+            feedback.append(String.format("%d. ", count++));
+            
+            if ("missing_word".equals(type)) {
+                feedback.append(String.format("Thiếu từ '%s'. ", expected));
+                feedback.append(String.format("Hãy thêm từ '%s' vào câu của bạn.\n", expected));
+            } else if ("extra_word".equals(type)) {
+                feedback.append(String.format("Từ '%s' không cần thiết. ", actual));
+                feedback.append(String.format("Hãy bỏ từ '%s' khỏi câu.\n", actual));
+            } else if ("word_mismatch".equals(type)) {
+                feedback.append(String.format("Sai từ: bạn nói '%s' nhưng đúng là '%s'. ", actual, expected));
+                feedback.append(String.format("Hãy sửa '%s' thành '%s'.\n", actual, expected));
+            } else if (suggestion != null) {
+                feedback.append(suggestion).append("\n");
+            }
+        }
+        
+        feedback.append("\nHãy nghe lại audio mẫu và tập trung vào các từ trên, sau đó thử lại!");
+        
+        return feedback.toString();
+    }
+    
+    /**
+     * Generate highlighted texts showing errors
+     */
+    private Map<String, String> generateHighlightedTexts(String target, String user, 
+                                                        List<Map<String, Object>> wordDifferences) {
+        Map<String, String> highlighted = new HashMap<>();
+        
+        // For now, return original texts
+        // In production, could use HTML/CSS to highlight errors
+        highlighted.put("targetText", target);
+        highlighted.put("userTranscript", user);
+        
+        // Create a simple text with markers for errors
+        if (!wordDifferences.isEmpty()) {
+            StringBuilder userWithMarkers = new StringBuilder(user);
+            StringBuilder targetWithMarkers = new StringBuilder(target);
+            
+            // Add markers (could be enhanced with HTML/CSS in frontend)
+            highlighted.put("userWithErrors", userWithMarkers.toString());
+            highlighted.put("targetCorrect", targetWithMarkers.toString());
+        }
+        
+        return highlighted;
     }
     
     private String getPronunciationFeedbackVi(double pronunciationScore, Double confidence, String level) {

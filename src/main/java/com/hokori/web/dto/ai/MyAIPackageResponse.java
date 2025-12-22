@@ -34,5 +34,9 @@ public class MyAIPackageResponse {
     private Integer usedRequests;
     private Integer remainingRequests;
     private Boolean hasQuota;  // Whether user has available quota to use AI features
+    
+    // Package type information
+    private Boolean isFreeTier;  // true if user is using free tier (50 requests/month), false if paid package
+    private String packageType;  // "FREE_TIER" or "PAID_PACKAGE" or null
 }
 

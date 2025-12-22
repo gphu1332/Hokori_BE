@@ -912,46 +912,63 @@ public class PaymentService {
     
     /**
      * Allocate unified request pool quota for user
-     * If user already has an active package, ADD requests to existing quota
-     * Otherwise, RESET quota to new package value
+     * Logic:
+     * - If user has free tier quota (50 requests) → REPLACE with package quota (reset total to package value, keep used count)
+     * - If user has active paid package (and not free tier) → ADD requests to existing quota
+     * - If user has no quota → CREATE new quota with package value
      */
     private void allocateUnifiedQuota(Long userId, Integer totalRequests) {
         var existingQuota = aiQuotaRepo.findByUser_Id(userId);
         
         if (existingQuota.isPresent()) {
             var quotaEntity = existingQuota.get();
+            Integer currentTotal = quotaEntity.getTotalRequests();
+            Integer currentUsed = quotaEntity.getUsedRequests() != null ? quotaEntity.getUsedRequests() : 0;
             
-            // Check if user has active paid package
-            var purchaseOpt = aiPackagePurchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
-            if (purchaseOpt.isPresent() && purchaseOpt.get().getPaymentStatus() == PaymentStatus.PAID) {
-                // User đang có package active → ADD thêm requests (không reset)
-                Integer currentTotal = quotaEntity.getTotalRequests();
-                Integer currentUsed = quotaEntity.getUsedRequests() != null ? quotaEntity.getUsedRequests() : 0;
-                
-                if (currentTotal != null && totalRequests != null) {
-                    // Add new requests to existing quota
-                    Integer newTotal = currentTotal + totalRequests;
-                    quotaEntity.setTotalRequests(newTotal);
-                    quotaEntity.setRemainingRequests(Math.max(0, newTotal - currentUsed));
-                    log.info("Added {} requests to existing quota for user {}: {} -> {} (used: {})", 
-                            totalRequests, userId, currentTotal, newTotal, currentUsed);
-                } else if (currentTotal == null && totalRequests != null) {
-                    // Current is unlimited, new is limited → Keep unlimited
-                    quotaEntity.setTotalRequests(null);
-                    quotaEntity.setRemainingRequests(null);
-                    log.info("User {} has unlimited quota, keeping unlimited after adding package", userId);
-                } else {
-                    // Both unlimited or other cases → Reset
-                    quotaEntity.initializeQuota(totalRequests);
-                    log.info("Reset quota for user {} to {}", userId, totalRequests);
-                }
-            } else {
-                // User không có package active → RESET về package mới
+            // Check if this is free tier quota (50 requests)
+            int freeTierLimit = 50;
+            boolean isFreeTier = currentTotal != null && currentTotal == freeTierLimit;
+            
+            if (isFreeTier) {
+                // User đang có free tier quota → REPLACE với package quota
+                // Reset về package value và reset used count về 0
+                // User gets full package quota (fresh start with paid package)
                 quotaEntity.initializeQuota(totalRequests);
-                log.info("Reset quota for user {} (no active package) to {}", userId, totalRequests);
+                aiQuotaRepo.save(quotaEntity);
+                log.info("Replaced free tier quota with package quota for user {}: freeTier={} (used {}), package={}, reset to full quota", 
+                        userId, currentTotal, currentUsed, totalRequests);
+            } else {
+                // User không có free tier → check if has active paid package
+                var purchaseOpt = aiPackagePurchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
+                boolean hasActivePaidPackage = purchaseOpt.isPresent() && purchaseOpt.get().getPaymentStatus() == PaymentStatus.PAID;
+                
+                if (hasActivePaidPackage) {
+                    // User đang có package active → ADD thêm requests (không reset)
+                    if (currentTotal != null && totalRequests != null) {
+                        // Add new requests to existing quota
+                        Integer newTotal = currentTotal + totalRequests;
+                        quotaEntity.setTotalRequests(newTotal);
+                        quotaEntity.setRemainingRequests(Math.max(0, newTotal - currentUsed));
+                        log.info("Added {} requests to existing quota for user {}: {} -> {} (used: {})", 
+                                totalRequests, userId, currentTotal, newTotal, currentUsed);
+                    } else if (currentTotal == null && totalRequests != null) {
+                        // Current is unlimited, new is limited → Keep unlimited
+                        quotaEntity.setTotalRequests(null);
+                        quotaEntity.setRemainingRequests(null);
+                        log.info("User {} has unlimited quota, keeping unlimited after adding package", userId);
+                    } else {
+                        // Both unlimited or other cases → Reset
+                        quotaEntity.initializeQuota(totalRequests);
+                        log.info("Reset quota for user {} to {}", userId, totalRequests);
+                    }
+                    aiQuotaRepo.save(quotaEntity);
+                } else {
+                    // User không có package active và không phải free tier → RESET về package mới
+                    quotaEntity.initializeQuota(totalRequests);
+                    aiQuotaRepo.save(quotaEntity);
+                    log.info("Reset quota for user {} (no active package) to {}", userId, totalRequests);
+                }
             }
-            
-            aiQuotaRepo.save(quotaEntity);
         } else {
             // Create new unified quota
             var quotaEntity = new AIQuota();

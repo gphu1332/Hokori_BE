@@ -60,15 +60,25 @@ public class AIPackageService {
         Integer remainingRequests = quota != null ? quota.getRemainingRequests() : null;
         Boolean hasQuota = quota != null ? quota.hasQuota() : true; // No quota record = unlimited
         
+        // Detect free tier:
+        // - hasPackage = false (no paid package)
+        // - AND (totalRequests = 50 OR no quota record yet - will get free tier on first use)
+        int freeTierLimit = 50;
+        boolean isFreeTier = purchaseOpt.isEmpty() && 
+                             (totalRequests == null || totalRequests == freeTierLimit);
+        
         if (purchaseOpt.isEmpty()) {
+            // User doesn't have paid package - either free tier or no quota yet
             return MyAIPackageResponse.builder()
                     .hasPackage(false)
                     .isActive(false)
                     .isExpired(false)
-                    .totalRequests(totalRequests)
+                    .totalRequests(totalRequests != null ? totalRequests : freeTierLimit) // Show free tier limit if no quota yet
                     .usedRequests(usedRequests)
-                    .remainingRequests(remainingRequests)
+                    .remainingRequests(remainingRequests != null ? remainingRequests : freeTierLimit) // Show free tier limit if no quota yet
                     .hasQuota(hasQuota)
+                    .isFreeTier(isFreeTier)
+                    .packageType(isFreeTier ? "FREE_TIER" : null)
                     .build();
         }
 
@@ -90,6 +100,8 @@ public class AIPackageService {
                 .usedRequests(usedRequests)
                 .remainingRequests(remainingRequests)
                 .hasQuota(hasQuota)
+                .isFreeTier(false)  // Paid package, not free tier
+                .packageType("PAID_PACKAGE")
                 .build();
     }
 
