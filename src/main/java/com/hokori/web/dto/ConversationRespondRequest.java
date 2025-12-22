@@ -29,8 +29,8 @@ public class ConversationRespondRequest {
     private List<Map<String, String>> conversationHistory; // Full history from FE
     
     @NotBlank(message = "Audio data is required")
-    @Size(max = 10485760, message = "Audio data must not exceed 10MB")
-    @Schema(description = "Base64 encoded audio of user's response", 
+    @Size(max = 1400000, message = "Audio data must not exceed 1.3MB base64 (supports up to 60 seconds of audio)") // ~1.3MB base64 ≈ 1MB decoded (supports up to 60 seconds)
+    @Schema(description = "Base64 encoded audio of user's response (max 1.3MB base64 = ~1MB decoded = ~60 seconds). Note: Audio > 60s will be rejected.", 
             example = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=", 
             required = true)
     private String audioData; // Base64 encoded audio

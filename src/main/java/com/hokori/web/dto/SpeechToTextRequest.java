@@ -8,8 +8,8 @@ import jakarta.validation.constraints.Size;
 public class SpeechToTextRequest {
     
     @NotBlank(message = "Audio data is required")
-    @Size(max = 10485760, message = "Audio data must not exceed 10MB") // 10MB limit
-    @Schema(description = "Base64 encoded audio data",
+    @Size(max = 1400000, message = "Audio data must not exceed 1.3MB base64 (supports up to 60 seconds of audio)") // ~1.3MB base64 ≈ 1MB decoded (supports up to 60 seconds)
+    @Schema(description = "Base64 encoded audio data (max 1.3MB base64 = ~1MB decoded = ~60 seconds). Note: Audio > 60s will be rejected.",
             example = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
             required = true)
     private String audioData; // Base64 encoded audio

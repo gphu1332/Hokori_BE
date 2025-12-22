@@ -7,6 +7,36 @@ import jakarta.validation.constraints.Size;
 /**
  * Request DTO for Kaiwa (Conversation) Practice
  * User provides target text and their recorded audio
+ * 
+ * <h3>Business Rules & Limits:</h3>
+ * <ul>
+ *   <li><b>Target Text:</b> Max 5000 characters (Japanese text to practice)</li>
+ *   <li><b>Audio Data:</b> Max 1.3MB base64 string (~1MB decoded file, ~60 seconds duration)</li>
+ *   <li><b>Audio Format:</b> wav, mp3, flac, ogg, webm (auto-detected from magic bytes)</li>
+ *   <li><b>Transcript:</b> Auto-generated from audio via Google Cloud Speech-to-Text API
+ *       <ul>
+ *         <li>Typical: 150-200 characters for 60 seconds of speech</li>
+ *         <li>Maximum: ~1000 characters if speaking very fast</li>
+ *         <li>Validation: Transcript length is validated (max 5000 chars) after STT</li>
+ *       </ul>
+ *   </li>
+ *   <li><b>Google Cloud Limits:</b>
+ *       <ul>
+ *         <li>File size: 10MB decoded (13MB base64) for long-running recognition</li>
+ *         <li>Duration: 60 seconds maximum (Google Cloud synchronous API limit)</li>
+ *         <li>Note: Audio > 60s will be rejected. User should record shorter audio or split into multiple recordings.</li>
+ *         <li>Backend validates both before processing</li>
+ *       </ul>
+ *   </li>
+ * </ul>
+ * 
+ * <h3>Validation Flow:</h3>
+ * <ol>
+ *   <li>DTO validation: Base64 string length ≤ 13MB</li>
+ *   <li>Service validation: Decoded file size ≤ 10MB</li>
+ *   <li>Service validation: Estimated duration ≤ 60 seconds</li>
+ *   <li>After STT: Transcript length ≤ 5000 characters</li>
+ * </ol>
  */
 @Schema(description = "Request for practicing Japanese conversation (Kaiwa)")
 public class KaiwaPracticeRequest {
@@ -19,8 +49,8 @@ public class KaiwaPracticeRequest {
     private String targetText; // The Japanese text user should practice
     
     @NotBlank(message = "Audio data is required")
-    @Size(max = 10485760, message = "Audio data must not exceed 10MB") // 10MB limit
-    @Schema(description = "Base64 encoded audio of user's pronunciation",
+    @Size(max = 1400000, message = "Audio data must not exceed 1.3MB base64 (supports up to 60 seconds of audio)") // ~1.3MB base64 ≈ 1MB decoded (supports up to 60 seconds)
+    @Schema(description = "Base64 encoded audio of user's pronunciation (max 1.3MB base64 = ~1MB decoded = ~60 seconds)",
             example = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
             required = true)
     private String audioData; // Base64 encoded audio of user's pronunciation

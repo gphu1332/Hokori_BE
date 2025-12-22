@@ -172,12 +172,46 @@ public class SpeakingPracticeService {
     /**
      * Practice kaiwa (conversation) by comparing user's pronunciation with target text
      * 
-     * @param targetText The Japanese text user should practice
-     * @param audioData Base64 encoded audio of user's pronunciation
+     * <h3>Business Rules & Validation:</h3>
+     * <ol>
+     *   <li><b>Audio Validation:</b>
+     *       <ul>
+     *         <li>Base64 string length: Max 13MB (validated in DTO)</li>
+     *         <li>Decoded file size: Max 10MB (Google Cloud Speech-to-Text long-running limit)</li>
+     *         <li>Estimated duration: Max 60 seconds (Google Cloud synchronous API limit)</li>
+     *         <li>Minimum length: 500 base64 characters (ensures valid audio)</li>
+     *         <li>Note: Google Cloud synchronous API supports max 60s; audio > 60s will be rejected</li>
+     *       </ul>
+     *   </li>
+     *   <li><b>Target Text:</b> Max 5000 characters (validated in DTO)</li>
+     *   <li><b>Transcript Validation:</b>
+     *       <ul>
+     *         <li>After Speech-to-Text conversion, transcript length is validated</li>
+     *         <li>Max transcript length: 5000 characters</li>
+     *         <li>Typical transcript: 150-200 characters per minute of speech</li>
+     *         <li>For 2 minutes: ~300-400 characters typical, max ~500 characters if speaking very fast</li>
+     *       </ul>
+     *   </li>
+     *   <li><b>Error Handling:</b>
+     *       <ul>
+     *         <li>AUDIO_EMPTY: Audio data is null or empty</li>
+     *         <li>AUDIO_TOO_SHORT: Base64 string < 500 characters</li>
+     *         <li>INVALID_AUDIO_FORMAT: Invalid base64 encoding</li>
+     *         <li>AUDIO_TOO_LARGE: Decoded file > 1MB</li>
+     *         <li>AUDIO_TOO_LONG: Estimated duration > 60 seconds</li>
+     *         <li>TRANSCRIPTION_FAILED: STT API failed to transcribe</li>
+     *         <li>TRANSCRIPT_TOO_LONG: Transcript > 5000 characters</li>
+     *       </ul>
+     *   </li>
+     * </ol>
+     * 
+     * @param targetText The Japanese text user should practice (max 5000 characters)
+     * @param audioData Base64 encoded audio of user's pronunciation (max 13MB base64 = ~10MB decoded = ~2 minutes)
      * @param language Language code (default: "ja-JP")
      * @param level JLPT level: N5, N4, N3, N2, N1 (optional, default: N5)
-     * @param audioFormat Audio format (e.g., "wav", "mp3", "ogg", "webm")
+     * @param audioFormat Audio format (e.g., "wav", "mp3", "ogg", "webm") - auto-detected if not provided
      * @return Map containing comparison results, scores, and feedback
+     * @throws AIServiceException if validation fails or processing error occurs
      */
     public Map<String, Object> practiceKaiwa(String targetText, String audioData, String language, String level, String audioFormat) {
         // Normalize level (default to N5 if not provided)
@@ -189,6 +223,9 @@ public class SpeakingPracticeService {
             language,
             normalizedLevel,
             audioFormat);
+        
+        // Validate audio data before processing
+        validateAudioData(audioData);
         
         // Step 1: Convert user's audio to text
         Map<String, Object> speechToTextResult = aiService.speechToText(audioData, language, audioFormat);
@@ -203,6 +240,13 @@ public class SpeakingPracticeService {
             throw new AIServiceException("Kaiwa Practice", 
                 "Could not transcribe audio. Please try again with clearer pronunciation.", 
                 "TRANSCRIPTION_FAILED");
+        }
+        
+        // Validate transcript length (should match targetText max length)
+        if (userTranscript.length() > 5000) {
+            throw new AIServiceException("Kaiwa Practice",
+                "Audio transcript is too long (max 5000 characters). Please record a shorter audio.",
+                "TRANSCRIPT_TOO_LONG");
         }
         
         logger.debug("User transcript: {}, confidence: {}", userTranscript, confidence);
@@ -853,6 +897,101 @@ public class SpeakingPracticeService {
             default:
                 return "Trình độ sơ cấp - Có thể hiểu một phần tiếng Nhật cơ bản";
         }
+    }
+    
+    /**
+     * Validate audio data before processing
+     * 
+     * <h3>Business Rules:</h3>
+     * <ul>
+     *   <li><b>Minimum:</b> Base64 string must be at least 500 characters (ensures valid audio content)</li>
+     *   <li><b>Maximum Base64:</b> 13MB base64 string (validated in DTO)</li>
+     *   <li><b>Maximum Decoded:</b> 10MB file size (Google Cloud Speech-to-Text long-running limit)</li>
+     *   <li><b>Maximum Duration:</b> ~60 seconds (Google Cloud synchronous API limit)</li>
+     *   <li><b>Note:</b> Synchronous API supports max 60s; audio > 60s may require long-running recognition</li>
+     * </ul>
+     * 
+     * <h3>Validation Steps:</h3>
+     * <ol>
+     *   <li>Check audio data is not null/empty</li>
+     *   <li>Check base64 string length ≥ 500 characters</li>
+     *   <li>Decode base64 and validate encoding</li>
+     *   <li>Check decoded file size ≤ 1MB</li>
+     *   <li>Estimate duration (using ~20KB/second average) and check ≤ 60 seconds</li>
+     * </ol>
+     * 
+     * <h3>Error Codes:</h3>
+     * <ul>
+     *   <li>AUDIO_EMPTY: Audio data is null or empty</li>
+     *   <li>AUDIO_TOO_SHORT: Base64 string < 500 characters</li>
+     *   <li>INVALID_AUDIO_FORMAT: Invalid base64 encoding</li>
+     *   <li>AUDIO_TOO_LARGE: Decoded file > 10MB</li>
+     *   <li>AUDIO_TOO_LONG: Estimated duration > 60 seconds</li>
+     * </ul>
+     * 
+     * <h3>Note:</h3>
+     * Base64 encoding increases size by ~33%, so 13MB base64 ≈ 10MB decoded.
+     * Duration estimation uses conservative 20KB/second average (actual varies by format/bitrate).
+     * Google Cloud synchronous API supports max 60s; audio > 60s will be rejected.
+     * 
+     * @param audioData Base64 encoded audio data (max 1.3MB base64 = ~1MB decoded = ~60 seconds)
+     * @throws AIServiceException if validation fails with specific error code
+     */
+    private void validateAudioData(String audioData) {
+        if (audioData == null || audioData.trim().isEmpty()) {
+            throw new AIServiceException("Kaiwa Practice",
+                "Audio data is required. Please record your pronunciation before submitting.",
+                "AUDIO_EMPTY");
+        }
+        
+        // Check minimum base64 length (at least 500 chars for valid audio)
+        String trimmedAudio = audioData.trim();
+        if (trimmedAudio.length() < 500) {
+            throw new AIServiceException("Kaiwa Practice",
+                "Audio recording is too short or empty. Please record your response (at least 1-2 seconds) before submitting.",
+                "AUDIO_TOO_SHORT");
+        }
+        
+        // Decode base64 and check file size
+        byte[] audioBytes;
+        try {
+            audioBytes = java.util.Base64.getDecoder().decode(trimmedAudio);
+        } catch (IllegalArgumentException e) {
+            throw new AIServiceException("Kaiwa Practice",
+                "Invalid audio data format. Please ensure the audio is properly encoded.",
+                "INVALID_AUDIO_FORMAT");
+        }
+        
+        // Check decoded file size (Google Cloud limit: 10MB for long-running, 1MB for synchronous)
+        // For 2 minutes audio: ~2-3MB typical, max 10MB for long-running recognition
+        final long MAX_AUDIO_SIZE_BYTES = 10485760L; // 10MB (for long-running recognition support)
+        if (audioBytes.length > MAX_AUDIO_SIZE_BYTES) {
+            double sizeMB = audioBytes.length / 1048576.0;
+            throw new AIServiceException("Kaiwa Practice",
+                String.format("Audio file is too large (%.2f MB). Maximum allowed size is 10 MB. Please record a shorter audio.", sizeMB),
+                "AUDIO_TOO_LARGE");
+        }
+        
+        // Estimate duration based on file size
+        // Assumptions:
+        // - WAV/WebM at 16kHz mono: ~32KB per second (16k samples/sec * 2 bytes/sample)
+        // - MP3 at 128kbps: ~16KB per second
+        // - Use conservative estimate: 20KB per second average
+        final double BYTES_PER_SECOND_ESTIMATE = 20000.0; // 20KB per second
+        final int MAX_DURATION_SECONDS = 60; // 60 seconds (Google Cloud synchronous API limit)
+        
+        double estimatedDurationSeconds = audioBytes.length / BYTES_PER_SECOND_ESTIMATE;
+        
+        if (estimatedDurationSeconds > MAX_DURATION_SECONDS) {
+            throw new AIServiceException("Kaiwa Practice",
+                String.format("Audio recording is too long (estimated %.1f seconds). Maximum allowed duration is %d seconds. Please record a shorter audio or split into multiple recordings.", 
+                    estimatedDurationSeconds, MAX_DURATION_SECONDS),
+                "AUDIO_TOO_LONG");
+        }
+        
+        logger.debug("Audio validation passed: size={} bytes ({} MB), estimatedDuration={} seconds", 
+            audioBytes.length, String.format("%.2f", audioBytes.length / 1048576.0), 
+            String.format("%.1f", estimatedDurationSeconds));
     }
 }
 

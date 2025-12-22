@@ -409,9 +409,19 @@ public class AIController {
     @PostMapping("/kaiwa-practice")
     @Operation(
         summary = "Kaiwa practice",
-        description = "Practice Japanese conversation by comparing pronunciation with target text",
+        description = "Practice Japanese conversation by comparing pronunciation with target text. " +
+                "Business Rules: " +
+                "1) Audio limits: Max 1.3MB base64 (~1MB decoded, ~60 seconds duration). " +
+                "2) Target text: Max 5000 characters (Japanese text to practice). " +
+                "3) Transcript: Auto-generated from audio, typically 150-200 characters for 60 seconds. " +
+                "4) Validation: Audio is validated for size (1MB decoded), duration (60 seconds), and transcript length (5000 chars max). " +
+                "5) Google Cloud: Synchronous API supports max 60s; audio > 60s will be rejected. " +
+                "6) Quota: Uses 1 request from unified AI quota pool per request.",
         requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
-            description = "Target text and user's recorded audio for practice",
+            description = "Target text and user's recorded audio for practice. " +
+                    "Audio must be base64 encoded, max 1.3MB base64 string (~1MB decoded = ~60 seconds). " +
+                    "Target text max 5000 characters. " +
+                    "Note: Google Cloud synchronous API supports max 60s; audio > 60s will be rejected.",
             required = true,
             content = @Content(
                 mediaType = "application/json",

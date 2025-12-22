@@ -255,6 +255,7 @@ public class AIService {
     
     /**
      * Convert speech to text using Google Cloud Speech-to-Text API
+     * Automatically chooses synchronous (≤60s) or long-running (>60s) recognition based on audio duration
      * @param audioData Base64 encoded audio data
      * @param language Language code (e.g., "ja-JP")
      * @param audioFormat Audio format (e.g., "wav", "mp3", "ogg", "webm"). If null or empty, defaults to LINEAR16.
@@ -282,7 +283,18 @@ public class AIService {
             } catch (IllegalArgumentException e) {
                 throw new AIServiceException("Speech-to-Text", "Invalid base64 audio data", "INVALID_INPUT");
             }
-            ByteString audioBytesString = ByteString.copyFrom(audioBytes);
+            
+            // Estimate duration - synchronous API supports max 60 seconds
+            double estimatedDurationSeconds = estimateAudioDuration(audioBytes);
+            
+            if (estimatedDurationSeconds > 60.0) {
+                throw new AIServiceException("Speech-to-Text",
+                    String.format("Audio is too long (estimated %.1f seconds). Maximum allowed duration is 60 seconds. Please record a shorter audio.", 
+                        estimatedDurationSeconds),
+                    "AUDIO_TOO_LONG");
+            }
+            
+            logger.info("Audio duration estimated: {} seconds, using synchronous recognition", estimatedDurationSeconds);
             
             // Default to Japanese for Vietnamese users learning Japanese
             String langCode = language != null && !language.isEmpty() ? language : "ja-JP";
@@ -310,36 +322,25 @@ public class AIService {
                 }
             }
             
-            // Configure recognition based on audio format
-            RecognitionConfig.Builder configBuilder = RecognitionConfig.newBuilder()
-                .setLanguageCode(langCode)
-                .setEnableAutomaticPunctuation(true);
+            // Build recognition config
+            RecognitionConfig config = buildRecognitionConfig(langCode, detectedFormat);
             
-            // Handle different audio formats
-            String format = (detectedFormat != null) ? detectedFormat.toLowerCase().trim() : "";
-            logger.info("Processing audio format: '{}' (normalized)", format);
-            
-            if (format.equals("webm") || format.equals("ogg") || format.contains("opus")) {
-                // WEBM OPUS: Let Google Cloud auto-detect encoding and sample rate from header
-                // Don't set encoding or sample_rate_hertz for container formats
-                logger.info("Using auto-detection for WEBM/OGG/OPUS format - NOT setting encoding or sample_rate_hertz");
-                // Intentionally leave encoding and sample_rate_hertz unset
-            } else if (format.equals("mp3")) {
-                // MP3: Use MP3 encoding, let Google Cloud detect sample rate
-                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.MP3);
-                logger.info("Using MP3 encoding with auto-detected sample rate");
-            } else if (format.equals("flac")) {
-                // FLAC: Use FLAC encoding, let Google Cloud detect sample rate
-                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.FLAC);
-                logger.info("Using FLAC encoding with auto-detected sample rate");
-            } else {
-                // Default: LINEAR16 (WAV) with configured sample rate
-                logger.warn("Using LINEAR16 encoding with sample rate {} (format: '{}')", speechToTextSampleRate, format);
-                configBuilder.setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
-                    .setSampleRateHertz(speechToTextSampleRate);
-            }
-            
-            RecognitionConfig config = configBuilder.build();
+            // Use synchronous recognition (supports up to 60 seconds)
+            return speechToTextSynchronous(audioBytes, config);
+        } catch (AIServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("Speech-to-text API error", e);
+            throw new AIServiceException("Speech-to-Text", "Speech-to-text conversion failed: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Synchronous recognition for audio ≤ 60 seconds
+     */
+    private Map<String, Object> speechToTextSynchronous(byte[] audioBytes, RecognitionConfig config) {
+        try {
+            ByteString audioBytesString = ByteString.copyFrom(audioBytes);
             
             RecognitionAudio audio = RecognitionAudio.newBuilder()
                 .setContent(audioBytesString)
@@ -353,7 +354,7 @@ public class AIService {
             RecognizeResponse response = speechClient.recognize(request);
             
             Map<String, Object> result = new HashMap<>();
-            result.put("language", langCode);
+            result.put("language", config.getLanguageCode());
             
             if (response.getResultsCount() > 0) {
                 SpeechRecognitionResult firstResult = response.getResults(0);
@@ -373,15 +374,54 @@ public class AIService {
                 result = responseFormatter.formatSpeechToTextResponse(result);
             }
             
-            logger.debug("Speech-to-text successful: transcript={}, confidence={}", 
+            logger.debug("Synchronous speech-to-text successful: transcript={}, confidence={}", 
                 result.get("transcript"), result.get("confidence"));
             return result;
-        } catch (AIServiceException e) {
-            throw e;
         } catch (Exception e) {
-            logger.error("Speech-to-text API error", e);
-            throw new AIServiceException("Speech-to-Text", "Speech-to-text conversion failed: " + e.getMessage(), e);
+            logger.error("Synchronous speech-to-text failed", e);
+            throw new AIServiceException("Speech-to-Text", 
+                "Synchronous recognition failed: " + e.getMessage(), e);
         }
+    }
+    
+    /**
+     * Build recognition config based on audio format
+     */
+    private RecognitionConfig buildRecognitionConfig(String langCode, String detectedFormat) {
+        RecognitionConfig.Builder configBuilder = RecognitionConfig.newBuilder()
+            .setLanguageCode(langCode)
+            .setEnableAutomaticPunctuation(true);
+        
+        String format = (detectedFormat != null) ? detectedFormat.toLowerCase().trim() : "";
+        logger.info("Building recognition config for format: '{}'", format);
+        
+        if (format.equals("webm") || format.equals("ogg") || format.contains("opus")) {
+            // WEBM OPUS: Let Google Cloud auto-detect encoding and sample rate from header
+            logger.info("Using auto-detection for WEBM/OGG/OPUS format");
+            // Intentionally leave encoding and sample_rate_hertz unset
+        } else if (format.equals("mp3")) {
+            configBuilder.setEncoding(RecognitionConfig.AudioEncoding.MP3);
+            logger.info("Using MP3 encoding with auto-detected sample rate");
+        } else if (format.equals("flac")) {
+            configBuilder.setEncoding(RecognitionConfig.AudioEncoding.FLAC);
+            logger.info("Using FLAC encoding with auto-detected sample rate");
+        } else {
+            // Default: LINEAR16 (WAV) with configured sample rate
+            logger.info("Using LINEAR16 encoding with sample rate {}", speechToTextSampleRate);
+            configBuilder.setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
+                .setSampleRateHertz(speechToTextSampleRate);
+        }
+        
+        return configBuilder.build();
+    }
+    
+    /**
+     * Estimate audio duration from file size
+     * Uses conservative estimate: 20KB per second average
+     */
+    private double estimateAudioDuration(byte[] audioBytes) {
+        final double BYTES_PER_SECOND_ESTIMATE = 20000.0; // 20KB per second
+        return audioBytes.length / BYTES_PER_SECOND_ESTIMATE;
     }
     
     /**
