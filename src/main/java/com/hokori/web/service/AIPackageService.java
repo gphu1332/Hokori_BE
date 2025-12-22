@@ -51,17 +51,31 @@ public class AIPackageService {
     public MyAIPackageResponse getMyPackage(Long userId) {
         Optional<AIPackagePurchase> purchaseOpt = purchaseRepo.findFirstByUser_IdAndIsActiveTrue(userId);
         
+        // Get quota information
+        Optional<AIQuota> quotaOpt = quotaRepo.findByUser_Id(userId);
+        AIQuota quota = quotaOpt.orElse(null);
+        
+        Integer totalRequests = quota != null ? quota.getTotalRequests() : null;
+        Integer usedRequests = quota != null && quota.getUsedRequests() != null ? quota.getUsedRequests() : 0;
+        Integer remainingRequests = quota != null ? quota.getRemainingRequests() : null;
+        Boolean hasQuota = quota != null ? quota.hasQuota() : true; // No quota record = unlimited
+        
         if (purchaseOpt.isEmpty()) {
             return MyAIPackageResponse.builder()
                     .hasPackage(false)
                     .isActive(false)
                     .isExpired(false)
+                    .totalRequests(totalRequests)
+                    .usedRequests(usedRequests)
+                    .remainingRequests(remainingRequests)
+                    .hasQuota(hasQuota)
                     .build();
         }
 
         AIPackagePurchase purchase = purchaseOpt.get();
         Instant now = Instant.now();
         boolean isExpired = purchase.getExpiresAt() != null && purchase.getExpiresAt().isBefore(now);
+        boolean isActive = purchase.getIsActive() && !isExpired && purchase.getPaymentStatus() == PaymentStatus.PAID;
 
         return MyAIPackageResponse.builder()
                 .hasPackage(true)
@@ -70,8 +84,12 @@ public class AIPackageService {
                 .purchasedAt(purchase.getPurchasedAt())
                 .expiresAt(purchase.getExpiresAt())
                 .paymentStatus(purchase.getPaymentStatus().name())
-                .isActive(purchase.getIsActive() && !isExpired)
+                .isActive(isActive)
                 .isExpired(isExpired)
+                .totalRequests(totalRequests)
+                .usedRequests(usedRequests)
+                .remainingRequests(remainingRequests)
+                .hasQuota(hasQuota)
                 .build();
     }
 
@@ -349,8 +367,13 @@ public class AIPackageService {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
                         "Free tier quota exhausted. Please purchase an AI package to continue using this feature.");
             } else {
+                // User has active package but quota exhausted
+                AIPackagePurchase purchase = purchaseOpt.get();
+                String packageName = purchase.getAiPackage().getName();
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                        "Request quota exhausted. Please upgrade your package.");
+                        String.format("You have used all requests from your %s package (%d/%d requests used). " +
+                                "Please wait for the package to expire or purchase a new package to continue using AI features.",
+                                packageName, quota.getUsedRequests(), quota.getTotalRequests()));
             }
         }
         

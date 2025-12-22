@@ -472,12 +472,26 @@ public class AIController {
         try {
             // Check if user has permission to use AI features
             // MODERATOR: unlimited access
-            // Other users: free tier (10 uses/month) or purchased package
+            // Other users: free tier or purchased package
             if (currentUserService != null && aiPackageService != null) {
                 Long userId = currentUserService.getUserIdOrThrow();
-                if (!aiPackageService.canUseAIService(userId, com.hokori.web.Enum.AIServiceType.KAIWA)) {
-                    return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
-                            .body(ApiResponse.error("You have used all free tier quota (10 uses/month). Please purchase an AI package (Plus or Pro) to continue using this feature."));
+                try {
+                    if (!aiPackageService.canUseAIService(userId, com.hokori.web.Enum.AIServiceType.KAIWA)) {
+                        // Get quota info to provide better error message
+                        var quotaResponse = aiPackageService.getMyQuota(userId);
+                        String errorMessage = "You have used all available AI requests. ";
+                        if (quotaResponse.getRemainingRequests() != null && quotaResponse.getRemainingRequests() == 0) {
+                            errorMessage += String.format("Used %d/%d requests. ", 
+                                quotaResponse.getUsedRequests(), quotaResponse.getTotalRequests());
+                        }
+                        errorMessage += "Please purchase an AI package to continue using this feature.";
+                        return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                                .body(ApiResponse.error(errorMessage));
+                    }
+                } catch (org.springframework.web.server.ResponseStatusException e) {
+                    // Re-throw with better message
+                    return ResponseEntity.status(e.getStatusCode())
+                            .body(ApiResponse.error(e.getReason()));
                 }
             }
             
@@ -866,9 +880,23 @@ public class AIController {
             // Check quota
             if (currentUserService != null && aiPackageService != null) {
                 Long userId = currentUserService.getUserIdOrThrow();
-                if (!aiPackageService.canUseAIService(userId, com.hokori.web.Enum.AIServiceType.CONVERSATION)) {
-                    return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
-                            .body(ApiResponse.error("You have used all free tier quota (5 conversations/month). Please purchase an AI package to continue using this feature."));
+                try {
+                    if (!aiPackageService.canUseAIService(userId, com.hokori.web.Enum.AIServiceType.CONVERSATION)) {
+                        // Get quota info to provide better error message
+                        var quotaResponse = aiPackageService.getMyQuota(userId);
+                        String errorMessage = "You have used all available AI requests. ";
+                        if (quotaResponse.getRemainingRequests() != null && quotaResponse.getRemainingRequests() == 0) {
+                            errorMessage += String.format("Used %d/%d requests. ", 
+                                quotaResponse.getUsedRequests(), quotaResponse.getTotalRequests());
+                        }
+                        errorMessage += "Please purchase an AI package to continue using this feature.";
+                        return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                                .body(ApiResponse.error(errorMessage));
+                    }
+                } catch (org.springframework.web.server.ResponseStatusException e) {
+                    // Re-throw with better message
+                    return ResponseEntity.status(e.getStatusCode())
+                            .body(ApiResponse.error(e.getReason()));
                 }
             }
             

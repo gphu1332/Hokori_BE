@@ -28,5 +28,11 @@ public class MyAIPackageResponse {
     
     private Boolean isActive;
     private Boolean isExpired;
+    
+    // Quota information (to help FE determine if user can use AI features)
+    private Integer totalRequests;
+    private Integer usedRequests;
+    private Integer remainingRequests;
+    private Boolean hasQuota;  // Whether user has available quota to use AI features
 }
 
