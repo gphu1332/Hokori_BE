@@ -22,7 +22,9 @@ public class PaymentResponse {
     PaymentStatus status;
     Long userId;
     Long cartId;
-    List<Long> courseIds;
+    List<Long> courseIds; // Course payments
+    Long aiPackageId; // AI Package payments
+    Long aiPackagePurchaseId; // AI Package Purchase ID
     String paymentLink;
     String payosTransactionCode;
     String payosQrCode;
@@ -41,6 +43,8 @@ public class PaymentResponse {
                 .userId(payment.getUserId())
                 .cartId(payment.getCartId())
                 .courseIds(courseIds)
+                .aiPackageId(payment.getAiPackageId())
+                .aiPackagePurchaseId(payment.getAiPackagePurchaseId())
                 .paymentLink(payment.getPaymentLink())
                 .payosTransactionCode(payment.getPayosTransactionCode())
                 .payosQrCode(payment.getPayosQrCode())

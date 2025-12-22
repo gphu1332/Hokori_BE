@@ -718,6 +718,8 @@ public class PaymentService {
                             .amountCents(payment != null ? payment.getAmountCents() : null)
                             .status(payment != null ? payment.getStatus() : null)
                             .courseIds(Collections.emptyList())
+                            .aiPackageId(payment != null ? payment.getAiPackageId() : null)
+                            .aiPackagePurchaseId(payment != null ? payment.getAiPackagePurchaseId() : null)
                             .build();
                 }
             }
