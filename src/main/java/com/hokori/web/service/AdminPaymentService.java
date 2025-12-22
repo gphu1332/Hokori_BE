@@ -137,12 +137,14 @@ public class AdminPaymentService {
                 totalPendingSales += courseRevenues.size();
                 
                 // Tính tổng admin commission và original course price từ TeacherRevenue
+                // originalCoursePriceCents = tổng số tiền thực tế được trả cho course (teacherRevenue + adminCommission)
+                // Không dùng coursePriceCents vì đó là giá gốc, không phải số tiền thực tế được trả
                 long totalAdminCommissionCents = courseRevenues.stream()
                         .mapToLong(TeacherRevenue::getAdminCommissionCents)
                         .sum();
                 
                 long totalOriginalCoursePriceCents = courseRevenues.stream()
-                        .mapToLong(TeacherRevenue::getCoursePriceCents)
+                        .mapToLong(r -> r.getTeacherRevenueCents() + r.getAdminCommissionCents())
                         .sum();
                 
                 courses.add(CourseRevenueRes.builder()
@@ -243,12 +245,14 @@ public class AdminPaymentService {
             totalPendingRevenueCents += courseRevenueCents;
             
             // Tính tổng admin commission và original course price từ TeacherRevenue
+            // originalCoursePriceCents = tổng số tiền thực tế được trả cho course (teacherRevenue + adminCommission)
+            // Không dùng coursePriceCents vì đó là giá gốc, không phải số tiền thực tế được trả
             long totalAdminCommissionCents = courseRevenues.stream()
                     .mapToLong(TeacherRevenue::getAdminCommissionCents)
                     .sum();
             
             long totalOriginalCoursePriceCents = courseRevenues.stream()
-                    .mapToLong(TeacherRevenue::getCoursePriceCents)
+                    .mapToLong(r -> r.getTeacherRevenueCents() + r.getAdminCommissionCents())
                     .sum();
             
             courses.add(CourseRevenueRes.builder()
