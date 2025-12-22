@@ -16,6 +16,7 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.data.mapping.PropertyReferenceException;
 import jakarta.persistence.EntityNotFoundException;
 import org.hibernate.LazyInitializationException;
 
@@ -233,6 +234,65 @@ public class GlobalExceptionHandler {
         
         logger.warn("MethodArgumentTypeMismatchException: {} = '{}' (expected {})", 
             parameterName, parameterValue, requiredType);
+        
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ResponseEntity<Map<String, Object>> handlePropertyReferenceException(
+            PropertyReferenceException ex, WebRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        
+        String propertyName = ex.getPropertyName();
+        String errorMessage = ex.getMessage();
+        
+        // Try to extract entity name from error message
+        String entityName = "Entity";
+        if (errorMessage != null) {
+            // Error message format: "No property 'propertyName' found for type EntityName"
+            if (errorMessage.contains("for type")) {
+                String[] parts = errorMessage.split("for type");
+                if (parts.length > 1) {
+                    entityName = parts[1].trim();
+                }
+            }
+        }
+        
+        // List of valid sortable fields for common entities
+        Map<String, String[]> validFields = new HashMap<>();
+        validFields.put("Payment", new String[]{"id", "orderCode", "amountCents", "status", "createdAt", "updatedAt", "paidAt", "expiredAt"});
+        validFields.put("Course", new String[]{"id", "title", "slug", "priceCents", "status", "createdAt", "updatedAt", "publishedAt"});
+        validFields.put("User", new String[]{"id", "email", "username", "displayName", "createdAt", "updatedAt"});
+        
+        // Try to match entity name (case-insensitive)
+        String[] validFieldsList = null;
+        for (Map.Entry<String, String[]> entry : validFields.entrySet()) {
+            if (entityName.contains(entry.getKey()) || entry.getKey().equalsIgnoreCase(entityName)) {
+                validFieldsList = entry.getValue();
+                entityName = entry.getKey();
+                break;
+            }
+        }
+        
+        if (validFieldsList == null) {
+            validFieldsList = new String[]{"id", "createdAt"};
+        }
+        
+        response.put("message", String.format(
+            "Invalid sort property '%s' for %s. Property '%s' does not exist.",
+            propertyName, entityName, propertyName));
+        response.put("status", "error");
+        response.put("errorCode", "INVALID_SORT_PROPERTY");
+        response.put("property", propertyName);
+        response.put("entity", entityName);
+        response.put("validSortFields", validFieldsList);
+        response.put("suggestion", String.format(
+            "Valid sort fields for %s: %s. Example: sort=createdAt,desc or sort=id,asc",
+            entityName, String.join(", ", validFieldsList)));
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false));
+        
+        logger.warn("PropertyReferenceException: Invalid property '{}' for {} - {}", propertyName, entityName, errorMessage);
         
         return ResponseEntity.badRequest().body(response);
     }

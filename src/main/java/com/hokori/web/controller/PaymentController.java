@@ -93,11 +93,14 @@ public class PaymentController {
     
     @Operation(
             summary = "Lịch sử thanh toán của tôi",
-            description = "Lấy danh sách các payment của user hiện tại, sắp xếp theo thời gian tạo mới nhất"
+            description = "Lấy danh sách các payment của user hiện tại, sắp xếp theo thời gian tạo mới nhất. " +
+                    "Valid sort fields: id, orderCode, amountCents, status, createdAt, updatedAt, paidAt, expiredAt. " +
+                    "Example: sort=createdAt,desc"
     )
     @GetMapping("/my-payments")
     public ResponseEntity<ApiResponse<Page<PaymentResponse>>> listMyPayments(
-            @Parameter(description = "Phân trang: page, size, sort (ví dụ: sort=createdAt,desc)")
+            @Parameter(description = "Phân trang: page, size, sort (ví dụ: sort=createdAt,desc). " +
+                    "Valid sort fields: id, orderCode, amountCents, status, createdAt, updatedAt, paidAt, expiredAt")
             Pageable pageable) {
         Long userId = currentUserService.getUserIdOrThrow();
         Page<PaymentResponse> payments = paymentService.listMyPayments(userId, pageable);
