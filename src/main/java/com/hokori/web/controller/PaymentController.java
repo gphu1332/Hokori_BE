@@ -14,7 +14,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -101,8 +103,48 @@ public class PaymentController {
     public ResponseEntity<ApiResponse<Page<PaymentResponse>>> listMyPayments(
             @Parameter(description = "Phân trang: page, size, sort (ví dụ: sort=createdAt,desc). " +
                     "Valid sort fields: id, orderCode, amountCents, status, createdAt, updatedAt, paidAt, expiredAt")
-            Pageable pageable) {
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort) {
         Long userId = currentUserService.getUserIdOrThrow();
+        
+        // Valid sort fields for Payment entity
+        String[] validSortFields = {"id", "orderCode", "amountCents", "status", "createdAt", "updatedAt", "paidAt", "expiredAt"};
+        
+        // Validate and build Pageable
+        Pageable pageable;
+        if (sort != null && !sort.isEmpty()) {
+            // Parse sort parameter (format: "property,direction" or just "property")
+            String[] sortParts = sort.split(",");
+            String sortProperty = sortParts[0].trim();
+            Sort.Direction direction = Sort.Direction.DESC; // Default to DESC
+            
+            if (sortParts.length > 1) {
+                String dirStr = sortParts[1].trim().toUpperCase();
+                direction = "ASC".equals(dirStr) ? Sort.Direction.ASC : Sort.Direction.DESC;
+            }
+            
+            // Validate sort property
+            boolean isValid = false;
+            for (String validField : validSortFields) {
+                if (validField.equalsIgnoreCase(sortProperty)) {
+                    isValid = true;
+                    sortProperty = validField; // Use exact field name
+                    break;
+                }
+            }
+            
+            if (isValid) {
+                pageable = PageRequest.of(page, size, Sort.by(direction, sortProperty));
+            } else {
+                // Invalid sort property, use default sort (createdAt DESC)
+                pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+            }
+        } else {
+            // No sort specified, use default sort (createdAt DESC)
+            pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        }
+        
         Page<PaymentResponse> payments = paymentService.listMyPayments(userId, pageable);
         return ResponseEntity.ok(ApiResponse.success("Payment history retrieved", payments));
     }
