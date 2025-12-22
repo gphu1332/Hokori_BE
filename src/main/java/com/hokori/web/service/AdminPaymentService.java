@@ -18,6 +18,7 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.time.Instant;
 
 /**
  * Service để admin quản lý thanh toán cho teachers
@@ -468,6 +469,162 @@ public class AdminPaymentService {
                 .paidRevenueCents(paidRevenueCents)
                 .totalRevenueCents(totalRevenueCents)
                 .build();
+    }
+    
+    /**
+     * Lấy lịch sử các lần đã chuyển tiền trong tháng
+     * Group by teacher và payoutDate để hiển thị từng lần chuyển tiền
+     */
+    public List<AdminPayoutHistoryRes> getPayoutHistory(String yearMonth) {
+        // Validate yearMonth format
+        try {
+            YearMonth.parse(yearMonth, YEAR_MONTH_FORMATTER);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Invalid yearMonth format. Expected format: YYYY-MM (e.g., 2025-01)");
+        }
+        
+        // Query paid revenue grouped by teacher và payoutDate
+        List<Object[]> groupedPayouts = revenueRepo.findPaidRevenueGroupedByTeacherAndPayoutDate(yearMonth);
+        
+        log.info("🔍 Querying payout history for yearMonth: {}", yearMonth);
+        log.info("📊 Found {} payout records in month {}", groupedPayouts.size(), yearMonth);
+        
+        List<AdminPayoutHistoryRes> historyList = new ArrayList<>();
+        
+        for (Object[] group : groupedPayouts) {
+            Long teacherId = (Long) group[0];
+            Instant payoutDate = (Instant) group[1];
+            Long payoutByUserId = (Long) group[2];
+            String groupYearMonth = (String) group[3];
+            String payoutNote = (String) group[4];
+            
+            // Load teacher info
+            User teacher = userRepo.findById(teacherId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                            "Teacher not found: " + teacherId));
+            
+            // Load admin info (người đã chuyển tiền)
+            User payoutBy = payoutByUserId != null ? 
+                    userRepo.findById(payoutByUserId).orElse(null) : null;
+            String payoutByUserName = payoutBy != null ? 
+                    (payoutBy.getDisplayName() != null ? payoutBy.getDisplayName() : 
+                     ((payoutBy.getFirstName() != null ? payoutBy.getFirstName() : "") + " " + 
+                      (payoutBy.getLastName() != null ? payoutBy.getLastName() : "")).trim()) : 
+                    "Unknown";
+            
+            // Load tất cả revenue đã được chuyển tiền của teacher này trong tháng
+            List<TeacherRevenue> paidRevenues = revenueRepo
+                    .findByTeacher_IdAndYearMonthAndIsPaidTrueAndPayoutDateIsNotNullOrderByPayoutDateDesc(
+                            teacherId, groupYearMonth);
+            
+            // Filter chỉ những revenue có cùng payoutDate (cùng một lần chuyển tiền)
+            // So sánh payoutDate với độ chính xác đến giây (không so sánh millisecond)
+            List<TeacherRevenue> samePayoutRevenues = paidRevenues.stream()
+                    .filter(r -> r.getPayoutDate() != null && 
+                            r.getPayoutDate().getEpochSecond() == payoutDate.getEpochSecond())
+                    .collect(Collectors.toList());
+            
+            if (samePayoutRevenues.isEmpty()) {
+                log.warn("⚠️ No revenue found for teacher {} with payoutDate {}", teacherId, payoutDate);
+                continue;
+            }
+            
+            // Group by course
+            Map<Long, List<TeacherRevenue>> revenuesByCourse = samePayoutRevenues.stream()
+                    .collect(Collectors.groupingBy(TeacherRevenue::getCourseId));
+            
+            List<CourseRevenueRes> courses = new ArrayList<>();
+            long totalPaidRevenueCents = 0L;
+            long totalAdminCommissionCents = 0L;
+            int totalSales = 0;
+            
+            for (Map.Entry<Long, List<TeacherRevenue>> entry : revenuesByCourse.entrySet()) {
+                Long courseId = entry.getKey();
+                List<TeacherRevenue> courseRevenues = entry.getValue();
+                
+                Course course = courseRepo.findById(courseId).orElse(null);
+                String courseTitle = course != null ? course.getTitle() : "Unknown Course";
+                
+                long courseRevenueCents = courseRevenues.stream()
+                        .mapToLong(TeacherRevenue::getTeacherRevenueCents)
+                        .sum();
+                
+                long courseAdminCommissionCents = courseRevenues.stream()
+                        .mapToLong(TeacherRevenue::getAdminCommissionCents)
+                        .sum();
+                
+                long totalPaidAmountCents = courseRevenues.stream()
+                        .mapToLong(r -> r.getTeacherRevenueCents() + r.getAdminCommissionCents())
+                        .sum();
+                
+                // Giá gốc của khóa học từ Course entity
+                long courseBasePriceCents = 0L;
+                if (course != null) {
+                    Long regularPrice = course.getPriceCents();
+                    if (regularPrice != null && regularPrice > 0) {
+                        courseBasePriceCents = regularPrice;
+                    } else {
+                        // Fallback: lấy giá từ TeacherRevenue nếu Course không có giá
+                        if (!courseRevenues.isEmpty()) {
+                            Long fallbackPrice = courseRevenues.get(0).getCoursePriceCents();
+                            if (fallbackPrice != null && fallbackPrice > 0) {
+                                courseBasePriceCents = fallbackPrice;
+                            }
+                        }
+                    }
+                } else {
+                    // Fallback: lấy giá từ TeacherRevenue nếu Course không tồn tại
+                    if (!courseRevenues.isEmpty()) {
+                        Long fallbackPrice = courseRevenues.get(0).getCoursePriceCents();
+                        if (fallbackPrice != null && fallbackPrice > 0) {
+                            courseBasePriceCents = fallbackPrice;
+                        }
+                    }
+                }
+                
+                totalPaidRevenueCents += courseRevenueCents;
+                totalAdminCommissionCents += courseAdminCommissionCents;
+                totalSales += courseRevenues.size();
+                
+                courses.add(CourseRevenueRes.builder()
+                        .courseId(courseId)
+                        .courseTitle(courseTitle)
+                        .totalPaidAmountCents(totalPaidAmountCents)
+                        .courseBasePriceCents(courseBasePriceCents)
+                        .adminCommissionCents(courseAdminCommissionCents)
+                        .revenueCents(courseRevenueCents)
+                        .salesCount(courseRevenues.size())
+                        .paidSalesCount(courseRevenues.size())
+                        .unpaidSalesCount(0)
+                        .isFullyPaid(true)
+                        .lastPayoutDate(payoutDate)
+                        .payoutStatus("FULLY_PAID")
+                        .build());
+            }
+            
+            String teacherName = teacher.getDisplayName() != null ? teacher.getDisplayName() : 
+                    ((teacher.getFirstName() != null ? teacher.getFirstName() : "") + " " + 
+                     (teacher.getLastName() != null ? teacher.getLastName() : "")).trim();
+            
+            historyList.add(AdminPayoutHistoryRes.builder()
+                    .teacherId(teacherId)
+                    .teacherName(teacherName)
+                    .teacherEmail(teacher.getEmail())
+                    .payoutDate(payoutDate)
+                    .payoutByUserId(payoutByUserId)
+                    .payoutByUserName(payoutByUserName)
+                    .payoutNote(payoutNote)
+                    .yearMonth(groupYearMonth)
+                    .totalPaidRevenueCents(totalPaidRevenueCents)
+                    .totalAdminCommissionCents(totalAdminCommissionCents)
+                    .totalSales(totalSales)
+                    .courses(courses)
+                    .build());
+        }
+        
+        log.info("📤 Returning {} payout history records for month {}", historyList.size(), yearMonth);
+        return historyList;
     }
 }
 

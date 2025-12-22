@@ -105,5 +105,27 @@ public interface TeacherRevenueRepository extends JpaRepository<TeacherRevenue, 
     @Query("SELECT COALESCE(SUM(tr.adminCommissionCents), 0) FROM TeacherRevenue tr " +
            "WHERE tr.yearMonth = :yearMonth AND tr.isPaid = true")
     Long sumPaidAdminCommissionByYearMonth(@Param("yearMonth") String yearMonth);
+    
+    /**
+     * Tìm revenue đã được chuyển tiền, group by teacher và payoutDate
+     * Dùng để hiển thị lịch sử các lần đã chuyển tiền
+     * 
+     * Returns: [teacherId, payoutDate, payoutByUserId, yearMonth, payoutNote]
+     * Note: payoutNote có thể khác nhau giữa các records cùng payoutDate, nên lấy MAX hoặc MIN
+     */
+    @Query("SELECT tr.teacher.id, tr.payoutDate, MAX(tr.payoutBy.id), tr.yearMonth, MAX(tr.payoutNote) " +
+           "FROM TeacherRevenue tr " +
+           "WHERE tr.isPaid = true AND tr.payoutDate IS NOT NULL " +
+           "AND tr.yearMonth = :yearMonth " +
+           "GROUP BY tr.teacher.id, tr.payoutDate, tr.yearMonth " +
+           "ORDER BY tr.payoutDate DESC, tr.teacher.id")
+    List<Object[]> findPaidRevenueGroupedByTeacherAndPayoutDate(@Param("yearMonth") String yearMonth);
+    
+    /**
+     * Tìm tất cả revenue đã được chuyển tiền của một teacher trong một lần chuyển tiền cụ thể
+     * (cùng payoutDate và cùng teacher)
+     */
+    List<TeacherRevenue> findByTeacher_IdAndYearMonthAndIsPaidTrueAndPayoutDateIsNotNullOrderByPayoutDateDesc(
+            Long teacherId, String yearMonth);
 }
 

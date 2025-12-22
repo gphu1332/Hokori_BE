@@ -699,8 +699,28 @@ public class PaymentService {
     public Page<PaymentResponse> listMyPayments(Long userId, Pageable pageable) {
         Page<Payment> payments = paymentRepo.findByUser_IdOrderByCreatedAtDesc(userId, pageable);
         return payments.map(payment -> {
-            List<Long> courseIds = parseCourseIds(payment.getCourseIds());
-            return PaymentResponse.fromEntity(payment, courseIds);
+            try {
+                List<Long> courseIds = parseCourseIds(payment.getCourseIds());
+                return PaymentResponse.fromEntity(payment, courseIds);
+            } catch (Exception e) {
+                Long paymentId = payment != null ? payment.getId() : null;
+                log.error("Error processing payment {} for user {}: {}", paymentId, userId, e.getMessage(), e);
+                // Return payment with empty courseIds list if parsing fails
+                // This ensures API doesn't fail even if courseIds parsing has issues
+                try {
+                    return PaymentResponse.fromEntity(payment, Collections.emptyList());
+                } catch (Exception ex) {
+                    log.error("Critical error creating PaymentResponse for payment {}: {}", paymentId, ex.getMessage(), ex);
+                    // Last resort: create minimal response
+                    return PaymentResponse.builder()
+                            .id(paymentId)
+                            .orderCode(payment != null ? payment.getOrderCode() : null)
+                            .amountCents(payment != null ? payment.getAmountCents() : null)
+                            .status(payment != null ? payment.getStatus() : null)
+                            .courseIds(Collections.emptyList())
+                            .build();
+                }
+            }
         });
     }
     

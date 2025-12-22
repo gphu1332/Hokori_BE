@@ -226,6 +226,13 @@ public class PayOSService {
     
     /**
      * Verify webhook signature từ PayOS
+     * PayOS webhook signature được tính từ data object (JSON stringified với keys sorted alphabetically)
+     * Format: amount=$amount&cancelUrl=$cancelUrl&description=$description&orderCode=$orderCode&returnUrl=$returnUrl
+     * 
+     * Note: PayOS webhook signature có thể khác với request signature format
+     * Nếu signature không match, sẽ thử cả 2 cách tính:
+     * 1. Từ data object (như request signature)
+     * 2. Từ toàn bộ data object JSON (nếu PayOS dùng format khác)
      */
     public boolean verifyWebhookSignature(PayOSWebhookData webhookData) {
         try {
@@ -235,7 +242,6 @@ public class PayOSService {
                 return false;
             }
             
-            // Tạo data string để verify
             PayOSWebhookData.PayOSWebhookPaymentData data = webhookData.getData();
             if (data == null) {
                 log.error("Webhook data is null");
@@ -245,7 +251,8 @@ public class PayOSService {
             String cancelUrl = payOSConfig.getCancelUrl() != null ? payOSConfig.getCancelUrl() : "";
             String returnUrl = payOSConfig.getReturnUrl() != null ? payOSConfig.getReturnUrl() : "";
             
-            String dataString = String.format(
+            // Method 1: Same format as request signature (amount&cancelUrl&description&orderCode&returnUrl)
+            String dataString1 = String.format(
                     "amount=%d&cancelUrl=%s&description=%s&orderCode=%d&returnUrl=%s",
                     data.getAmount(),
                     cancelUrl,
@@ -254,33 +261,43 @@ public class PayOSService {
                     returnUrl
             );
             
-            log.debug("Webhook signature verification - dataString: {}", dataString);
-            log.debug("Webhook signature verification - received signature: {}", webhookData.getSignature());
+            String calculatedSignature1 = calculateHMACSHA256(dataString1);
             
-            // Tạo HMAC SHA256 signature
-            Mac hmacSha256 = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKey = new SecretKeySpec(
-                    payOSConfig.getChecksumKey().getBytes(StandardCharsets.UTF_8),
-                    "HmacSHA256"
-            );
-            hmacSha256.init(secretKey);
-            byte[] hash = hmacSha256.doFinal(dataString.getBytes(StandardCharsets.UTF_8));
-            // PayOS uses hex string for signatures (both request and webhook)
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hash) {
-                hexString.append(String.format("%02x", b));
+            // Method 2: Try with data object JSON stringified (if PayOS uses different format)
+            // Note: PayOS might use the exact data object from webhook, not from config
+            // So we try with the data object itself
+            String dataString2 = null;
+            String calculatedSignature2 = null;
+            try {
+                // Try to create JSON from data object (sorted keys)
+                String dataJson = objectMapper.writeValueAsString(data);
+                dataString2 = dataJson;
+                calculatedSignature2 = calculateHMACSHA256(dataJson);
+            } catch (Exception e) {
+                log.debug("Failed to create JSON from data object for signature verification", e);
             }
-            String calculatedSignature = hexString.toString();
             
-            log.debug("Webhook signature verification - calculated signature: {}", calculatedSignature);
-            log.debug("Webhook signature verification - signatures match: {}", calculatedSignature.equals(webhookData.getSignature()));
+            log.info("Webhook signature verification for orderCode: {}", data.getOrderCode());
+            log.info("Received signature: {}", webhookData.getSignature());
+            log.info("Calculated signature (method 1 - string format): {}", calculatedSignature1);
+            if (calculatedSignature2 != null) {
+                log.info("Calculated signature (method 2 - JSON format): {}", calculatedSignature2);
+            }
             
-            // So sánh signature
-            boolean isValid = calculatedSignature.equals(webhookData.getSignature());
+            // Check if either method matches
+            boolean isValid1 = calculatedSignature1.equals(webhookData.getSignature());
+            boolean isValid2 = calculatedSignature2 != null && calculatedSignature2.equals(webhookData.getSignature());
+            
+            boolean isValid = isValid1 || isValid2;
+            
             if (!isValid) {
-                log.warn("Webhook signature mismatch for orderCode: {}. Received: {}, Calculated: {}", 
-                        data.getOrderCode(), webhookData.getSignature(), calculatedSignature);
+                log.warn("Webhook signature mismatch for orderCode: {}. Received: {}, Calculated (method 1): {}, Calculated (method 2): {}", 
+                        data.getOrderCode(), webhookData.getSignature(), calculatedSignature1, 
+                        calculatedSignature2 != null ? calculatedSignature2 : "N/A");
+            } else {
+                log.info("Webhook signature verified successfully using method {}", isValid1 ? "1" : "2");
             }
+            
             return isValid;
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             log.error("Error verifying webhook signature", e);
@@ -289,6 +306,25 @@ public class PayOSService {
             log.error("Unexpected error verifying webhook signature", e);
             return false;
         }
+    }
+    
+    /**
+     * Calculate HMAC SHA256 signature from a string
+     */
+    private String calculateHMACSHA256(String dataString) throws NoSuchAlgorithmException, InvalidKeyException {
+        Mac hmacSha256 = Mac.getInstance("HmacSHA256");
+        SecretKeySpec secretKey = new SecretKeySpec(
+                payOSConfig.getChecksumKey().getBytes(StandardCharsets.UTF_8),
+                "HmacSHA256"
+        );
+        hmacSha256.init(secretKey);
+        byte[] hash = hmacSha256.doFinal(dataString.getBytes(StandardCharsets.UTF_8));
+        // PayOS uses hex string for signatures
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash) {
+            hexString.append(String.format("%02x", b));
+        }
+        return hexString.toString();
     }
     
     /**

@@ -101,5 +101,20 @@ public class AdminPaymentController {
         AdminCommissionRes commission = paymentService.getAdminCommissionDetails(yearMonth);
         return ResponseEntity.ok(ApiResponse.success("OK", commission));
     }
+    
+    @Operation(summary = "Lấy lịch sử chuyển tiền trong tháng",
+               description = "Xem các lần đã chuyển tiền cho teachers, group by teacher và payoutDate")
+    @GetMapping("/payout-history")
+    public ResponseEntity<ApiResponse<List<AdminPayoutHistoryRes>>> getPayoutHistory(
+            @RequestParam(required = false) String yearMonth) {
+        
+        // Default to current month if not provided
+        if (yearMonth == null || yearMonth.trim().isEmpty()) {
+            yearMonth = YearMonth.now().format(YEAR_MONTH_FORMATTER);
+        }
+        
+        List<AdminPayoutHistoryRes> history = paymentService.getPayoutHistory(yearMonth);
+        return ResponseEntity.ok(ApiResponse.success("OK", history));
+    }
 }
 
