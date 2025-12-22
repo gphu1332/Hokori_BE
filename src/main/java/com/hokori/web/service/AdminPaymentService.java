@@ -148,13 +148,45 @@ public class AdminPaymentService {
                         .sum();
                 
                 // Giá gốc của khóa học từ Course entity (ví dụ: teacher set 3000 thì hiển thị 3000)
-                // Ưu tiên discountedPriceCents, không có thì dùng priceCents
                 long courseBasePriceCents = 0L;
                 if (course != null) {
-                    courseBasePriceCents = course.getDiscountedPriceCents() != null 
-                            ? course.getDiscountedPriceCents() 
-                            : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
+                    Long regularPrice = course.getPriceCents();
+                    
+                    log.info("🔍 Course {} ({}): priceCents={}", 
+                            courseId, courseTitle, regularPrice);
+                    
+                    if (regularPrice != null && regularPrice > 0) {
+                        courseBasePriceCents = regularPrice;
+                        log.debug("✅ Using priceCents={} for course {}", regularPrice, courseId);
+                    } else {
+                        // Fallback: lấy giá từ TeacherRevenue nếu Course không có giá
+                        if (!courseRevenues.isEmpty()) {
+                            Long fallbackPrice = courseRevenues.get(0).getCoursePriceCents();
+                            if (fallbackPrice != null && fallbackPrice > 0) {
+                                courseBasePriceCents = fallbackPrice;
+                                log.warn("⚠️ Course {} has no price in Course entity, using fallback from TeacherRevenue: {}", 
+                                        courseId, fallbackPrice);
+                            } else {
+                                log.error("❌ Course {} has no valid price in both Course entity and TeacherRevenue", courseId);
+                            }
+                        } else {
+                            log.error("❌ Course {} has no valid price and no revenue records", courseId);
+                        }
+                    }
+                } else {
+                    log.error("❌ Course {} not found in database", courseId);
+                    // Fallback: lấy giá từ TeacherRevenue nếu Course không tồn tại
+                    if (!courseRevenues.isEmpty()) {
+                        Long fallbackPrice = courseRevenues.get(0).getCoursePriceCents();
+                        if (fallbackPrice != null && fallbackPrice > 0) {
+                            courseBasePriceCents = fallbackPrice;
+                            log.warn("⚠️ Course {} not found, using fallback from TeacherRevenue: {}", 
+                                    courseId, fallbackPrice);
+                        }
+                    }
                 }
+                
+                log.info("📊 Final courseBasePriceCents for course {}: {}", courseId, courseBasePriceCents);
                 
                 courses.add(CourseRevenueRes.builder()
                         .courseId(courseId)
@@ -266,13 +298,45 @@ public class AdminPaymentService {
                     .sum();
             
             // Giá gốc của khóa học từ Course entity (ví dụ: teacher set 3000 thì hiển thị 3000)
-            // Ưu tiên discountedPriceCents, không có thì dùng priceCents
             long courseBasePriceCents = 0L;
             if (course != null) {
-                courseBasePriceCents = course.getDiscountedPriceCents() != null 
-                        ? course.getDiscountedPriceCents() 
-                        : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
+                Long regularPrice = course.getPriceCents();
+                
+                log.info("🔍 Course {} ({}): priceCents={}", 
+                        courseId, courseTitle, regularPrice);
+                
+                if (regularPrice != null && regularPrice > 0) {
+                    courseBasePriceCents = regularPrice;
+                    log.debug("✅ Using priceCents={} for course {}", regularPrice, courseId);
+                } else {
+                    // Fallback: lấy giá từ TeacherRevenue nếu Course không có giá
+                    if (!courseRevenues.isEmpty()) {
+                        Long fallbackPrice = courseRevenues.get(0).getCoursePriceCents();
+                        if (fallbackPrice != null && fallbackPrice > 0) {
+                            courseBasePriceCents = fallbackPrice;
+                            log.warn("⚠️ Course {} has no price in Course entity, using fallback from TeacherRevenue: {}", 
+                                    courseId, fallbackPrice);
+                        } else {
+                            log.error("❌ Course {} has no valid price in both Course entity and TeacherRevenue", courseId);
+                        }
+                    } else {
+                        log.error("❌ Course {} has no valid price and no revenue records", courseId);
+                    }
+                }
+            } else {
+                log.error("❌ Course {} not found in database", courseId);
+                // Fallback: lấy giá từ TeacherRevenue nếu Course không tồn tại
+                if (!courseRevenues.isEmpty()) {
+                    Long fallbackPrice = courseRevenues.get(0).getCoursePriceCents();
+                    if (fallbackPrice != null && fallbackPrice > 0) {
+                        courseBasePriceCents = fallbackPrice;
+                        log.warn("⚠️ Course {} not found, using fallback from TeacherRevenue: {}", 
+                                courseId, fallbackPrice);
+                    }
+                }
             }
+            
+            log.info("📊 Final courseBasePriceCents for course {}: {}", courseId, courseBasePriceCents);
             
             courses.add(CourseRevenueRes.builder()
                     .courseId(courseId)
