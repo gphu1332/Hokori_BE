@@ -142,14 +142,19 @@ public class AdminPaymentService {
                         .sum();
                 
                 // Tổng số tiền thực tế từ các giao dịch (teacherRevenue + adminCommission)
+                // Ví dụ: 2 người mua thì = 6000 (nếu mỗi người trả 3000)
                 long totalPaidAmountCents = courseRevenues.stream()
                         .mapToLong(r -> r.getTeacherRevenueCents() + r.getAdminCommissionCents())
                         .sum();
                 
-                // Tổng giá gốc của khóa học (từ coursePriceCents - có thể là discounted hoặc normal price)
-                long courseBasePriceCents = courseRevenues.stream()
-                        .mapToLong(TeacherRevenue::getCoursePriceCents)
-                        .sum();
+                // Giá gốc của khóa học từ Course entity (ví dụ: teacher set 3000 thì hiển thị 3000)
+                // Ưu tiên discountedPriceCents, không có thì dùng priceCents
+                long courseBasePriceCents = 0L;
+                if (course != null) {
+                    courseBasePriceCents = course.getDiscountedPriceCents() != null 
+                            ? course.getDiscountedPriceCents() 
+                            : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
+                }
                 
                 courses.add(CourseRevenueRes.builder()
                         .courseId(courseId)
@@ -255,14 +260,19 @@ public class AdminPaymentService {
                     .sum();
             
             // Tổng số tiền thực tế từ các giao dịch (teacherRevenue + adminCommission)
+            // Ví dụ: 2 người mua thì = 6000 (nếu mỗi người trả 3000)
             long totalPaidAmountCents = courseRevenues.stream()
                     .mapToLong(r -> r.getTeacherRevenueCents() + r.getAdminCommissionCents())
                     .sum();
             
-            // Tổng giá gốc của khóa học (từ coursePriceCents - có thể là discounted hoặc normal price)
-            long courseBasePriceCents = courseRevenues.stream()
-                    .mapToLong(TeacherRevenue::getCoursePriceCents)
-                    .sum();
+            // Giá gốc của khóa học từ Course entity (ví dụ: teacher set 3000 thì hiển thị 3000)
+            // Ưu tiên discountedPriceCents, không có thì dùng priceCents
+            long courseBasePriceCents = 0L;
+            if (course != null) {
+                courseBasePriceCents = course.getDiscountedPriceCents() != null 
+                        ? course.getDiscountedPriceCents() 
+                        : (course.getPriceCents() != null ? course.getPriceCents() : 0L);
+            }
             
             courses.add(CourseRevenueRes.builder()
                     .courseId(courseId)
