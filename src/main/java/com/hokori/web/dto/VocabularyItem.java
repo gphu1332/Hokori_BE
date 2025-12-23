@@ -112,6 +112,10 @@ public class VocabularyItem {
         
         @Schema(description = "Related compound words", example = "[\"私的\", \"私立\"]")
         private List<String> relatedWords; // Related compound words
+        
+        @Schema(description = "Different readings of the same kanji with explanations of when to use each", 
+                example = "[{\"reading\": \"シ (onyomi)\", \"usage\": \"Dùng trong từ ghép Hán-Nhật\", \"examples\": [\"私立 (しりつ)\", \"私的 (してき)\"]}, {\"reading\": \"わたし (kunyomi)\", \"usage\": \"Dùng khi đứng một mình hoặc với okurigana\", \"examples\": [\"私 (わたし)\"]}]")
+        private List<ReadingVariation> readingVariations; // Different readings with usage explanations
 
         public KanjiDetails() {}
 
@@ -153,6 +157,62 @@ public class VocabularyItem {
 
         public void setRelatedWords(List<String> relatedWords) {
             this.relatedWords = relatedWords;
+        }
+
+        public List<ReadingVariation> getReadingVariations() {
+            return readingVariations;
+        }
+
+        public void setReadingVariations(List<ReadingVariation> readingVariations) {
+            this.readingVariations = readingVariations;
+        }
+    }
+    
+    /**
+     * Nested class for different readings of the same kanji
+     */
+    @Schema(description = "Different reading of the same kanji with usage explanation")
+    public static class ReadingVariation {
+        @Schema(description = "Reading (onyomi or kunyomi)", example = "シ (onyomi)")
+        private String reading; // Reading (onyomi or kunyomi)
+        
+        @Schema(description = "When to use this reading (explanation in Vietnamese)", 
+                example = "Dùng trong từ ghép Hán-Nhật (compound words)")
+        private String usage; // When to use this reading in Vietnamese
+        
+        @Schema(description = "Example words using this reading", 
+                example = "[\"私立 (しりつ)\", \"私的 (してき)\"]")
+        private List<String> examples; // Example words using this reading
+
+        public ReadingVariation() {}
+
+        public ReadingVariation(String reading, String usage) {
+            this.reading = reading;
+            this.usage = usage;
+        }
+
+        public String getReading() {
+            return reading;
+        }
+
+        public void setReading(String reading) {
+            this.reading = reading;
+        }
+
+        public String getUsage() {
+            return usage;
+        }
+
+        public void setUsage(String usage) {
+            this.usage = usage;
+        }
+
+        public List<String> getExamples() {
+            return examples;
+        }
+
+        public void setExamples(List<String> examples) {
+            this.examples = examples;
         }
     }
 

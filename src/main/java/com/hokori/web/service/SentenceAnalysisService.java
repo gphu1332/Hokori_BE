@@ -265,7 +265,14 @@ public class SentenceAnalysisService {
             "        \"stroke_count\": number,\n" +
             "        \"onyomi\": \"onyomi reading\",\n" +
             "        \"kunyomi\": \"kunyomi reading\",\n" +
-            "        \"related_words\": [\"word1\", \"word2\"]\n" +
+            "        \"related_words\": [\"word1\", \"word2\"],\n" +
+            "        \"reading_variations\": [\n" +
+            "          {\n" +
+            "            \"reading\": \"reading (e.g., 'シ (onyomi)' or 'わたし (kunyomi)')\",\n" +
+            "            \"usage\": \"when to use this reading (explanation in Vietnamese, e.g., 'Dùng trong từ ghép Hán-Nhật' or 'Dùng khi đứng một mình')\",\n" +
+            "            \"examples\": [\"example word 1\", \"example word 2\"]\n" +
+            "          }\n" +
+            "        ]\n" +
             "      },\n" +
             "      \"importance\": \"high|medium|low\",\n" +
             "      \"examples\": [\"example sentence 1\", \"example sentence 2\"],\n" +
@@ -285,6 +292,11 @@ public class SentenceAnalysisService {
             "- Break down kanji radicals/components appropriate for user's level (%s)\n" +
             "- Provide 2-3 example sentences using this vocabulary\n" +
             "- Only include kanji_details if the word contains kanji\n" +
+            "- CRITICAL: If a kanji has MULTIPLE READINGS (onyomi and kunyomi), you MUST include reading_variations\n" +
+            "- For reading_variations: Explain when to use onyomi vs kunyomi reading\n" +
+            "- Example: Kanji 私 can be read as 'シ' (onyomi) in compound words like 私立, or 'わたし' (kunyomi) when standing alone\n" +
+            "- For each reading_variation, provide: reading, usage explanation in Vietnamese, example words\n" +
+            "- This helps Vietnamese learners understand that kanji can be read differently in different contexts\n" +
             "- Return ONLY valid JSON, no additional text",
             sentence, level, level, level, level, level, level);
     }
@@ -317,6 +329,14 @@ public class SentenceAnalysisService {
             "          \"difference\": \"explanation of difference in Vietnamese\",\n" +
             "          \"example\": \"example sentence showing the difference\"\n" +
             "        }\n" +
+            "      ],\n" +
+            "      \"usage_variations\": [\n" +
+            "        {\n" +
+            "          \"usage\": \"specific usage form or context (e.g., 'ように (purpose)' or 'ように (like)')\",\n" +
+            "          \"meaning\": \"meaning of this usage in Vietnamese\",\n" +
+            "          \"example\": \"example sentence showing this usage\",\n" +
+            "          \"when_to_use\": \"when to use this variation (explanation in Vietnamese)\"\n" +
+            "        }\n" +
             "      ]\n" +
             "    }\n" +
             "  ]\n" +
@@ -330,6 +350,13 @@ public class SentenceAnalysisService {
             "- Identify confusing patterns at the same JLPT level (%s) that might be mistaken\n" +
             "- For confusing_patterns, focus on patterns that Vietnamese learners commonly confuse\n" +
             "- Explain the difference clearly in Vietnamese\n" +
+            "- CRITICAL: If a grammar pattern has MULTIPLE USAGES with DIFFERENT MEANINGS in different contexts, " +
+            "you MUST include usage_variations to explain each usage\n" +
+            "- For usage_variations: Explain how the SAME grammar pattern can mean DIFFERENT things in different contexts\n" +
+            "- Example: ように can mean 'in order to' (purpose) OR 'like/similar to' (comparison) - these are different usages\n" +
+            "- Example: て form can be used for sequential actions, reason, method, etc. - explain each usage\n" +
+            "- For each usage_variation, provide: usage form, meaning in Vietnamese, example sentence, when to use\n" +
+            "- This helps Vietnamese learners understand that Japanese grammar patterns often have multiple meanings\n" +
             "- Return ONLY valid JSON, no additional text",
             sentence, level, level, level, level);
     }
@@ -572,6 +599,24 @@ public class SentenceAnalysisService {
                 @SuppressWarnings("unchecked")
                 List<String> relatedWords = (List<String>) kanjiMap.get("related_words");
                 kanjiDetails.setRelatedWords(relatedWords);
+                
+                // Handle reading_variations
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> readingVariationsList = (List<Map<String, Object>>) kanjiMap.get("reading_variations");
+                if (readingVariationsList != null) {
+                    List<VocabularyItem.ReadingVariation> readingVariations = new ArrayList<>();
+                    for (Map<String, Object> rvMap : readingVariationsList) {
+                        VocabularyItem.ReadingVariation rv = new VocabularyItem.ReadingVariation();
+                        rv.setReading((String) rvMap.get("reading"));
+                        rv.setUsage((String) rvMap.get("usage"));
+                        @SuppressWarnings("unchecked")
+                        List<String> examples = (List<String>) rvMap.get("examples");
+                        rv.setExamples(examples);
+                        readingVariations.add(rv);
+                    }
+                    kanjiDetails.setReadingVariations(readingVariations);
+                }
+                
                 item.setKanjiDetails(kanjiDetails);
             }
 
@@ -622,6 +667,22 @@ public class SentenceAnalysisService {
                     confusingPatterns.add(cp);
                 }
                 item.setConfusingPatterns(confusingPatterns);
+            }
+
+            // Handle usage_variations
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> usageVariationsList = (List<Map<String, Object>>) map.get("usage_variations");
+            if (usageVariationsList != null) {
+                List<GrammarItem.UsageVariation> usageVariations = new ArrayList<>();
+                for (Map<String, Object> uvMap : usageVariationsList) {
+                    GrammarItem.UsageVariation uv = new GrammarItem.UsageVariation();
+                    uv.setUsage((String) uvMap.get("usage"));
+                    uv.setMeaning((String) uvMap.get("meaning"));
+                    uv.setExample((String) uvMap.get("example"));
+                    uv.setWhenToUse((String) uvMap.get("when_to_use"));
+                    usageVariations.add(uv);
+                }
+                item.setUsageVariations(usageVariations);
             }
 
             return item;

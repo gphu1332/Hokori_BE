@@ -32,6 +32,10 @@ public class GrammarItem {
     @Schema(description = "Confusing patterns at the same JLPT level that might be mistaken", 
             example = "[{\"pattern\": \"は + verb\", \"difference\": \"は marks topic, を marks object\"}]")
     private List<ConfusingPattern> confusingPatterns; // Patterns that might be confused with this one
+    
+    @Schema(description = "Different usages of the same grammar pattern with different meanings in different contexts", 
+            example = "[{\"usage\": \"ように (purpose/goal)\", \"meaning\": \"Để làm gì đó\", \"example\": \"日本語が話せるように勉強します\"}, {\"usage\": \"ように (like/similar)\", \"meaning\": \"Giống như\", \"example\": \"鳥のように飛びます\"}]")
+    private List<UsageVariation> usageVariations; // Different usages of the same grammar pattern
 
     public GrammarItem() {}
 
@@ -97,6 +101,14 @@ public class GrammarItem {
         this.confusingPatterns = confusingPatterns;
     }
 
+    public List<UsageVariation> getUsageVariations() {
+        return usageVariations;
+    }
+
+    public void setUsageVariations(List<UsageVariation> usageVariations) {
+        this.usageVariations = usageVariations;
+    }
+
     /**
      * Nested class for confusing grammar patterns
      */
@@ -142,6 +154,67 @@ public class GrammarItem {
 
         public void setExample(String example) {
             this.example = example;
+        }
+    }
+
+    /**
+     * Nested class for different usages of the same grammar pattern
+     */
+    @Schema(description = "Different usage of the same grammar pattern with different meaning")
+    public static class UsageVariation {
+        @Schema(description = "Specific usage form or context", example = "ように (purpose/goal)")
+        private String usage; // Specific usage form or context
+        
+        @Schema(description = "Meaning of this usage in Vietnamese", 
+                example = "Để làm gì đó (mục đích)")
+        private String meaning; // Meaning of this usage in Vietnamese
+        
+        @Schema(description = "Example sentence showing this usage", 
+                example = "日本語が話せるように勉強します")
+        private String example; // Example sentence showing this usage
+        
+        @Schema(description = "When to use this variation (explanation in Vietnamese)", 
+                example = "Dùng khi muốn diễn đạt mục đích hoặc mục tiêu")
+        private String whenToUse; // When to use this variation
+
+        public UsageVariation() {}
+
+        public UsageVariation(String usage, String meaning, String example) {
+            this.usage = usage;
+            this.meaning = meaning;
+            this.example = example;
+        }
+
+        public String getUsage() {
+            return usage;
+        }
+
+        public void setUsage(String usage) {
+            this.usage = usage;
+        }
+
+        public String getMeaning() {
+            return meaning;
+        }
+
+        public void setMeaning(String meaning) {
+            this.meaning = meaning;
+        }
+
+        public String getExample() {
+            return example;
+        }
+
+        public void setExample(String example) {
+            this.example = example;
+        }
+
+        public String getWhenToUse() {
+            return whenToUse;
+        }
+
+        public void setWhenToUse(String whenToUse) {
+            this.whenToUse = whenToUse;
         }
     }
 }
