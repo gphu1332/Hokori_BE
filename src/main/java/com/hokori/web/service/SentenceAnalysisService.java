@@ -32,7 +32,7 @@ public class SentenceAnalysisService {
     @Value("${google.cloud.enabled:false}")
     private boolean googleCloudEnabled;
 
-    @Value("${ai.sentence-analysis.max-length:50}")
+    @Value("${ai.sentence-analysis.max-length:200}")
     private int maxSentenceLength;
 
     @Autowired(required = false)
@@ -46,7 +46,7 @@ public class SentenceAnalysisService {
     /**
      * Analyze Japanese sentence for vocabulary and grammar
      *
-     * @param sentence Japanese sentence to analyze (15-30 characters recommended)
+     * @param sentence Japanese sentence to analyze (max 200 characters)
      * @param level User's JLPT level (N5-N1)
      * @return SentenceAnalysisResponse with vocabulary and grammar analysis
      */

@@ -621,7 +621,7 @@ public class AIController {
     @PostMapping("/sentence-analysis")
     @Operation(
         summary = "Analyze Japanese sentence", 
-        description = "Analyze Japanese sentence (max 50 characters) for notable vocabulary and grammar patterns using AI. Focuses on words and grammar worth learning at user's JLPT level. Designed for Vietnamese users learning Japanese. All explanations are in Vietnamese. Response is structured separately for vocabulary and grammar to make it easy to display in UI.",
+        description = "Analyze Japanese sentence (max 200 characters) for notable vocabulary and grammar patterns using AI. Focuses on words and grammar worth learning at user's JLPT level. Designed for Vietnamese users learning Japanese. All explanations are in Vietnamese. Response is structured separately for vocabulary and grammar to make it easy to display in UI.",
         requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
             description = "Japanese sentence and user's JLPT level",
             required = true,
