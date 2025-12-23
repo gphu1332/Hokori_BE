@@ -61,11 +61,18 @@ public class CourseCommentService {
     private boolean canModerateCourse(Long userId, Course course) {
         // Admin thì luôn được
         if (currentUser.isAdmin()) return true;
+        // Moderator thì luôn được
+        if (currentUser.hasRole("MODERATOR")) return true;
         // Giáo viên owner của course
         if (currentUser.isTeacher() && course.getUserId() != null) {
             return course.getUserId().equals(userId);
         }
         return false;
+    }
+    
+    private boolean canModerateComment() {
+        // Admin và Moderator đều có thể moderate comments
+        return currentUser.isAdmin() || currentUser.hasRole("MODERATOR");
     }
 
     private CourseCommentDto toDtoWithReplies(CourseComment comment) {
@@ -255,6 +262,32 @@ public class CourseCommentService {
 
         CourseComment saved = commentRepo.save(reply);
         return toDtoWithoutReplies(saved);
+    }
+    
+    // ========= Moderator delete comment =========
+    
+    /**
+     * Moderator xóa (soft delete) một comment cụ thể
+     * Dùng khi comment có nội dung spam, toxic, hoặc vi phạm quy định
+     */
+    public void deleteCommentAsModerator(Long courseId, Long commentId) {
+        // Check moderator permission
+        if (!canModerateComment()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only moderator can delete comments");
+        }
+        
+        CourseComment c = commentRepo.findByIdAndCourse_IdAndDeletedFlagFalse(commentId, courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
+        
+        // Verify course exists (không cần check published vì moderator có thể delete comment ở bất kỳ course nào)
+        Course course = c.getCourse();
+        if (course == null || course.isDeletedFlag()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+        }
+        
+        // Soft delete comment
+        c.setDeletedFlag(true);
+        commentRepo.save(c);
     }
 
 }

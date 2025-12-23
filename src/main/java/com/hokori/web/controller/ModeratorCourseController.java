@@ -6,6 +6,7 @@ import com.hokori.web.dto.moderator.CourseAICheckResponse;
 import com.hokori.web.service.CourseService;
 import com.hokori.web.service.CourseModerationAIService;
 import com.hokori.web.service.CurrentUserService;
+import com.hokori.web.service.CourseCommentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -43,6 +44,7 @@ public class ModeratorCourseController {
     private final CourseModerationAIService moderationAIService;
     private final CurrentUserService currentUserService;
     private final com.hokori.web.service.CourseFlagService courseFlagService;
+    private final CourseCommentService commentService;
 
     private Long currentModeratorId() {
         return currentUserService.getCurrentUserId();
@@ -248,6 +250,20 @@ public class ModeratorCourseController {
             @PathVariable Long id) {
         CourseRes course = courseService.enableComments(id, currentModeratorId());
         return ResponseEntity.ok(ApiResponse.success("Comments enabled for this course", course));
+    }
+    
+    @Operation(
+            summary = "Xóa một comment cụ thể",
+            description = "Moderator xóa (soft delete) một comment của user. Dùng khi comment có nội dung spam, toxic, hoặc vi phạm quy định."
+    )
+    @DeleteMapping("/{courseId}/comments/{commentId}")
+    public ResponseEntity<ApiResponse<Void>> deleteComment(
+            @Parameter(name = "courseId", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long courseId,
+            @Parameter(name = "commentId", in = ParameterIn.PATH, required = true, description = "Comment ID", example = "1")
+            @PathVariable Long commentId) {
+        commentService.deleteCommentAsModerator(courseId, commentId);
+        return ResponseEntity.ok(ApiResponse.success("Comment deleted", null));
     }
 
     @Operation(
