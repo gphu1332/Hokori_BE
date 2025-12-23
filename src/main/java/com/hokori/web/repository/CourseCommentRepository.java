@@ -20,6 +20,9 @@ public interface CourseCommentRepository extends JpaRepository<CourseComment, Lo
 
     // Check cùng course
     Optional<CourseComment> findByIdAndCourse_IdAndDeletedFlagFalse(Long id, Long courseId);
+    
+    // Tìm comment đã bị xóa (để restore)
+    Optional<CourseComment> findByIdAndCourse_Id(Long id, Long courseId);
 
     long countByCourse_IdAndDeletedFlagFalse(Long courseId);
 }

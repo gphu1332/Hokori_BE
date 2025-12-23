@@ -289,5 +289,37 @@ public class CourseCommentService {
         c.setDeletedFlag(true);
         commentRepo.save(c);
     }
+    
+    /**
+     * Moderator hiện lại (restore) một comment đã bị ẩn
+     * Dùng khi moderator muốn khôi phục comment đã xóa nhầm hoặc sau khi review lại
+     */
+    public CourseCommentDto restoreCommentAsModerator(Long courseId, Long commentId) {
+        // Check moderator permission
+        if (!canModerateComment()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only moderator can restore comments");
+        }
+        
+        // Tìm comment (bao gồm cả comment đã bị xóa)
+        CourseComment c = commentRepo.findByIdAndCourse_Id(commentId, courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
+        
+        // Verify course exists
+        Course course = c.getCourse();
+        if (course == null || course.isDeletedFlag()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+        }
+        
+        // Check if comment is already visible
+        if (!c.isDeletedFlag()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Comment is already visible");
+        }
+        
+        // Restore comment
+        c.setDeletedFlag(false);
+        CourseComment saved = commentRepo.save(c);
+        
+        return toDtoWithReplies(saved);
+    }
 
 }

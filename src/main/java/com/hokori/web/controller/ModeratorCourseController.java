@@ -265,6 +265,20 @@ public class ModeratorCourseController {
         commentService.deleteCommentAsModerator(courseId, commentId);
         return ResponseEntity.ok(ApiResponse.success("Comment deleted", null));
     }
+    
+    @Operation(
+            summary = "Hiện lại một comment đã bị ẩn",
+            description = "Moderator khôi phục (restore) một comment đã bị xóa. Dùng khi moderator xóa nhầm hoặc sau khi review lại."
+    )
+    @PutMapping("/{courseId}/comments/{commentId}/restore")
+    public ResponseEntity<ApiResponse<com.hokori.web.dto.comment.CourseCommentDto>> restoreComment(
+            @Parameter(name = "courseId", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long courseId,
+            @Parameter(name = "commentId", in = ParameterIn.PATH, required = true, description = "Comment ID", example = "1")
+            @PathVariable Long commentId) {
+        com.hokori.web.dto.comment.CourseCommentDto comment = commentService.restoreCommentAsModerator(courseId, commentId);
+        return ResponseEntity.ok(ApiResponse.success("Comment restored", comment));
+    }
 
     @Operation(
             summary = "Chi tiết course có update đang chờ (FULL TREE)",
