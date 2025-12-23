@@ -1,5 +1,6 @@
 package com.hokori.web.dto.progress;
 
+import com.hokori.web.Enum.CourseStatus;
 import lombok.*;
 import java.util.List;
 
@@ -14,6 +15,8 @@ public class CourseLearningTreeRes {
     private String courseTitle;
     private String courseSubtitle;
     private String coverImagePath;
+    private String teacherName;
+    private CourseStatus courseStatus;
     
     // Enrollment info
     private Long enrollmentId;

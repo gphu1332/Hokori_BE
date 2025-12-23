@@ -1008,6 +1008,15 @@ public class LearnerProgressService {
         String courseTitle = actualMetadata[1] != null ? actualMetadata[1].toString() : "";
         String courseSubtitle = actualMetadata[3] != null ? actualMetadata[3].toString() : null;
         String coverImagePath = actualMetadata[8] != null ? actualMetadata[8].toString() : null;
+        CourseStatus courseStatus = null;
+        if (actualMetadata[9] != null) {
+            try {
+                courseStatus = CourseStatus.valueOf(actualMetadata[9].toString());
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid course status value: {}", actualMetadata[9]);
+            }
+        }
+        String teacherName = actualMetadata[13] != null ? actualMetadata[13].toString() : null;
 
         // Get chapters with lessons, sections, contents
         List<Chapter> chapters = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
@@ -1180,6 +1189,8 @@ public class LearnerProgressService {
                 .courseTitle(courseTitle)
                 .courseSubtitle(courseSubtitle)
                 .coverImagePath(coverImagePath)
+                .teacherName(teacherName)
+                .courseStatus(courseStatus)
                 .enrollmentId(enrollment.getId())
                 .progressPercent(enrollment.getProgressPercent())
                 .lastAccessAt(enrollment.getLastAccessAt())
