@@ -267,57 +267,62 @@ public class CourseCommentService {
     // ========= Moderator delete comment =========
     
     /**
-     * Moderator xóa (soft delete) một comment cụ thể
+     * Moderator ẩn (disable) một comment cụ thể
+     * Đánh dấu comment status là Disabled để không hiển thị cho learners
      * Dùng khi comment có nội dung spam, toxic, hoặc vi phạm quy định
      */
-    public void deleteCommentAsModerator(Long courseId, Long commentId) {
+    public void disableCommentAsModerator(Long courseId, Long commentId) {
         // Check moderator permission
         if (!canModerateComment()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only moderator can delete comments");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ moderator mới có quyền ẩn comment");
         }
         
         CourseComment c = commentRepo.findByIdAndCourse_IdAndDeletedFlagFalse(commentId, courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Bình luận này không còn tồn tại"));
         
-        // Verify course exists (không cần check published vì moderator có thể delete comment ở bất kỳ course nào)
+        // Verify course exists (không cần check published vì moderator có thể disable comment ở bất kỳ course nào)
         Course course = c.getCourse();
         if (course == null || course.isDeletedFlag()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Khóa học không tồn tại");
         }
         
-        // Soft delete comment
+        // Disable comment (set deletedFlag = true để ẩn khỏi learners)
         c.setDeletedFlag(true);
         commentRepo.save(c);
+        
+        log.info("Comment {} disabled by moderator for course {}", commentId, courseId);
     }
     
     /**
-     * Moderator hiện lại (restore) một comment đã bị ẩn
-     * Dùng khi moderator muốn khôi phục comment đã xóa nhầm hoặc sau khi review lại
+     * Moderator hiện lại (restore/enable) một comment đã bị ẩn
+     * Dùng khi moderator muốn khôi phục comment đã disable nhầm hoặc sau khi review lại
      */
     public CourseCommentDto restoreCommentAsModerator(Long courseId, Long commentId) {
         // Check moderator permission
         if (!canModerateComment()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only moderator can restore comments");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ moderator mới có quyền hiện lại comment");
         }
         
-        // Tìm comment (bao gồm cả comment đã bị xóa)
+        // Tìm comment (bao gồm cả comment đã bị ẩn)
         CourseComment c = commentRepo.findByIdAndCourse_Id(commentId, courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Bình luận này không còn tồn tại"));
         
         // Verify course exists
         Course course = c.getCourse();
         if (course == null || course.isDeletedFlag()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Khóa học không tồn tại");
         }
         
         // Check if comment is already visible
         if (!c.isDeletedFlag()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Comment is already visible");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bình luận này đã được hiển thị");
         }
         
-        // Restore comment
+        // Restore comment (set deletedFlag = false để hiển thị lại)
         c.setDeletedFlag(false);
         CourseComment saved = commentRepo.save(c);
+        
+        log.info("Comment {} restored by moderator for course {}", commentId, courseId);
         
         return toDtoWithReplies(saved);
     }

@@ -253,22 +253,22 @@ public class ModeratorCourseController {
     }
     
     @Operation(
-            summary = "Xóa một comment cụ thể",
-            description = "Moderator xóa (soft delete) một comment của user. Dùng khi comment có nội dung spam, toxic, hoặc vi phạm quy định."
+            summary = "Ẩn một comment cụ thể",
+            description = "Moderator ẩn (disable) một comment của user bằng cách đánh dấu status là Disabled. Comment sẽ không hiển thị cho learners. Dùng khi comment có nội dung spam, toxic, hoặc vi phạm quy định."
     )
-    @DeleteMapping("/{courseId}/comments/{commentId}")
-    public ResponseEntity<ApiResponse<Void>> deleteComment(
+    @PutMapping("/{courseId}/comments/{commentId}/disable")
+    public ResponseEntity<ApiResponse<Void>> disableComment(
             @Parameter(name = "courseId", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
             @PathVariable Long courseId,
             @Parameter(name = "commentId", in = ParameterIn.PATH, required = true, description = "Comment ID", example = "1")
             @PathVariable Long commentId) {
-        commentService.deleteCommentAsModerator(courseId, commentId);
-        return ResponseEntity.ok(ApiResponse.success("Comment deleted", null));
+        commentService.disableCommentAsModerator(courseId, commentId);
+        return ResponseEntity.ok(ApiResponse.success("Comment đã được ẩn", null));
     }
     
     @Operation(
             summary = "Hiện lại một comment đã bị ẩn",
-            description = "Moderator khôi phục (restore) một comment đã bị xóa. Dùng khi moderator xóa nhầm hoặc sau khi review lại."
+            description = "Moderator khôi phục (restore/enable) một comment đã bị ẩn. Comment sẽ hiển thị lại cho learners. Dùng khi moderator ẩn nhầm hoặc sau khi review lại."
     )
     @PutMapping("/{courseId}/comments/{commentId}/restore")
     public ResponseEntity<ApiResponse<com.hokori.web.dto.comment.CourseCommentDto>> restoreComment(
@@ -277,7 +277,7 @@ public class ModeratorCourseController {
             @Parameter(name = "commentId", in = ParameterIn.PATH, required = true, description = "Comment ID", example = "1")
             @PathVariable Long commentId) {
         com.hokori.web.dto.comment.CourseCommentDto comment = commentService.restoreCommentAsModerator(courseId, commentId);
-        return ResponseEntity.ok(ApiResponse.success("Comment restored", comment));
+        return ResponseEntity.ok(ApiResponse.success("Comment đã được hiện lại", comment));
     }
 
     @Operation(
