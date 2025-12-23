@@ -599,102 +599,12 @@ public class ConversationPracticeService {
 
     /**
      * Parse evaluation JSON response
+     * Ensures all feedback fields are always present, even if parsing fails partially
      */
     private Map<String, Object> parseEvaluation(String evaluationJson) {
         Map<String, Object> evaluation = new HashMap<>();
 
-        // Simple parsing (in production, use proper JSON parsing)
-        try {
-            // Try to extract JSON from markdown if present
-            String jsonText = evaluationJson;
-            if (evaluationJson.contains("```json")) {
-                int start = evaluationJson.indexOf("```json") + 7;
-                int end = evaluationJson.indexOf("```", start);
-                if (end > start) {
-                    jsonText = evaluationJson.substring(start, end).trim();
-                }
-            } else if (evaluationJson.contains("```")) {
-                int start = evaluationJson.indexOf("```") + 3;
-                int end = evaluationJson.indexOf("```", start);
-                if (end > start) {
-                    jsonText = evaluationJson.substring(start, end).trim();
-                }
-            }
-
-            // Parse JSON directly using ObjectMapper (more efficient than calling Gemini API again)
-            try {
-                Map<String, Object> parsedJson = objectMapper.readValue(jsonText, new TypeReference<Map<String, Object>>() {});
-                
-                // Extract all fields from parsed JSON
-                if (parsedJson.containsKey("overallScore")) {
-                    Object score = parsedJson.get("overallScore");
-                    evaluation.put("overallScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
-                }
-                if (parsedJson.containsKey("accuracyScore")) {
-                    Object score = parsedJson.get("accuracyScore");
-                    evaluation.put("accuracyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
-                }
-                if (parsedJson.containsKey("fluencyScore")) {
-                    Object score = parsedJson.get("fluencyScore");
-                    evaluation.put("fluencyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
-                }
-                if (parsedJson.containsKey("grammarScore")) {
-                    Object score = parsedJson.get("grammarScore");
-                    evaluation.put("grammarScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
-                }
-                if (parsedJson.containsKey("vocabularyScore")) {
-                    Object score = parsedJson.get("vocabularyScore");
-                    evaluation.put("vocabularyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
-                }
-                if (parsedJson.containsKey("summaryVi")) {
-                    evaluation.put("summaryVi", parsedJson.get("summaryVi").toString());
-                }
-                if (parsedJson.containsKey("overallFeedbackVi")) {
-                    evaluation.put("overallFeedbackVi", parsedJson.get("overallFeedbackVi").toString());
-                }
-                if (parsedJson.containsKey("strengthsVi") && parsedJson.get("strengthsVi") instanceof List) {
-                    @SuppressWarnings("unchecked")
-                    List<Object> strengthsList = (List<Object>) parsedJson.get("strengthsVi");
-                    List<String> strengths = new ArrayList<>();
-                    for (Object item : strengthsList) {
-                        strengths.add(item.toString());
-                    }
-                    evaluation.put("strengthsVi", strengths);
-                }
-                if (parsedJson.containsKey("improvementsVi") && parsedJson.get("improvementsVi") instanceof List) {
-                    @SuppressWarnings("unchecked")
-                    List<Object> improvementsList = (List<Object>) parsedJson.get("improvementsVi");
-                    List<String> improvements = new ArrayList<>();
-                    for (Object item : improvementsList) {
-                        improvements.add(item.toString());
-                    }
-                    evaluation.put("improvementsVi", improvements);
-                }
-                if (parsedJson.containsKey("suggestionsVi") && parsedJson.get("suggestionsVi") instanceof List) {
-                    @SuppressWarnings("unchecked")
-                    List<Object> suggestionsList = (List<Object>) parsedJson.get("suggestionsVi");
-                    List<String> suggestions = new ArrayList<>();
-                    for (Object item : suggestionsList) {
-                        suggestions.add(item.toString());
-                    }
-                    evaluation.put("suggestionsVi", suggestions);
-                }
-                if (parsedJson.containsKey("detailedAnalysisVi") && parsedJson.get("detailedAnalysisVi") instanceof List) {
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> detailedAnalysisList = (List<Map<String, Object>>) parsedJson.get("detailedAnalysisVi");
-                    evaluation.put("detailedAnalysisVi", detailedAnalysisList);
-                }
-                
-                logger.debug("Successfully parsed evaluation JSON");
-                return evaluation;
-            } catch (Exception e) {
-                logger.warn("Failed to parse evaluation JSON directly, trying fallback", e);
-            }
-        } catch (Exception e) {
-            logger.warn("Failed to parse evaluation JSON", e);
-        }
-
-        // Fallback: return basic evaluation
+        // Initialize with default values to ensure all fields are always present
         evaluation.put("overallScore", 75.0);
         evaluation.put("accuracyScore", 75.0);
         evaluation.put("fluencyScore", 75.0);
@@ -702,10 +612,233 @@ public class ConversationPracticeService {
         evaluation.put("vocabularyScore", 75.0);
         evaluation.put("summaryVi", "Bạn đã hoàn thành cuộc trò chuyện với điểm tổng thể 75/100. Hãy tiếp tục luyện tập để cải thiện kỹ năng!");
         evaluation.put("overallFeedbackVi", "Cuộc trò chuyện đã hoàn thành. Bạn đã thể hiện sự tham gia tích cực và cố gắng giao tiếp. Tuy nhiên, vẫn còn một số điểm cần cải thiện về ngữ pháp và từ vựng. Hãy tiếp tục luyện tập để nâng cao trình độ!");
-        evaluation.put("strengthsVi", Arrays.asList("Đã hoàn thành cuộc trò chuyện", "Tham gia tích cực vào cuộc trò chuyện"));
-        evaluation.put("improvementsVi", Arrays.asList("Tiếp tục luyện tập phát âm và từ vựng", "Chú ý hơn đến ngữ pháp và cách sử dụng trợ từ"));
-        evaluation.put("suggestionsVi", Arrays.asList("Thử các tình huống khác nhau để mở rộng vốn từ", "Luyện tập thêm các mẫu câu thông dụng"));
-        evaluation.put("detailedAnalysisVi", new ArrayList<>()); // Empty detailed analysis in fallback
+        evaluation.put("strengthsVi", new ArrayList<>());
+        evaluation.put("improvementsVi", new ArrayList<>());
+        evaluation.put("suggestionsVi", new ArrayList<>());
+        evaluation.put("detailedAnalysisVi", new ArrayList<>());
+
+        // Try to parse JSON from Gemini response
+        try {
+            // Try to extract JSON from markdown if present
+            String jsonText = evaluationJson.trim();
+            
+            // Remove markdown code blocks if present
+            if (jsonText.contains("```json")) {
+                int start = jsonText.indexOf("```json") + 7;
+                int end = jsonText.indexOf("```", start);
+                if (end > start) {
+                    jsonText = jsonText.substring(start, end).trim();
+                }
+            } else if (jsonText.contains("```")) {
+                int start = jsonText.indexOf("```") + 3;
+                int end = jsonText.indexOf("```", start);
+                if (end > start) {
+                    jsonText = jsonText.substring(start, end).trim();
+                }
+            }
+            
+            // Try to find JSON object boundaries if response contains extra text
+            if (!jsonText.startsWith("{")) {
+                int jsonStart = jsonText.indexOf("{");
+                if (jsonStart >= 0) {
+                    jsonText = jsonText.substring(jsonStart);
+                }
+            }
+            if (!jsonText.endsWith("}")) {
+                int jsonEnd = jsonText.lastIndexOf("}");
+                if (jsonEnd > 0) {
+                    jsonText = jsonText.substring(0, jsonEnd + 1);
+                }
+            }
+
+            logger.debug("Attempting to parse JSON: {}", jsonText.substring(0, Math.min(200, jsonText.length())));
+
+            // Parse JSON directly using ObjectMapper
+            Map<String, Object> parsedJson = objectMapper.readValue(jsonText, new TypeReference<Map<String, Object>>() {});
+            
+            // Extract scores (with validation)
+            if (parsedJson.containsKey("overallScore")) {
+                Object score = parsedJson.get("overallScore");
+                try {
+                    evaluation.put("overallScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                } catch (Exception e) {
+                    logger.warn("Failed to parse overallScore: {}", score, e);
+                }
+            }
+            if (parsedJson.containsKey("accuracyScore")) {
+                Object score = parsedJson.get("accuracyScore");
+                try {
+                    evaluation.put("accuracyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                } catch (Exception e) {
+                    logger.warn("Failed to parse accuracyScore: {}", score, e);
+                }
+            }
+            if (parsedJson.containsKey("fluencyScore")) {
+                Object score = parsedJson.get("fluencyScore");
+                try {
+                    evaluation.put("fluencyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                } catch (Exception e) {
+                    logger.warn("Failed to parse fluencyScore: {}", score, e);
+                }
+            }
+            if (parsedJson.containsKey("grammarScore")) {
+                Object score = parsedJson.get("grammarScore");
+                try {
+                    evaluation.put("grammarScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                } catch (Exception e) {
+                    logger.warn("Failed to parse grammarScore: {}", score, e);
+                }
+            }
+            if (parsedJson.containsKey("vocabularyScore")) {
+                Object score = parsedJson.get("vocabularyScore");
+                try {
+                    evaluation.put("vocabularyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                } catch (Exception e) {
+                    logger.warn("Failed to parse vocabularyScore: {}", score, e);
+                }
+            }
+            
+            // Extract text feedback
+            if (parsedJson.containsKey("summaryVi")) {
+                Object summary = parsedJson.get("summaryVi");
+                if (summary != null && !summary.toString().trim().isEmpty()) {
+                    evaluation.put("summaryVi", summary.toString().trim());
+                }
+            }
+            if (parsedJson.containsKey("overallFeedbackVi")) {
+                Object feedback = parsedJson.get("overallFeedbackVi");
+                if (feedback != null && !feedback.toString().trim().isEmpty()) {
+                    evaluation.put("overallFeedbackVi", feedback.toString().trim());
+                }
+            }
+            
+            // Extract arrays (strengthsVi, improvementsVi, suggestionsVi)
+            if (parsedJson.containsKey("strengthsVi")) {
+                Object strengthsObj = parsedJson.get("strengthsVi");
+                if (strengthsObj instanceof List) {
+                    try {
+                        @SuppressWarnings("unchecked")
+                        List<Object> strengthsList = (List<Object>) strengthsObj;
+                        List<String> strengths = new ArrayList<>();
+                        for (Object item : strengthsList) {
+                            if (item != null) {
+                                String str = item.toString().trim();
+                                if (!str.isEmpty()) {
+                                    strengths.add(str);
+                                }
+                            }
+                        }
+                        if (!strengths.isEmpty()) {
+                            evaluation.put("strengthsVi", strengths);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse strengthsVi", e);
+                    }
+                }
+            }
+            
+            if (parsedJson.containsKey("improvementsVi")) {
+                Object improvementsObj = parsedJson.get("improvementsVi");
+                if (improvementsObj instanceof List) {
+                    try {
+                        @SuppressWarnings("unchecked")
+                        List<Object> improvementsList = (List<Object>) improvementsObj;
+                        List<String> improvements = new ArrayList<>();
+                        for (Object item : improvementsList) {
+                            if (item != null) {
+                                String str = item.toString().trim();
+                                if (!str.isEmpty()) {
+                                    improvements.add(str);
+                                }
+                            }
+                        }
+                        if (!improvements.isEmpty()) {
+                            evaluation.put("improvementsVi", improvements);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse improvementsVi", e);
+                    }
+                }
+            }
+            
+            if (parsedJson.containsKey("suggestionsVi")) {
+                Object suggestionsObj = parsedJson.get("suggestionsVi");
+                if (suggestionsObj instanceof List) {
+                    try {
+                        @SuppressWarnings("unchecked")
+                        List<Object> suggestionsList = (List<Object>) suggestionsObj;
+                        List<String> suggestions = new ArrayList<>();
+                        for (Object item : suggestionsList) {
+                            if (item != null) {
+                                String str = item.toString().trim();
+                                if (!str.isEmpty()) {
+                                    suggestions.add(str);
+                                }
+                            }
+                        }
+                        if (!suggestions.isEmpty()) {
+                            evaluation.put("suggestionsVi", suggestions);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse suggestionsVi", e);
+                    }
+                }
+            }
+            
+            // Extract detailedAnalysisVi
+            if (parsedJson.containsKey("detailedAnalysisVi")) {
+                Object detailedObj = parsedJson.get("detailedAnalysisVi");
+                if (detailedObj instanceof List) {
+                    try {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> detailedAnalysisList = (List<Map<String, Object>>) detailedObj;
+                        if (detailedAnalysisList != null && !detailedAnalysisList.isEmpty()) {
+                            evaluation.put("detailedAnalysisVi", detailedAnalysisList);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse detailedAnalysisVi", e);
+                    }
+                }
+            }
+            
+            logger.info("Successfully parsed evaluation JSON. Fields present: scores={}, summaryVi={}, overallFeedbackVi={}, strengthsVi={}, improvementsVi={}, suggestionsVi={}, detailedAnalysisVi={}",
+                    parsedJson.containsKey("overallScore"),
+                    parsedJson.containsKey("summaryVi"),
+                    parsedJson.containsKey("overallFeedbackVi"),
+                    parsedJson.containsKey("strengthsVi"),
+                    parsedJson.containsKey("improvementsVi"),
+                    parsedJson.containsKey("suggestionsVi"),
+                    parsedJson.containsKey("detailedAnalysisVi"));
+            
+        } catch (Exception e) {
+            logger.error("Failed to parse evaluation JSON from Gemini. Using default values. Raw response (first 500 chars): {}", 
+                    evaluationJson.length() > 500 ? evaluationJson.substring(0, 500) : evaluationJson, e);
+            
+            // Ensure default feedback arrays are not empty
+            if (evaluation.get("strengthsVi") instanceof List && ((List<?>) evaluation.get("strengthsVi")).isEmpty()) {
+                evaluation.put("strengthsVi", Arrays.asList("Đã hoàn thành cuộc trò chuyện", "Tham gia tích cực vào cuộc trò chuyện"));
+            }
+            if (evaluation.get("improvementsVi") instanceof List && ((List<?>) evaluation.get("improvementsVi")).isEmpty()) {
+                evaluation.put("improvementsVi", Arrays.asList("Tiếp tục luyện tập phát âm và từ vựng", "Chú ý hơn đến ngữ pháp và cách sử dụng trợ từ"));
+            }
+            if (evaluation.get("suggestionsVi") instanceof List && ((List<?>) evaluation.get("suggestionsVi")).isEmpty()) {
+                evaluation.put("suggestionsVi", Arrays.asList("Thử các tình huống khác nhau để mở rộng vốn từ", "Luyện tập thêm các mẫu câu thông dụng"));
+            }
+        }
+
+        // Final validation: ensure all required fields are present and not null
+        if (evaluation.get("strengthsVi") == null || ((List<?>) evaluation.get("strengthsVi")).isEmpty()) {
+            evaluation.put("strengthsVi", Arrays.asList("Đã hoàn thành cuộc trò chuyện", "Tham gia tích cực vào cuộc trò chuyện"));
+        }
+        if (evaluation.get("improvementsVi") == null || ((List<?>) evaluation.get("improvementsVi")).isEmpty()) {
+            evaluation.put("improvementsVi", Arrays.asList("Tiếp tục luyện tập phát âm và từ vựng", "Chú ý hơn đến ngữ pháp và cách sử dụng trợ từ"));
+        }
+        if (evaluation.get("suggestionsVi") == null || ((List<?>) evaluation.get("suggestionsVi")).isEmpty()) {
+            evaluation.put("suggestionsVi", Arrays.asList("Thử các tình huống khác nhau để mở rộng vốn từ", "Luyện tập thêm các mẫu câu thông dụng"));
+        }
+        if (evaluation.get("detailedAnalysisVi") == null) {
+            evaluation.put("detailedAnalysisVi", new ArrayList<>());
+        }
 
         return evaluation;
     }
