@@ -1,5 +1,7 @@
 package com.hokori.web.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hokori.web.exception.AIServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +28,8 @@ public class ConversationPracticeService {
 
     @Value("${google.cloud.enabled:false}")
     private boolean googleCloudEnabled;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Start a new conversation practice session
@@ -557,25 +561,30 @@ public class ConversationPracticeService {
                         "   - grammarScore: Ngữ pháp (cấu trúc câu, chia động từ, trợ từ)\n" +
                         "   - vocabularyScore: Từ vựng (sử dụng từ phù hợp, đa dạng)\n\n" +
                         "2. **Phân tích chi tiết:**\n" +
-                        "   - overallFeedbackVi: Nhận xét tổng quan về toàn bộ cuộc trò chuyện (2-3 câu)\n" +
-                        "   - strengthsVi: Mảng 3-5 điểm mạnh cụ thể (ví dụ: \"Sử dụng đúng trợ từ を trong câu 'りんごを食べます'\", \"Phát âm rõ ràng các từ khó\")\n" +
-                        "   - improvementsVi: Mảng 3-5 điểm cần cải thiện cụ thể với ví dụ (ví dụ: \"Lỗi chia động từ: '食べる' nên là '食べます' trong ngữ cảnh lịch sự\", \"Thiếu trợ từ に khi nói về địa điểm\")\n" +
-                        "   - suggestionsVi: Mảng 3-5 gợi ý cụ thể để cải thiện (ví dụ: \"Luyện tập thêm cách sử dụng trợ từ に và で\", \"Học thêm từ vựng về chủ đề nhà hàng\")\n" +
+                        "   - summaryVi: Tóm tắt ngắn gọn tình hình cuộc trò chuyện (1-2 câu, ví dụ: \"Bạn đã hoàn thành tốt cuộc trò chuyện với điểm tổng thể 85/100. Điểm mạnh là phát âm rõ ràng và sử dụng từ vựng phù hợp, nhưng cần cải thiện ngữ pháp và cách sử dụng trợ từ.\")\n" +
+                        "   - overallFeedbackVi: Nhận xét tổng quan chi tiết về toàn bộ cuộc trò chuyện (3-4 câu, giải thích rõ ràng về điểm số và tình hình tổng thể)\n" +
+                        "   - strengthsVi: Mảng 3-5 điểm mạnh cụ thể với ví dụ từ cuộc trò chuyện (ví dụ: \"Sử dụng đúng trợ từ を trong câu 'りんごを食べます'\", \"Phát âm rõ ràng các từ khó như 'ありがとうございます'\")\n" +
+                        "   - improvementsVi: Mảng 3-5 điểm cần cải thiện cụ thể với ví dụ từ cuộc trò chuyện (ví dụ: \"Lỗi chia động từ: '食べる' nên là '食べます' trong ngữ cảnh lịch sự\", \"Thiếu trợ từ に khi nói về địa điểm: '学校行きます' nên là '学校に行きます'\")\n" +
+                        "   - suggestionsVi: Mảng 3-5 gợi ý cụ thể và thực tế để cải thiện (ví dụ: \"Luyện tập thêm cách sử dụng trợ từ に và で để phân biệt địa điểm và phương tiện\", \"Học thêm từ vựng về chủ đề nhà hàng như 'メニュー', '注文', 'お会計'\")\n" +
                         "   - detailedAnalysisVi: Phân tích chi tiết từng lượt trả lời của học viên, chỉ ra lỗi cụ thể và cách sửa (mảng các object với format: {\"turn\": số lượt, \"userResponse\": \"câu trả lời của học viên\", \"errors\": [\"lỗi 1\", \"lỗi 2\"], \"corrections\": [\"cách sửa 1\", \"cách sửa 2\"], \"betterResponse\": \"câu trả lời tốt hơn\"})\n\n" +
-                        "**Lưu ý:**\n" +
+                        "**Lưu ý quan trọng:**\n" +
                         "- Đánh giá dựa trên trình độ %s, không quá khắt khe nhưng cũng không quá dễ dãi\n" +
-                        "- Chỉ ra lỗi cụ thể với ví dụ từ cuộc trò chuyện\n" +
+                        "- summaryVi phải ngắn gọn, dễ hiểu, giúp user nắm được tình hình ngay lập tức\n" +
+                        "- overallFeedbackVi phải giải thích rõ ràng về điểm số và tình hình tổng thể\n" +
+                        "- Chỉ ra lỗi cụ thể với ví dụ từ cuộc trò chuyện thực tế\n" +
                         "- Đưa ra gợi ý thực tế, có thể áp dụng ngay\n" +
                         "- Tất cả feedback phải bằng tiếng Việt\n" +
-                        "- Phân tích chi tiết phải cụ thể, không chung chung\n\n" +
-                        "Trả về kết quả dưới dạng JSON hợp lệ:\n" +
+                        "- Phân tích chi tiết phải cụ thể, không chung chung\n" +
+                        "- Đảm bảo JSON hợp lệ, không có ký tự đặc biệt gây lỗi parse\n\n" +
+                        "Trả về kết quả dưới dạng JSON hợp lệ (KHÔNG có markdown, chỉ JSON thuần):\n" +
                         "{\n" +
                         "  \"overallScore\": số (0-100),\n" +
                         "  \"accuracyScore\": số (0-100),\n" +
                         "  \"fluencyScore\": số (0-100),\n" +
                         "  \"grammarScore\": số (0-100),\n" +
                         "  \"vocabularyScore\": số (0-100),\n" +
-                        "  \"overallFeedbackVi\": \"chuỗi\",\n" +
+                        "  \"summaryVi\": \"chuỗi tóm tắt ngắn gọn 1-2 câu\",\n" +
+                        "  \"overallFeedbackVi\": \"chuỗi nhận xét tổng quan chi tiết 3-4 câu\",\n" +
                         "  \"strengthsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
                         "  \"improvementsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
                         "  \"suggestionsVi\": [\"chuỗi\", \"chuỗi\", ...],\n" +
@@ -612,79 +621,74 @@ public class ConversationPracticeService {
                 }
             }
 
-            // Use GeminiService's JSON parsing if available
-            if (geminiService != null) {
-                try {
-                    com.fasterxml.jackson.databind.JsonNode jsonNode = geminiService.generateContentAsJson(
-                            "Parse this JSON: " + jsonText
-                    );
-                    if (jsonNode != null) {
-                        // Extract fields from JSON node
-                        if (jsonNode.has("overallScore")) {
-                            evaluation.put("overallScore", jsonNode.get("overallScore").asDouble());
-                        }
-                        if (jsonNode.has("accuracyScore")) {
-                            evaluation.put("accuracyScore", jsonNode.get("accuracyScore").asDouble());
-                        }
-                        if (jsonNode.has("fluencyScore")) {
-                            evaluation.put("fluencyScore", jsonNode.get("fluencyScore").asDouble());
-                        }
-                        if (jsonNode.has("grammarScore")) {
-                            evaluation.put("grammarScore", jsonNode.get("grammarScore").asDouble());
-                        }
-                        if (jsonNode.has("vocabularyScore")) {
-                            evaluation.put("vocabularyScore", jsonNode.get("vocabularyScore").asDouble());
-                        }
-                        if (jsonNode.has("overallFeedbackVi")) {
-                            evaluation.put("overallFeedbackVi", jsonNode.get("overallFeedbackVi").asText());
-                        }
-                        if (jsonNode.has("strengthsVi")) {
-                            List<String> strengths = new ArrayList<>();
-                            jsonNode.get("strengthsVi").forEach(node -> strengths.add(node.asText()));
-                            evaluation.put("strengthsVi", strengths);
-                        }
-                        if (jsonNode.has("improvementsVi")) {
-                            List<String> improvements = new ArrayList<>();
-                            jsonNode.get("improvementsVi").forEach(node -> improvements.add(node.asText()));
-                            evaluation.put("improvementsVi", improvements);
-                        }
-                        if (jsonNode.has("suggestionsVi")) {
-                            List<String> suggestions = new ArrayList<>();
-                            jsonNode.get("suggestionsVi").forEach(node -> suggestions.add(node.asText()));
-                            evaluation.put("suggestionsVi", suggestions);
-                        }
-                        if (jsonNode.has("detailedAnalysisVi")) {
-                            List<Map<String, Object>> detailedAnalysis = new ArrayList<>();
-                            jsonNode.get("detailedAnalysisVi").forEach(node -> {
-                                Map<String, Object> turnAnalysis = new HashMap<>();
-                                if (node.has("turn")) {
-                                    turnAnalysis.put("turn", node.get("turn").asInt());
-                                }
-                                if (node.has("userResponse")) {
-                                    turnAnalysis.put("userResponse", node.get("userResponse").asText());
-                                }
-                                if (node.has("errors")) {
-                                    List<String> errors = new ArrayList<>();
-                                    node.get("errors").forEach(err -> errors.add(err.asText()));
-                                    turnAnalysis.put("errors", errors);
-                                }
-                                if (node.has("corrections")) {
-                                    List<String> corrections = new ArrayList<>();
-                                    node.get("corrections").forEach(corr -> corrections.add(corr.asText()));
-                                    turnAnalysis.put("corrections", corrections);
-                                }
-                                if (node.has("betterResponse")) {
-                                    turnAnalysis.put("betterResponse", node.get("betterResponse").asText());
-                                }
-                                detailedAnalysis.add(turnAnalysis);
-                            });
-                            evaluation.put("detailedAnalysisVi", detailedAnalysis);
-                        }
-                        return evaluation;
-                    }
-                } catch (Exception e) {
-                    logger.warn("Failed to parse evaluation JSON, using fallback", e);
+            // Parse JSON directly using ObjectMapper (more efficient than calling Gemini API again)
+            try {
+                Map<String, Object> parsedJson = objectMapper.readValue(jsonText, new TypeReference<Map<String, Object>>() {});
+                
+                // Extract all fields from parsed JSON
+                if (parsedJson.containsKey("overallScore")) {
+                    Object score = parsedJson.get("overallScore");
+                    evaluation.put("overallScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
                 }
+                if (parsedJson.containsKey("accuracyScore")) {
+                    Object score = parsedJson.get("accuracyScore");
+                    evaluation.put("accuracyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                }
+                if (parsedJson.containsKey("fluencyScore")) {
+                    Object score = parsedJson.get("fluencyScore");
+                    evaluation.put("fluencyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                }
+                if (parsedJson.containsKey("grammarScore")) {
+                    Object score = parsedJson.get("grammarScore");
+                    evaluation.put("grammarScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                }
+                if (parsedJson.containsKey("vocabularyScore")) {
+                    Object score = parsedJson.get("vocabularyScore");
+                    evaluation.put("vocabularyScore", score instanceof Number ? ((Number) score).doubleValue() : Double.parseDouble(score.toString()));
+                }
+                if (parsedJson.containsKey("summaryVi")) {
+                    evaluation.put("summaryVi", parsedJson.get("summaryVi").toString());
+                }
+                if (parsedJson.containsKey("overallFeedbackVi")) {
+                    evaluation.put("overallFeedbackVi", parsedJson.get("overallFeedbackVi").toString());
+                }
+                if (parsedJson.containsKey("strengthsVi") && parsedJson.get("strengthsVi") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> strengthsList = (List<Object>) parsedJson.get("strengthsVi");
+                    List<String> strengths = new ArrayList<>();
+                    for (Object item : strengthsList) {
+                        strengths.add(item.toString());
+                    }
+                    evaluation.put("strengthsVi", strengths);
+                }
+                if (parsedJson.containsKey("improvementsVi") && parsedJson.get("improvementsVi") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> improvementsList = (List<Object>) parsedJson.get("improvementsVi");
+                    List<String> improvements = new ArrayList<>();
+                    for (Object item : improvementsList) {
+                        improvements.add(item.toString());
+                    }
+                    evaluation.put("improvementsVi", improvements);
+                }
+                if (parsedJson.containsKey("suggestionsVi") && parsedJson.get("suggestionsVi") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> suggestionsList = (List<Object>) parsedJson.get("suggestionsVi");
+                    List<String> suggestions = new ArrayList<>();
+                    for (Object item : suggestionsList) {
+                        suggestions.add(item.toString());
+                    }
+                    evaluation.put("suggestionsVi", suggestions);
+                }
+                if (parsedJson.containsKey("detailedAnalysisVi") && parsedJson.get("detailedAnalysisVi") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> detailedAnalysisList = (List<Map<String, Object>>) parsedJson.get("detailedAnalysisVi");
+                    evaluation.put("detailedAnalysisVi", detailedAnalysisList);
+                }
+                
+                logger.debug("Successfully parsed evaluation JSON");
+                return evaluation;
+            } catch (Exception e) {
+                logger.warn("Failed to parse evaluation JSON directly, trying fallback", e);
             }
         } catch (Exception e) {
             logger.warn("Failed to parse evaluation JSON", e);
@@ -696,7 +700,8 @@ public class ConversationPracticeService {
         evaluation.put("fluencyScore", 75.0);
         evaluation.put("grammarScore", 75.0);
         evaluation.put("vocabularyScore", 75.0);
-        evaluation.put("overallFeedbackVi", "Cuộc trò chuyện đã hoàn thành. Hãy tiếp tục luyện tập để cải thiện kỹ năng!");
+        evaluation.put("summaryVi", "Bạn đã hoàn thành cuộc trò chuyện với điểm tổng thể 75/100. Hãy tiếp tục luyện tập để cải thiện kỹ năng!");
+        evaluation.put("overallFeedbackVi", "Cuộc trò chuyện đã hoàn thành. Bạn đã thể hiện sự tham gia tích cực và cố gắng giao tiếp. Tuy nhiên, vẫn còn một số điểm cần cải thiện về ngữ pháp và từ vựng. Hãy tiếp tục luyện tập để nâng cao trình độ!");
         evaluation.put("strengthsVi", Arrays.asList("Đã hoàn thành cuộc trò chuyện", "Tham gia tích cực vào cuộc trò chuyện"));
         evaluation.put("improvementsVi", Arrays.asList("Tiếp tục luyện tập phát âm và từ vựng", "Chú ý hơn đến ngữ pháp và cách sử dụng trợ từ"));
         evaluation.put("suggestionsVi", Arrays.asList("Thử các tình huống khác nhau để mở rộng vốn từ", "Luyện tập thêm các mẫu câu thông dụng"));
