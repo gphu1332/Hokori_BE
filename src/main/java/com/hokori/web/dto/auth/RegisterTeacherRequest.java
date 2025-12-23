@@ -14,7 +14,7 @@ public class RegisterTeacherRequest {
     private String firstName;
     private String lastName;
     private String headline;
-    @NotBlank private String bio; // ≥ 50 ký tự
+    private String bio; // ≥ 50 ký tự
 
     private String currentJlptLevel; // yêu cầu N2/N1
 
