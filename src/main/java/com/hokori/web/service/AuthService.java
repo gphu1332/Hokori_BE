@@ -502,9 +502,7 @@ public class AuthService {
         if (userRepository.findByEmail(req.getEmail()).isPresent())
             throw new RuntimeException("Email already exists");
 
-        // yêu cầu tối thiểu: bio >= 50, JLPT N2/N1
-        if (req.getBio() == null || req.getBio().trim().length() < 50)
-            throw new RuntimeException("Bio must be at least 50 characters");
+        // yêu cầu JLPT N2/N1
         if (!"N1".equalsIgnoreCase(req.getCurrentJlptLevel()) &&
                 !"N2".equalsIgnoreCase(req.getCurrentJlptLevel()))
             throw new RuntimeException("Teacher must have JLPT N2 or N1");
