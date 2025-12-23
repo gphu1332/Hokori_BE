@@ -989,14 +989,6 @@ public class CourseService {
         c.setCommentsDisabled(true);
         courseRepo.save(c);
         
-        // Notify teacher
-        notificationService.notifyCourseStatusChange(
-            c.getUserId(), 
-            c.getId(), 
-            c.getTitle(), 
-            "Comments have been disabled by moderator"
-        );
-        
         return toCourseResLite(c);
     }
     
@@ -1014,14 +1006,6 @@ public class CourseService {
         
         c.setCommentsDisabled(false);
         courseRepo.save(c);
-        
-        // Notify teacher
-        notificationService.notifyCourseStatusChange(
-            c.getUserId(), 
-            c.getId(), 
-            c.getTitle(), 
-            "Comments have been enabled by moderator"
-        );
         
         return toCourseResLite(c);
     }

@@ -13,6 +13,7 @@ import com.hokori.web.repository.CourseRepository;
 import com.hokori.web.repository.EnrollmentRepository;
 import com.hokori.web.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional
 public class CourseCommentService {
 
