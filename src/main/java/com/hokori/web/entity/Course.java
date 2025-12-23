@@ -67,6 +67,10 @@ public class Course extends BaseEntity {
     private Double ratingAvg = 0.0;
     private Long ratingCount = 0L;
     private Long enrollCount = 0L;
+    
+    // Comment control (moderator can disable comments for problematic courses)
+    @Column(name = "comments_disabled", nullable = false)
+    private Boolean commentsDisabled = false; // Default: comments enabled
 
     // trong Course
     @JsonIgnore

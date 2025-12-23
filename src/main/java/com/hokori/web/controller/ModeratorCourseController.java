@@ -225,6 +225,30 @@ public class ModeratorCourseController {
         List<CourseRes> courses = courseService.listPendingUpdateCourses();
         return ResponseEntity.ok(ApiResponse.success("OK", courses));
     }
+    
+    @Operation(
+            summary = "Disable comments cho course",
+            description = "Moderator tắt chức năng comment cho course. Dùng khi course có nhiều spam hoặc toxic comments."
+    )
+    @PutMapping("/{id}/disable-comments")
+    public ResponseEntity<ApiResponse<CourseRes>> disableComments(
+            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long id) {
+        CourseRes course = courseService.disableComments(id, currentModeratorId());
+        return ResponseEntity.ok(ApiResponse.success("Comments disabled for this course", course));
+    }
+    
+    @Operation(
+            summary = "Enable comments cho course",
+            description = "Moderator bật lại chức năng comment cho course đã bị disable."
+    )
+    @PutMapping("/{id}/enable-comments")
+    public ResponseEntity<ApiResponse<CourseRes>> enableComments(
+            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
+            @PathVariable Long id) {
+        CourseRes course = courseService.enableComments(id, currentModeratorId());
+        return ResponseEntity.ok(ApiResponse.success("Comments enabled for this course", course));
+    }
 
     @Operation(
             summary = "Chi tiết course có update đang chờ (FULL TREE)",

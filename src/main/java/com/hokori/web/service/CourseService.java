@@ -967,6 +967,64 @@ public class CourseService {
         
         return toCourseResLite(c);
     }
+    
+    /**
+     * Disable comments for a course (moderator action)
+     * Used when course has spam or toxic comments
+     * 
+     * @param id Course ID
+     * @param moderatorUserId Moderator user ID who disables comments
+     * @return Course response with commentsDisabled = true
+     */
+    public CourseRes disableComments(Long id, Long moderatorUserId) {
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Only allow disabling comments for PUBLISHED or FLAGGED courses
+        if (c.getStatus() != CourseStatus.PUBLISHED && c.getStatus() != CourseStatus.FLAGGED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Can only disable comments for published or flagged courses");
+        }
+        
+        c.setCommentsDisabled(true);
+        courseRepo.save(c);
+        
+        // Notify teacher
+        notificationService.notifyCourseStatusChange(
+            c.getUserId(), 
+            c.getId(), 
+            c.getTitle(), 
+            "Comments have been disabled by moderator"
+        );
+        
+        return toCourseResLite(c);
+    }
+    
+    /**
+     * Enable comments for a course (moderator action)
+     * Re-enable comments after they were disabled
+     * 
+     * @param id Course ID
+     * @param moderatorUserId Moderator user ID who enables comments
+     * @return Course response with commentsDisabled = false
+     */
+    public CourseRes enableComments(Long id, Long moderatorUserId) {
+        Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        c.setCommentsDisabled(false);
+        courseRepo.save(c);
+        
+        // Notify teacher
+        notificationService.notifyCourseStatusChange(
+            c.getUserId(), 
+            c.getId(), 
+            c.getTitle(), 
+            "Comments have been enabled by moderator"
+        );
+        
+        return toCourseResLite(c);
+    }
 
     // =========================
     // CHILDREN

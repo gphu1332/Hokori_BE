@@ -44,6 +44,10 @@ public class CourseCommentService {
         if (c.isDeletedFlag()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
         }
+        // Check if comments are disabled by moderator
+        if (c.getCommentsDisabled() != null && c.getCommentsDisabled()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Comments are disabled for this course");
+        }
         return c;
     }
 
