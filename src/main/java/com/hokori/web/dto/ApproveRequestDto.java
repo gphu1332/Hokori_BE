@@ -8,6 +8,7 @@ import java.util.List;
 public record ApproveRequestDto(
         Long id,
         Long userId,
+        String teacherName, // Tên teacher (displayName hoặc username)
         ApprovalStatus status,
         LocalDateTime submittedAt,
         Long reviewedBy,

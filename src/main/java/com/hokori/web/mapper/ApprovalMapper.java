@@ -38,9 +38,21 @@ public class ApprovalMapper {
 
     public ApproveRequestDto toDto(ProfileApproveRequest r){
         List<ApproveRequestItemDto> items = r.getItems().stream().map(this::toDto).toList();
+        
+        // Get teacher name (displayName or username)
+        String teacherName = null;
+        if (r.getUser() != null) {
+            String displayName = r.getUser().getDisplayName();
+            String username = r.getUser().getUsername();
+            teacherName = (displayName != null && !displayName.trim().isEmpty()) 
+                    ? displayName 
+                    : username;
+        }
+        
         return new ApproveRequestDto(
                 r.getId(),
                 r.getUser().getId(),
+                teacherName,
                 r.getStatus(),
                 r.getSubmittedAt(),
                 r.getReviewedBy(),
