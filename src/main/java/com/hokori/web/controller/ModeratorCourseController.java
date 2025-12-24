@@ -261,16 +261,6 @@ public class ModeratorCourseController {
     }
 
     @Operation(
-            summary = "Danh sách courses có update đang chờ duyệt",
-            description = "Lấy tất cả courses có status PENDING_UPDATE (teacher đã submit update từ PUBLISHED course)"
-    )
-    @GetMapping("/pending-updates")
-    public ResponseEntity<ApiResponse<List<CourseRes>>> listPendingUpdates() {
-        List<CourseRes> courses = courseService.listPendingUpdateCourses();
-        return ResponseEntity.ok(ApiResponse.success("OK", courses));
-    }
-    
-    @Operation(
             summary = "Disable comments cho course",
             description = "Moderator tắt chức năng comment cho course. Dùng khi course có nhiều spam hoặc toxic comments."
     )
@@ -322,63 +312,5 @@ public class ModeratorCourseController {
         return ResponseEntity.ok(ApiResponse.success("Comment đã được hiện lại", comment));
     }
 
-    @Operation(
-            summary = "Chi tiết course có update đang chờ (FULL TREE)",
-            description = "Xem toàn bộ nội dung course (chapters -> lessons -> sections -> contents) để review update trước khi approve/reject"
-    )
-    @GetMapping("/{id}/update-detail")
-    public ResponseEntity<ApiResponse<CourseRes>> getUpdateDetail(
-            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
-            @PathVariable Long id) {
-        CourseRes course = courseService.getTree(id);
-        // Verify it's actually PENDING_UPDATE
-        if (course.getStatus() != com.hokori.web.Enum.CourseStatus.PENDING_UPDATE) {
-            return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Course is not in PENDING_UPDATE status"));
-        }
-        return ResponseEntity.ok(ApiResponse.success("OK", course));
-    }
-
-    @Operation(
-            summary = "Approve course update",
-            description = "Duyệt và áp dụng update cho course. Chuyển status từ PENDING_UPDATE về PUBLISHED và clear pendingUpdateAt."
-    )
-    @PutMapping("/{id}/approve-update")
-    public ResponseEntity<ApiResponse<CourseRes>> approveUpdate(
-            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
-            @PathVariable Long id) {
-        CourseRes course = courseService.approveUpdate(id, currentModeratorId());
-        return ResponseEntity.ok(ApiResponse.success("Course update approved", course));
-    }
-
-    @Operation(
-            summary = "Reject course update",
-            description = "Từ chối update. Revert course về PUBLISHED status và clear pendingUpdateAt. Teacher có thể sửa và submit update lại sau.\n\n" +
-                    "**Format reason:**\n" +
-                    "- Có thể gửi string đơn giản: `reason=Nội dung không phù hợp`\n" +
-                    "- Hoặc JSON string để chỉ định reason cho từng phần (xem chi tiết ở endpoint reject course)"
-    )
-    @PutMapping("/{id}/reject-update")
-    public ResponseEntity<ApiResponse<CourseRes>> rejectUpdate(
-            @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
-            @PathVariable Long id,
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Structured rejection reasons. Có thể gửi reason cho từng phần riêng biệt.", required = false)
-            @org.springframework.web.bind.annotation.RequestBody(required = false) CourseRejectionRequest request,
-            @Parameter(name = "reason", in = ParameterIn.QUERY, description = "Lý do từ chối đơn giản (backward compatible, optional nếu dùng request body)", example = "Nội dung không phù hợp")
-            @RequestParam(required = false) String reason) {
-        CourseRes course;
-        if (request != null && request.hasAnyReason()) {
-            // Use structured request body
-            course = courseService.rejectUpdate(id, currentModeratorId(), request);
-        } else if (reason != null && !reason.trim().isEmpty()) {
-            // Backward compatible: use query parameter
-            course = courseService.rejectUpdate(id, currentModeratorId(), reason);
-        } else {
-            throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, 
-                "Rejection reason is required. Use request body or 'reason' query parameter.");
-        }
-        return ResponseEntity.ok(ApiResponse.success("Course update rejected", course));
-    }
 }
 
