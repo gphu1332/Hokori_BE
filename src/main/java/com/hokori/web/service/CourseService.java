@@ -6,7 +6,10 @@ import com.hokori.web.Enum.ContentType;
 import com.hokori.web.Enum.CourseStatus;
 import com.hokori.web.Enum.JLPTLevel;
 import com.hokori.web.dto.course.*;
+import com.hokori.web.dto.course.RejectionReasonDto;
+import com.hokori.web.dto.course.CourseRejectionRequest;
 import com.hokori.web.entity.*;
+import com.hokori.web.entity.CourseRejectionReasonDetail;
 import com.hokori.web.repository.*;
 import com.hokori.web.util.SlugUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +47,7 @@ public class CourseService {
     private final FileStorageService fileStorageService;
     private final com.hokori.web.service.CourseFlagService courseFlagService;
     private final ObjectMapper objectMapper;
+    private final com.hokori.web.repository.CourseRejectionReasonDetailRepository rejectionReasonDetailRepo;
 
     // =========================
     // COURSE
@@ -427,10 +431,28 @@ public class CourseService {
      * 
      * @param id Course ID
      * @param moderatorUserId Moderator user ID who rejects
-     * @param reason Rejection reason (optional, will be persisted)
+     * @param reason Rejection reason (optional, will be persisted) - backward compatible
      * @return Course response with REJECTED status and rejection info
      */
     public CourseRes rejectCourse(Long id, Long moderatorUserId, String reason) {
+        // Backward compatible: convert simple string to structured request
+        CourseRejectionRequest request = new CourseRejectionRequest();
+        if (reason != null && !reason.trim().isEmpty()) {
+            request.setGeneral(reason);
+        }
+        return rejectCourse(id, moderatorUserId, request);
+    }
+    
+    /**
+     * Reject course by moderator with structured reasons: PENDING_APPROVAL -> REJECTED
+     * Teacher can edit and submit again after rejection.
+     * 
+     * @param id Course ID
+     * @param moderatorUserId Moderator user ID who rejects
+     * @param request Structured rejection reasons
+     * @return Course response with REJECTED status and rejection info
+     */
+    public CourseRes rejectCourse(Long id, Long moderatorUserId, CourseRejectionRequest request) {
         Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
@@ -438,16 +460,138 @@ public class CourseService {
             throw bad("Course must be in PENDING_APPROVAL status to reject");
         }
 
+        if (request == null || !request.hasAnyReason()) {
+            throw bad("Rejection reason is required");
+        }
+
         c.setStatus(CourseStatus.REJECTED);
-        c.setRejectionReason(reason);
         c.setRejectedAt(Instant.now());
         c.setRejectedByUserId(moderatorUserId);
         
+        // Clear old rejection reasons
+        c.setRejectionReason(null);
+        c.setRejectionReasonGeneral(null);
+        c.setRejectionReasonTitle(null);
+        c.setRejectionReasonSubtitle(null);
+        c.setRejectionReasonDescription(null);
+        c.setRejectionReasonCoverImage(null);
+        c.setRejectionReasonPrice(null);
+        
+        // Delete old detailed rejection reasons
+        rejectionReasonDetailRepo.deleteByCourse_Id(id);
+        
+        // Set structured rejection reasons for course main parts
+        if (request.getGeneral() != null && !request.getGeneral().trim().isEmpty()) {
+            c.setRejectionReasonGeneral(request.getGeneral());
+            // Also set in old field for backward compatibility
+            c.setRejectionReason(request.getGeneral());
+        }
+        if (request.getTitle() != null && !request.getTitle().trim().isEmpty()) {
+            c.setRejectionReasonTitle(request.getTitle());
+        }
+        if (request.getSubtitle() != null && !request.getSubtitle().trim().isEmpty()) {
+            c.setRejectionReasonSubtitle(request.getSubtitle());
+        }
+        if (request.getDescription() != null && !request.getDescription().trim().isEmpty()) {
+            c.setRejectionReasonDescription(request.getDescription());
+        }
+        if (request.getCoverImage() != null && !request.getCoverImage().trim().isEmpty()) {
+            c.setRejectionReasonCoverImage(request.getCoverImage());
+        }
+        if (request.getPrice() != null && !request.getPrice().trim().isEmpty()) {
+            c.setRejectionReasonPrice(request.getPrice());
+        }
+        
+        // Save course first
+        courseRepo.save(c);
+        
+        // Save detailed rejection reasons for chapters/lessons/sections
+        if (request.getChapters() != null && !request.getChapters().isEmpty()) {
+            for (CourseRejectionRequest.ItemReason itemReason : request.getChapters()) {
+                CourseRejectionReasonDetail detail = new CourseRejectionReasonDetail();
+                detail.setCourse(c);
+                detail.setItemType("CHAPTER");
+                detail.setItemId(itemReason.getId());
+                detail.setReason(itemReason.getReason());
+                detail.setRejectedByUserId(moderatorUserId);
+                rejectionReasonDetailRepo.save(detail);
+            }
+        }
+        
+        if (request.getLessons() != null && !request.getLessons().isEmpty()) {
+            for (CourseRejectionRequest.ItemReason itemReason : request.getLessons()) {
+                CourseRejectionReasonDetail detail = new CourseRejectionReasonDetail();
+                detail.setCourse(c);
+                detail.setItemType("LESSON");
+                detail.setItemId(itemReason.getId());
+                detail.setReason(itemReason.getReason());
+                detail.setRejectedByUserId(moderatorUserId);
+                rejectionReasonDetailRepo.save(detail);
+            }
+        }
+        
+        if (request.getSections() != null && !request.getSections().isEmpty()) {
+            for (CourseRejectionRequest.ItemReason itemReason : request.getSections()) {
+                CourseRejectionReasonDetail detail = new CourseRejectionReasonDetail();
+                detail.setCourse(c);
+                detail.setItemType("SECTION");
+                detail.setItemId(itemReason.getId());
+                detail.setReason(itemReason.getReason());
+                detail.setRejectedByUserId(moderatorUserId);
+                rejectionReasonDetailRepo.save(detail);
+            }
+        }
+        
+        // Build notification message
+        String notificationReason = buildNotificationReason(request);
+        
         // Tạo notification cho teacher
-        notificationService.notifyCourseRejected(c.getUserId(), c.getId(), c.getTitle(), reason);
+        notificationService.notifyCourseRejected(c.getUserId(), c.getId(), c.getTitle(), notificationReason);
+        
+        // Reload course with details
+        c = courseRepo.findByIdAndDeletedFlagFalse(id).orElse(c);
         
         // toCourseResLite sẽ tự động map rejection info khi status = REJECTED
         return toCourseResLite(c);
+    }
+    
+    /**
+     * Build notification reason string from structured request
+     */
+    private String buildNotificationReason(CourseRejectionRequest request) {
+        StringBuilder sb = new StringBuilder();
+        if (request.getGeneral() != null && !request.getGeneral().trim().isEmpty()) {
+            sb.append("Lý do chung: ").append(request.getGeneral());
+        }
+        if (request.getTitle() != null && !request.getTitle().trim().isEmpty()) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append("Tiêu đề: ").append(request.getTitle());
+        }
+        if (request.getSubtitle() != null && !request.getSubtitle().trim().isEmpty()) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append("Mô tả phụ: ").append(request.getSubtitle());
+        }
+        if (request.getDescription() != null && !request.getDescription().trim().isEmpty()) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append("Mô tả: ").append(request.getDescription());
+        }
+        if (request.getCoverImage() != null && !request.getCoverImage().trim().isEmpty()) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append("Ảnh bìa: ").append(request.getCoverImage());
+        }
+        if (request.getPrice() != null && !request.getPrice().trim().isEmpty()) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append("Giá: ").append(request.getPrice());
+        }
+        int detailCount = 0;
+        if (request.getChapters() != null) detailCount += request.getChapters().size();
+        if (request.getLessons() != null) detailCount += request.getLessons().size();
+        if (request.getSections() != null) detailCount += request.getSections().size();
+        if (detailCount > 0) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append("Có ").append(detailCount).append(" phần cần chỉnh sửa chi tiết.");
+        }
+        return sb.length() > 0 ? sb.toString() : "Khóa học bị từ chối";
     }
 
     public CourseRes unpublish(Long id, Long teacherUserId) {
@@ -931,11 +1075,24 @@ public class CourseService {
      * @return Course response with PUBLISHED status
      */
     public CourseRes rejectUpdate(Long id, Long moderatorUserId, String reason) {
+        // Backward compatible: convert simple string to structured request
+        CourseRejectionRequest request = new CourseRejectionRequest();
+        if (reason != null && !reason.trim().isEmpty()) {
+            request.setGeneral(reason);
+        }
+        return rejectUpdate(id, moderatorUserId, request);
+    }
+    
+    public CourseRes rejectUpdate(Long id, Long moderatorUserId, CourseRejectionRequest request) {
         Course c = courseRepo.findByIdAndDeletedFlagFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         if (c.getStatus() != CourseStatus.PENDING_UPDATE) {
             throw bad("Course must be in PENDING_UPDATE status to reject update");
+        }
+
+        if (request == null || !request.hasAnyReason()) {
+            throw bad("Rejection reason is required");
         }
 
         // Restore course tree from snapshot (revert to old content)
@@ -948,12 +1105,42 @@ public class CourseService {
         c.setPendingUpdateAt(null);
         // Clear snapshot after restore using native query for JSONB compatibility
         courseRepo.updateSnapshotData(id, null);
-        courseRepo.save(c); // Save other fields
         
-        // Store rejection reason for teacher reference
-        c.setRejectionReason(reason);
         c.setRejectedAt(Instant.now());
         c.setRejectedByUserId(moderatorUserId);
+        
+        // Clear old rejection reasons
+        c.setRejectionReason(null);
+        c.setRejectionReasonGeneral(null);
+        c.setRejectionReasonTitle(null);
+        c.setRejectionReasonSubtitle(null);
+        c.setRejectionReasonDescription(null);
+        c.setRejectionReasonCoverImage(null);
+        c.setRejectionReasonPrice(null);
+        
+        // Delete old detailed rejection reasons
+        rejectionReasonDetailRepo.deleteByCourse_Id(id);
+        
+        // Set structured rejection reasons for course main parts
+        if (request.getGeneral() != null && !request.getGeneral().trim().isEmpty()) {
+            c.setRejectionReasonGeneral(request.getGeneral());
+            c.setRejectionReason(request.getGeneral());
+        }
+        if (request.getTitle() != null && !request.getTitle().trim().isEmpty()) {
+            c.setRejectionReasonTitle(request.getTitle());
+        }
+        if (request.getSubtitle() != null && !request.getSubtitle().trim().isEmpty()) {
+            c.setRejectionReasonSubtitle(request.getSubtitle());
+        }
+        if (request.getDescription() != null && !request.getDescription().trim().isEmpty()) {
+            c.setRejectionReasonDescription(request.getDescription());
+        }
+        if (request.getCoverImage() != null && !request.getCoverImage().trim().isEmpty()) {
+            c.setRejectionReasonCoverImage(request.getCoverImage());
+        }
+        if (request.getPrice() != null && !request.getPrice().trim().isEmpty()) {
+            c.setRejectionReasonPrice(request.getPrice());
+        }
         
         // Clear flag info if any
         c.setFlaggedReason(null);
@@ -962,8 +1149,51 @@ public class CourseService {
         
         courseRepo.save(c);
         
+        // Save detailed rejection reasons for chapters/lessons/sections
+        if (request.getChapters() != null && !request.getChapters().isEmpty()) {
+            for (CourseRejectionRequest.ItemReason itemReason : request.getChapters()) {
+                CourseRejectionReasonDetail detail = new CourseRejectionReasonDetail();
+                detail.setCourse(c);
+                detail.setItemType("CHAPTER");
+                detail.setItemId(itemReason.getId());
+                detail.setReason(itemReason.getReason());
+                detail.setRejectedByUserId(moderatorUserId);
+                rejectionReasonDetailRepo.save(detail);
+            }
+        }
+        
+        if (request.getLessons() != null && !request.getLessons().isEmpty()) {
+            for (CourseRejectionRequest.ItemReason itemReason : request.getLessons()) {
+                CourseRejectionReasonDetail detail = new CourseRejectionReasonDetail();
+                detail.setCourse(c);
+                detail.setItemType("LESSON");
+                detail.setItemId(itemReason.getId());
+                detail.setReason(itemReason.getReason());
+                detail.setRejectedByUserId(moderatorUserId);
+                rejectionReasonDetailRepo.save(detail);
+            }
+        }
+        
+        if (request.getSections() != null && !request.getSections().isEmpty()) {
+            for (CourseRejectionRequest.ItemReason itemReason : request.getSections()) {
+                CourseRejectionReasonDetail detail = new CourseRejectionReasonDetail();
+                detail.setCourse(c);
+                detail.setItemType("SECTION");
+                detail.setItemId(itemReason.getId());
+                detail.setReason(itemReason.getReason());
+                detail.setRejectedByUserId(moderatorUserId);
+                rejectionReasonDetailRepo.save(detail);
+            }
+        }
+        
+        // Build notification message
+        String notificationReason = buildNotificationReason(request);
+        
         // Tạo notification cho teacher
-        notificationService.notifyCourseRejected(c.getUserId(), c.getId(), c.getTitle(), reason);
+        notificationService.notifyCourseRejected(c.getUserId(), c.getId(), c.getTitle(), notificationReason);
+        
+        // Reload course with details
+        c = courseRepo.findByIdAndDeletedFlagFalse(id).orElse(c);
         
         return toCourseResLite(c);
     }
@@ -1521,7 +1751,52 @@ public class CourseService {
 
         // Map rejection info (chỉ có khi status = REJECTED)
         if (c.getStatus() == CourseStatus.REJECTED) {
-            res.setRejectionReason(c.getRejectionReason());
+            // Backward compatible: use old rejection_reason if structured fields are empty
+            String oldReason = c.getRejectionReason();
+            if (c.getRejectionReasonGeneral() == null && oldReason != null && !oldReason.trim().isEmpty()) {
+                res.setRejectionReason(oldReason);
+            } else if (c.getRejectionReasonGeneral() != null) {
+                res.setRejectionReason(c.getRejectionReasonGeneral());
+            }
+            
+            // Build structured rejection reason from separate fields
+            RejectionReasonDto rejectionDetail = new RejectionReasonDto();
+            rejectionDetail.setGeneral(c.getRejectionReasonGeneral());
+            rejectionDetail.setTitle(c.getRejectionReasonTitle());
+            rejectionDetail.setSubtitle(c.getRejectionReasonSubtitle());
+            rejectionDetail.setDescription(c.getRejectionReasonDescription());
+            rejectionDetail.setCoverImage(c.getRejectionReasonCoverImage());
+            rejectionDetail.setPrice(c.getRejectionReasonPrice());
+            
+            // Load detailed rejection reasons for chapters/lessons/sections
+            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdOrderByCreatedAtDesc(c.getId());
+            List<RejectionReasonDto.ItemReason> chapterReasons = new ArrayList<>();
+            List<RejectionReasonDto.ItemReason> lessonReasons = new ArrayList<>();
+            List<RejectionReasonDto.ItemReason> sectionReasons = new ArrayList<>();
+            
+            for (CourseRejectionReasonDetail detail : details) {
+                RejectionReasonDto.ItemReason itemReason = new RejectionReasonDto.ItemReason();
+                itemReason.setId(detail.getItemId());
+                itemReason.setReason(detail.getReason());
+                
+                if ("CHAPTER".equals(detail.getItemType())) {
+                    chapterReasons.add(itemReason);
+                } else if ("LESSON".equals(detail.getItemType())) {
+                    lessonReasons.add(itemReason);
+                } else if ("SECTION".equals(detail.getItemType())) {
+                    sectionReasons.add(itemReason);
+                }
+            }
+            
+            rejectionDetail.setChapters(chapterReasons);
+            rejectionDetail.setLessons(lessonReasons);
+            rejectionDetail.setSections(sectionReasons);
+            
+            // Only set if there's any reason
+            if (rejectionDetail.hasAnyReason()) {
+                res.setRejectionReasonDetail(rejectionDetail);
+            }
+            
             res.setRejectedAt(c.getRejectedAt());
             res.setRejectedByUserId(c.getRejectedByUserId());
             if (c.getRejectedByUserId() != null) {
@@ -1586,9 +1861,54 @@ public class CourseService {
         res.setTeacherName(getTeacherName(c.getUserId()));
         res.setChapters(chapters);
         
-        // Map rejection info (chỉ có khi status = REJECTED)
+        // Map rejection info (chỉ có khi status = REJECTED) - same logic as toCourseResLite
         if (c.getStatus() == CourseStatus.REJECTED) {
-            res.setRejectionReason(c.getRejectionReason());
+            // Backward compatible: use old rejection_reason if structured fields are empty
+            String oldReason = c.getRejectionReason();
+            if (c.getRejectionReasonGeneral() == null && oldReason != null && !oldReason.trim().isEmpty()) {
+                res.setRejectionReason(oldReason);
+            } else if (c.getRejectionReasonGeneral() != null) {
+                res.setRejectionReason(c.getRejectionReasonGeneral());
+            }
+            
+            // Build structured rejection reason from separate fields
+            RejectionReasonDto rejectionDetail = new RejectionReasonDto();
+            rejectionDetail.setGeneral(c.getRejectionReasonGeneral());
+            rejectionDetail.setTitle(c.getRejectionReasonTitle());
+            rejectionDetail.setSubtitle(c.getRejectionReasonSubtitle());
+            rejectionDetail.setDescription(c.getRejectionReasonDescription());
+            rejectionDetail.setCoverImage(c.getRejectionReasonCoverImage());
+            rejectionDetail.setPrice(c.getRejectionReasonPrice());
+            
+            // Load detailed rejection reasons for chapters/lessons/sections
+            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdOrderByCreatedAtDesc(c.getId());
+            List<RejectionReasonDto.ItemReason> chapterReasons = new ArrayList<>();
+            List<RejectionReasonDto.ItemReason> lessonReasons = new ArrayList<>();
+            List<RejectionReasonDto.ItemReason> sectionReasons = new ArrayList<>();
+            
+            for (CourseRejectionReasonDetail detail : details) {
+                RejectionReasonDto.ItemReason itemReason = new RejectionReasonDto.ItemReason();
+                itemReason.setId(detail.getItemId());
+                itemReason.setReason(detail.getReason());
+                
+                if ("CHAPTER".equals(detail.getItemType())) {
+                    chapterReasons.add(itemReason);
+                } else if ("LESSON".equals(detail.getItemType())) {
+                    lessonReasons.add(itemReason);
+                } else if ("SECTION".equals(detail.getItemType())) {
+                    sectionReasons.add(itemReason);
+                }
+            }
+            
+            rejectionDetail.setChapters(chapterReasons);
+            rejectionDetail.setLessons(lessonReasons);
+            rejectionDetail.setSections(sectionReasons);
+            
+            // Only set if there's any reason
+            if (rejectionDetail.hasAnyReason()) {
+                res.setRejectionReasonDetail(rejectionDetail);
+            }
+            
             res.setRejectedAt(c.getRejectedAt());
             res.setRejectedByUserId(c.getRejectedByUserId());
             if (c.getRejectedByUserId() != null) {
@@ -1627,9 +1947,54 @@ public class CourseService {
         res.setTeacherName(getTeacherName(c.getUserId()));
         res.setChapters(chapters);
         
-        // Map rejection info (chỉ có khi status = REJECTED)
+        // Map rejection info (chỉ có khi status = REJECTED) - same logic as toCourseResLite
         if (c.getStatus() == CourseStatus.REJECTED) {
-            res.setRejectionReason(c.getRejectionReason());
+            // Backward compatible: use old rejection_reason if structured fields are empty
+            String oldReason = c.getRejectionReason();
+            if (c.getRejectionReasonGeneral() == null && oldReason != null && !oldReason.trim().isEmpty()) {
+                res.setRejectionReason(oldReason);
+            } else if (c.getRejectionReasonGeneral() != null) {
+                res.setRejectionReason(c.getRejectionReasonGeneral());
+            }
+            
+            // Build structured rejection reason from separate fields
+            RejectionReasonDto rejectionDetail = new RejectionReasonDto();
+            rejectionDetail.setGeneral(c.getRejectionReasonGeneral());
+            rejectionDetail.setTitle(c.getRejectionReasonTitle());
+            rejectionDetail.setSubtitle(c.getRejectionReasonSubtitle());
+            rejectionDetail.setDescription(c.getRejectionReasonDescription());
+            rejectionDetail.setCoverImage(c.getRejectionReasonCoverImage());
+            rejectionDetail.setPrice(c.getRejectionReasonPrice());
+            
+            // Load detailed rejection reasons for chapters/lessons/sections
+            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdOrderByCreatedAtDesc(c.getId());
+            List<RejectionReasonDto.ItemReason> chapterReasons = new ArrayList<>();
+            List<RejectionReasonDto.ItemReason> lessonReasons = new ArrayList<>();
+            List<RejectionReasonDto.ItemReason> sectionReasons = new ArrayList<>();
+            
+            for (CourseRejectionReasonDetail detail : details) {
+                RejectionReasonDto.ItemReason itemReason = new RejectionReasonDto.ItemReason();
+                itemReason.setId(detail.getItemId());
+                itemReason.setReason(detail.getReason());
+                
+                if ("CHAPTER".equals(detail.getItemType())) {
+                    chapterReasons.add(itemReason);
+                } else if ("LESSON".equals(detail.getItemType())) {
+                    lessonReasons.add(itemReason);
+                } else if ("SECTION".equals(detail.getItemType())) {
+                    sectionReasons.add(itemReason);
+                }
+            }
+            
+            rejectionDetail.setChapters(chapterReasons);
+            rejectionDetail.setLessons(lessonReasons);
+            rejectionDetail.setSections(sectionReasons);
+            
+            // Only set if there's any reason
+            if (rejectionDetail.hasAnyReason()) {
+                res.setRejectionReasonDetail(rejectionDetail);
+            }
+            
             res.setRejectedAt(c.getRejectedAt());
             res.setRejectedByUserId(c.getRejectedByUserId());
             if (c.getRejectedByUserId() != null) {

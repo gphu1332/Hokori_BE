@@ -33,7 +33,8 @@ public class CourseRes {
     private Boolean isEnrolled; // true nếu user hiện tại đã enroll vào course này (null nếu chưa đăng nhập)
     
     // Rejection info (chỉ có khi status = REJECTED)
-    private String rejectionReason;
+    private String rejectionReason; // Raw string (backward compatible)
+    private RejectionReasonDto rejectionReasonDetail; // Parsed structured reason (null if simple string)
     private Instant rejectedAt;
     private Long rejectedByUserId;
     private String rejectedByUserName; // Tên moderator đã reject

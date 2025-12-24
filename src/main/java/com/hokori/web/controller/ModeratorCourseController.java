@@ -2,6 +2,7 @@ package com.hokori.web.controller;
 
 import com.hokori.web.dto.ApiResponse;
 import com.hokori.web.dto.course.CourseRes;
+import com.hokori.web.dto.course.CourseRejectionRequest;
 import com.hokori.web.dto.moderator.CourseAICheckResponse;
 import com.hokori.web.service.CourseService;
 import com.hokori.web.service.CourseModerationAIService;
@@ -134,7 +135,35 @@ public class ModeratorCourseController {
 
     @Operation(
             summary = "Reject course",
-            description = "Từ chối course. Chuyển status từ PENDING_APPROVAL về REJECTED. Teacher có thể sửa và submit lại sau."
+            description = "Từ chối course. Chuyển status từ PENDING_APPROVAL về REJECTED. Teacher có thể sửa và submit lại sau.\n\n" +
+                    "**Cách sử dụng:**\n" +
+                    "1. **Request Body (khuyến nghị):** Gửi JSON object với structured reasons\n" +
+                    "2. **Query Parameter (backward compatible):** Gửi string đơn giản qua `reason=...`\n\n" +
+                    "**Ví dụ Request Body:**\n" +
+                    "```json\n" +
+                    "{\n" +
+                    "  \"general\": \"Lý do chung cho toàn bộ khóa học\",\n" +
+                    "  \"title\": \"Tiêu đề không phù hợp\",\n" +
+                    "  \"subtitle\": \"Mô tả phụ cần cải thiện\",\n" +
+                    "  \"description\": \"Mô tả chi tiết thiếu thông tin\",\n" +
+                    "  \"coverImage\": \"Ảnh bìa không đạt chất lượng\",\n" +
+                    "  \"price\": \"Giá không hợp lý\",\n" +
+                    "  \"chapters\": [\n" +
+                    "    {\"id\": 1, \"reason\": \"Chương 1 thiếu nội dung\"},\n" +
+                    "    {\"id\": 2, \"reason\": \"Chương 2 cần chỉnh sửa\"}\n" +
+                    "  ],\n" +
+                    "  \"lessons\": [\n" +
+                    "    {\"id\": 5, \"reason\": \"Bài học 5 thiếu video\"},\n" +
+                    "    {\"id\": 8, \"reason\": \"Bài học 8 nội dung không rõ ràng\"}\n" +
+                    "  ],\n" +
+                    "  \"sections\": [\n" +
+                    "    {\"id\": 12, \"reason\": \"Section grammar cần bổ sung ngữ pháp\"},\n" +
+                    "    {\"id\": 15, \"reason\": \"Section quiz thiếu câu hỏi\"},\n" +
+                    "    {\"id\": 18, \"reason\": \"Section flashcard vocab thiếu từ vựng\"}\n" +
+                    "  ]\n" +
+                    "}\n" +
+                    "```\n" +
+                    "**Lưu ý:** Sections bao gồm tất cả các loại: quiz, grammar, flashcard vocab, kanji, etc."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -157,9 +186,22 @@ public class ModeratorCourseController {
     public ResponseEntity<ApiResponse<CourseRes>> reject(
             @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
             @PathVariable Long id,
-            @Parameter(name = "reason", in = ParameterIn.QUERY, description = "Lý do từ chối (optional)", example = "Thiếu nội dung")
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Structured rejection reasons. Có thể gửi reason cho từng phần riêng biệt.", required = false)
+            @org.springframework.web.bind.annotation.RequestBody(required = false) CourseRejectionRequest request,
+            @Parameter(name = "reason", in = ParameterIn.QUERY, description = "Lý do từ chối đơn giản (backward compatible, optional nếu dùng request body)", example = "Thiếu nội dung")
             @RequestParam(required = false) String reason) {
-        CourseRes course = courseService.rejectCourse(id, currentModeratorId(), reason);
+        CourseRes course;
+        if (request != null && request.hasAnyReason()) {
+            // Use structured request body
+            course = courseService.rejectCourse(id, currentModeratorId(), request);
+        } else if (reason != null && !reason.trim().isEmpty()) {
+            // Backward compatible: use query parameter
+            course = courseService.rejectCourse(id, currentModeratorId(), reason);
+        } else {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, 
+                "Rejection reason is required. Use request body or 'reason' query parameter.");
+        }
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("course", course);
         if (reason != null && !reason.isBlank()) {
@@ -311,15 +353,31 @@ public class ModeratorCourseController {
 
     @Operation(
             summary = "Reject course update",
-            description = "Từ chối update. Revert course về PUBLISHED status và clear pendingUpdateAt. Teacher có thể sửa và submit update lại sau."
+            description = "Từ chối update. Revert course về PUBLISHED status và clear pendingUpdateAt. Teacher có thể sửa và submit update lại sau.\n\n" +
+                    "**Format reason:**\n" +
+                    "- Có thể gửi string đơn giản: `reason=Nội dung không phù hợp`\n" +
+                    "- Hoặc JSON string để chỉ định reason cho từng phần (xem chi tiết ở endpoint reject course)"
     )
     @PutMapping("/{id}/reject-update")
     public ResponseEntity<ApiResponse<CourseRes>> rejectUpdate(
             @Parameter(name = "id", in = ParameterIn.PATH, required = true, description = "Course ID", example = "1")
             @PathVariable Long id,
-            @Parameter(name = "reason", in = ParameterIn.QUERY, description = "Lý do từ chối (optional)", example = "Nội dung không phù hợp")
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Structured rejection reasons. Có thể gửi reason cho từng phần riêng biệt.", required = false)
+            @org.springframework.web.bind.annotation.RequestBody(required = false) CourseRejectionRequest request,
+            @Parameter(name = "reason", in = ParameterIn.QUERY, description = "Lý do từ chối đơn giản (backward compatible, optional nếu dùng request body)", example = "Nội dung không phù hợp")
             @RequestParam(required = false) String reason) {
-        CourseRes course = courseService.rejectUpdate(id, currentModeratorId(), reason);
+        CourseRes course;
+        if (request != null && request.hasAnyReason()) {
+            // Use structured request body
+            course = courseService.rejectUpdate(id, currentModeratorId(), request);
+        } else if (reason != null && !reason.trim().isEmpty()) {
+            // Backward compatible: use query parameter
+            course = courseService.rejectUpdate(id, currentModeratorId(), reason);
+        } else {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, 
+                "Rejection reason is required. Use request body or 'reason' query parameter.");
+        }
         return ResponseEntity.ok(ApiResponse.success("Course update rejected", course));
     }
 }

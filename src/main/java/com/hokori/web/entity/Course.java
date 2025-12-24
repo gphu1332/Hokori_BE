@@ -52,10 +52,35 @@ public class Course extends BaseEntity {
     
     // Rejection info (khi moderator reject)
     @Column(name = "rejection_reason", columnDefinition="TEXT")
-    private String rejectionReason;
+    private String rejectionReason; // Deprecated: kept for backward compatibility, use structured fields below
+    
+    // Structured rejection reasons for course main parts
+    @Column(name = "rejection_reason_general", columnDefinition="TEXT")
+    private String rejectionReasonGeneral;
+    
+    @Column(name = "rejection_reason_title", columnDefinition="TEXT")
+    private String rejectionReasonTitle;
+    
+    @Column(name = "rejection_reason_subtitle", columnDefinition="TEXT")
+    private String rejectionReasonSubtitle;
+    
+    @Column(name = "rejection_reason_description", columnDefinition="TEXT")
+    private String rejectionReasonDescription;
+    
+    @Column(name = "rejection_reason_cover_image", columnDefinition="TEXT")
+    private String rejectionReasonCoverImage;
+    
+    @Column(name = "rejection_reason_price", columnDefinition="TEXT")
+    private String rejectionReasonPrice;
+    
     private Instant rejectedAt;
     @Column(name = "rejected_by_user_id")
     private Long rejectedByUserId;
+    
+    // Detailed rejection reasons for chapters/lessons/sections
+    @JsonIgnore
+    @OneToMany(mappedBy = "course", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CourseRejectionReasonDetail> rejectionReasonDetails = new ArrayList<>();
     
     // Flag info (khi moderator flag course)
     @Column(name = "flagged_reason", columnDefinition="TEXT")
