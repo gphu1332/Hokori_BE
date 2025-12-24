@@ -652,7 +652,54 @@ public class CourseService {
         String description = courseRepo.findDescriptionById(courseId).orElse(null);
         courseRes.setDescription(description);
         
-        // Note: Rejection info đã được map trong mapCourseMetadataToRes() khi status = REJECTED
+        // Load structured rejection reasons detail if course is REJECTED
+        if (courseRes.getStatus() == CourseStatus.REJECTED) {
+            Course c = courseRepo.findByIdAndDeletedFlagFalse(courseId).orElse(null);
+            if (c != null) {
+                // Build structured rejection reason from separate fields
+                RejectionReasonDto rejectionDetail = new RejectionReasonDto();
+                rejectionDetail.setGeneral(c.getRejectionReasonGeneral());
+                rejectionDetail.setTitle(c.getRejectionReasonTitle());
+                rejectionDetail.setSubtitle(c.getRejectionReasonSubtitle());
+                rejectionDetail.setDescription(c.getRejectionReasonDescription());
+                rejectionDetail.setCoverImage(c.getRejectionReasonCoverImage());
+                rejectionDetail.setPrice(c.getRejectionReasonPrice());
+                
+                // Load detailed rejection reasons for chapters/lessons/sections
+                List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdAndDeletedFlagFalseOrderByCreatedAtDesc(courseId);
+                List<RejectionReasonDto.ItemReason> chapterReasons = new ArrayList<>();
+                List<RejectionReasonDto.ItemReason> lessonReasons = new ArrayList<>();
+                List<RejectionReasonDto.ItemReason> sectionReasons = new ArrayList<>();
+                
+                for (CourseRejectionReasonDetail detail : details) {
+                    RejectionReasonDto.ItemReason itemReason = new RejectionReasonDto.ItemReason();
+                    itemReason.setId(detail.getItemId());
+                    itemReason.setReason(detail.getReason());
+                    
+                    if ("CHAPTER".equals(detail.getItemType())) {
+                        chapterReasons.add(itemReason);
+                    } else if ("LESSON".equals(detail.getItemType())) {
+                        lessonReasons.add(itemReason);
+                    } else if ("SECTION".equals(detail.getItemType())) {
+                        sectionReasons.add(itemReason);
+                    }
+                }
+                
+                rejectionDetail.setChapters(chapterReasons);
+                rejectionDetail.setLessons(lessonReasons);
+                rejectionDetail.setSections(sectionReasons);
+                
+                // Only set if there's any reason
+                if (rejectionDetail.hasAnyReason()) {
+                    courseRes.setRejectionReasonDetail(rejectionDetail);
+                }
+                
+                // Update rejectionReason if general reason exists
+                if (c.getRejectionReasonGeneral() != null && !c.getRejectionReasonGeneral().trim().isEmpty()) {
+                    courseRes.setRejectionReason(c.getRejectionReasonGeneral());
+                }
+            }
+        }
 
         var chapterEntities = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
         var chapterDtos = new ArrayList<ChapterRes>();
@@ -1614,7 +1661,7 @@ public class CourseService {
             rejectionDetail.setPrice(c.getRejectionReasonPrice());
             
             // Load detailed rejection reasons for chapters/lessons/sections
-            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdOrderByCreatedAtDesc(c.getId());
+            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdAndDeletedFlagFalseOrderByCreatedAtDesc(c.getId());
             List<RejectionReasonDto.ItemReason> chapterReasons = new ArrayList<>();
             List<RejectionReasonDto.ItemReason> lessonReasons = new ArrayList<>();
             List<RejectionReasonDto.ItemReason> sectionReasons = new ArrayList<>();
@@ -1726,7 +1773,7 @@ public class CourseService {
             rejectionDetail.setPrice(c.getRejectionReasonPrice());
             
             // Load detailed rejection reasons for chapters/lessons/sections
-            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdOrderByCreatedAtDesc(c.getId());
+            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdAndDeletedFlagFalseOrderByCreatedAtDesc(c.getId());
             List<RejectionReasonDto.ItemReason> chapterReasons = new ArrayList<>();
             List<RejectionReasonDto.ItemReason> lessonReasons = new ArrayList<>();
             List<RejectionReasonDto.ItemReason> sectionReasons = new ArrayList<>();
@@ -1812,7 +1859,7 @@ public class CourseService {
             rejectionDetail.setPrice(c.getRejectionReasonPrice());
             
             // Load detailed rejection reasons for chapters/lessons/sections
-            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdOrderByCreatedAtDesc(c.getId());
+            List<CourseRejectionReasonDetail> details = rejectionReasonDetailRepo.findByCourse_IdAndDeletedFlagFalseOrderByCreatedAtDesc(c.getId());
             List<RejectionReasonDto.ItemReason> chapterReasons = new ArrayList<>();
             List<RejectionReasonDto.ItemReason> lessonReasons = new ArrayList<>();
             List<RejectionReasonDto.ItemReason> sectionReasons = new ArrayList<>();
