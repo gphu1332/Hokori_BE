@@ -233,10 +233,19 @@ public class CourseService {
         
         // Chuyển sang PENDING_APPROVAL
         course.setStatus(CourseStatus.PENDING_APPROVAL);
-        // Clear rejection info khi auto-submit
+        // Clear rejection info khi auto-submit (bao gồm cả structured rejection reasons)
         course.setRejectionReason(null);
+        course.setRejectionReasonGeneral(null);
+        course.setRejectionReasonTitle(null);
+        course.setRejectionReasonSubtitle(null);
+        course.setRejectionReasonDescription(null);
+        course.setRejectionReasonCoverImage(null);
+        course.setRejectionReasonPrice(null);
         course.setRejectedAt(null);
         course.setRejectedByUserId(null);
+        
+        // Delete detailed rejection reasons
+        rejectionReasonDetailRepo.deleteByCourse_Id(course.getId());
         
         // Clear flag info khi auto-submit (course đã được update)
         course.setFlaggedReason(null);
@@ -308,10 +317,19 @@ public class CourseService {
 
         // Chuyển sang PENDING_APPROVAL thay vì PUBLISHED
         c.setStatus(CourseStatus.PENDING_APPROVAL);
-        // Clear rejection info khi submit lại
+        // Clear rejection info khi submit lại (bao gồm cả structured rejection reasons)
         c.setRejectionReason(null);
+        c.setRejectionReasonGeneral(null);
+        c.setRejectionReasonTitle(null);
+        c.setRejectionReasonSubtitle(null);
+        c.setRejectionReasonDescription(null);
+        c.setRejectionReasonCoverImage(null);
+        c.setRejectionReasonPrice(null);
         c.setRejectedAt(null);
         c.setRejectedByUserId(null);
+        
+        // Delete detailed rejection reasons
+        rejectionReasonDetailRepo.deleteByCourse_Id(id);
         
         // Tạo notification cho teacher
         notificationService.notifyCourseSubmitted(c.getUserId(), c.getId(), c.getTitle());
@@ -405,10 +423,19 @@ public class CourseService {
 
         c.setStatus(CourseStatus.PUBLISHED);
         c.setPublishedAt(Instant.now());
-        // Clear rejection info khi approve
+        // Clear rejection info khi approve (bao gồm cả structured rejection reasons)
         c.setRejectionReason(null);
+        c.setRejectionReasonGeneral(null);
+        c.setRejectionReasonTitle(null);
+        c.setRejectionReasonSubtitle(null);
+        c.setRejectionReasonDescription(null);
+        c.setRejectionReasonCoverImage(null);
+        c.setRejectionReasonPrice(null);
         c.setRejectedAt(null);
         c.setRejectedByUserId(null);
+        
+        // Delete detailed rejection reasons
+        rejectionReasonDetailRepo.deleteByCourse_Id(id);
         
         // Clear flag info khi approve (course đã được review lại và approve)
         c.setFlaggedReason(null);

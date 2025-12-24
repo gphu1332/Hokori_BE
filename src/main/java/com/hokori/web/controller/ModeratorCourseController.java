@@ -24,9 +24,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Moderator Course Approval APIs
@@ -201,11 +199,6 @@ public class ModeratorCourseController {
             throw new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.BAD_REQUEST, 
                 "Rejection reason is required. Use request body or 'reason' query parameter.");
-        }
-        Map<String, Object> responseData = new HashMap<>();
-        responseData.put("course", course);
-        if (reason != null && !reason.isBlank()) {
-            responseData.put("reason", reason);
         }
         return ResponseEntity.ok(ApiResponse.success("Course rejected", course));
     }
