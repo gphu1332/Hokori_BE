@@ -9,6 +9,8 @@ public record ApproveRequestDto(
         Long id,
         Long userId,
         String teacherName, // Tên teacher (displayName hoặc username)
+        String email, // Email của teacher
+        String phoneNumber, // Số điện thoại của teacher
         ApprovalStatus status,
         LocalDateTime submittedAt,
         Long reviewedBy,
