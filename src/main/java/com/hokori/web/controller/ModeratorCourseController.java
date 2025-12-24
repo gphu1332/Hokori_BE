@@ -62,7 +62,7 @@ public class ModeratorCourseController {
                             schema = @Schema(implementation = ApiResponse.class),
                             examples = @ExampleObject(value = """
                     {"status":"success","message":"OK","data":[
-                        {"id":1,"title":"Khóa học N5","status":"PENDING_APPROVAL","userId":5}
+                        {"id":1,"title":"Khóa học N5","status":"PENDING_APPROVAL","userId":5,"teacherName":"Nguyễn Văn A"}
                     ]}
                     """)
                     )
