@@ -100,27 +100,28 @@ public class CourseService {
         return toCourseResLite(c);
     }
 
+    /**
+     * Helper method to check if course can be edited by teacher.
+     * Only allows editing when course is in DRAFT, REJECTED, or FLAGGED status.
+     * Blocks editing when course is PUBLISHED or PENDING_APPROVAL.
+     */
+    private void ensureCourseEditable(Course course) {
+        CourseStatus status = course.getStatus();
+        if (status == CourseStatus.PUBLISHED || status == CourseStatus.PENDING_APPROVAL) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Cannot edit course with status " + status + ". " +
+                "Only courses in DRAFT, REJECTED, or FLAGGED status can be edited. " +
+                "If the course is PUBLISHED, it cannot be modified until it is flagged or archived.");
+        }
+    }
+
     public CourseRes updateCourse(Long id, Long teacherUserId, @Valid CourseUpsertReq r) {
         Course c = getOwned(id, teacherUserId);
         
-        // Check course status restrictions
-        CourseStatus currentStatus = c.getStatus();
-        if (currentStatus == CourseStatus.PENDING_APPROVAL) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                "Cannot update course with status PENDING_APPROVAL. " +
-                "Please wait for moderator approval or rejection. " +
-                "If rejected, you can edit and resubmit.");
-        }
-        // Allow update for FLAGGED courses (teacher can edit and resubmit)
-        // Allow update for PUBLISHED courses (will auto-submit if title/price changed)
-        // Allow update for DRAFT, REJECTED, PENDING_UPDATE, ARCHIVED
+        // Check course status restrictions - block PUBLISHED and PENDING_APPROVAL
+        ensureCourseEditable(c);
         
         String oldSlug = c.getSlug();
-        
-        // Lưu giá trị cũ để so sánh
-        Long oldPriceCents = c.getPriceCents();
-        Long oldDiscountedPriceCents = c.getDiscountedPriceCents();
-        CourseStatus oldStatus = currentStatus;
         
         applyCourse(c, r);
 
@@ -157,22 +158,12 @@ public class CourseService {
             }
         }
         
-        // BR-03: Nếu course đang PUBLISHED và có thay đổi thông tin cốt lõi (title, price)
-        // thì tự động chuyển về PENDING_APPROVAL để moderator review lại
-        boolean priceChanged = !Objects.equals(oldPriceCents, c.getPriceCents()) 
-                || !Objects.equals(oldDiscountedPriceCents, c.getDiscountedPriceCents());
-        
-        if (oldStatus == CourseStatus.PUBLISHED && (titleChanged || priceChanged)) {
-            autoSubmitForApprovalIfPublished(c, teacherUserId, 
-                titleChanged ? "title" : null, 
-                priceChanged ? "price" : null);
-        }
-        
         return toCourseResLite(c);
     }
 
     public CourseRes updateCoverImage(Long courseId, Long teacherUserId, String coverImagePath) {
         Course c = getOwned(courseId, teacherUserId);  // đã check owner + deletedFlag
+        ensureCourseEditable(c);  // Block if PUBLISHED or PENDING_APPROVAL
         c.setCoverImagePath(coverImagePath);
         courseRepo.save(c); // Save to persist changes
         
@@ -2009,9 +2000,8 @@ public class CourseService {
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         
-        // Lưu giá trị cũ để detect trial chapter changes
-        boolean wasTrial = ch.isTrial();
-        boolean trialChanged = false;
+        // Block editing if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         if (r.getTitle() != null) ch.setTitle(r.getTitle());
         ch.setSummary(r.getSummary());
@@ -2022,7 +2012,6 @@ public class CourseService {
             chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
                 if (!old.getId().equals(ch.getId())) old.setTrial(false);
             });
-            trialChanged = !wasTrial; // Detect nếu trial status thay đổi từ false → true
             ch.setTrial(true);
             ch.setOrderIndex(0);
         } else if (Boolean.TRUE.equals(r.getIsTrial())) {
@@ -2033,7 +2022,6 @@ public class CourseService {
             chapterRepo.findByCourse_IdAndIsTrialTrue(courseId).ifPresent(old -> {
                 if (!old.getId().equals(ch.getId())) old.setTrial(false);
             });
-            trialChanged = !wasTrial; // Detect nếu trial status thay đổi từ false → true
             ch.setTrial(true);
         }
         
@@ -2041,11 +2029,6 @@ public class CourseService {
         
         // Đảm bảo chapter đầu tiên luôn là trial
         ensureFirstChapterIsTrial(courseId);
-        
-        // BR-03: Nếu course đang PUBLISHED và có thay đổi trial chapter → auto-submit
-        if (course.getStatus() == CourseStatus.PUBLISHED && trialChanged) {
-            autoSubmitForApprovalIfPublished(course, teacherUserId, "trial chapter");
-        }
         
         return toChapterResShallow(ch);
     }
@@ -2059,16 +2042,14 @@ public class CourseService {
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         
+        // Block deleting if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
+        
         chapterRepo.delete(ch);
         renormalizeChapterOrder(courseId);
         
         // Đảm bảo chapter đầu tiên luôn là trial (sau khi xóa và renormalize)
         ensureFirstChapterIsTrial(courseId);
-        
-        // BR-03: Nếu course đang PUBLISHED và xóa chapter (thay đổi syllabus structure) → auto-submit
-        if (course.getStatus() == CourseStatus.PUBLISHED) {
-            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (chapter deleted)");
-        }
     }
 
     public ChapterRes reorderChapter(Long chapterId, Long teacherUserId, int newIndex) {
@@ -2080,16 +2061,14 @@ public class CourseService {
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         
+        // Block reordering if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
+        
         List<Chapter> list = chapterRepo.findByCourse_IdOrderByOrderIndexAsc(courseId);
         applyReorder(list, chapterId, newIndex, (it, idx) -> it.setOrderIndex(idx));
         
         // Đảm bảo chapter đầu tiên luôn là trial (sau khi reorder)
         ensureFirstChapterIsTrial(courseId);
-        
-        // BR-03: Nếu course đang PUBLISHED và reorder chapter (thay đổi syllabus structure) → auto-submit
-        if (course.getStatus() == CourseStatus.PUBLISHED) {
-            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (chapter reordered)");
-        }
         
         return toChapterResShallow(ch);
     }
@@ -2100,7 +2079,14 @@ public class CourseService {
     public LessonRes updateLesson(Long lessonId, Long teacherUserId, LessonUpsertReq r) {
         Lesson ls = lessonRepo.findById(lessonId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
-        assertOwner(ls.getChapter().getCourse().getId(), teacherUserId);
+        Long courseId = ls.getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Block editing if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         if (r.getTitle() != null) ls.setTitle(r.getTitle());
         if (r.getTotalDurationSec() != null) ls.setTotalDurationSec(r.getTotalDurationSec());
@@ -2115,15 +2101,13 @@ public class CourseService {
         
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Block deleting if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         Long chapterId = ls.getChapter().getId();
         lessonRepo.delete(ls);
         renormalizeLessonOrder(chapterId);
-        
-        // BR-03: Nếu course đang PUBLISHED và xóa lesson (thay đổi syllabus structure) → auto-submit
-        if (course.getStatus() == CourseStatus.PUBLISHED) {
-            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (lesson deleted)");
-        }
     }
 
     public LessonRes reorderLesson(Long lessonId, Long teacherUserId, int newIndex) {
@@ -2134,14 +2118,12 @@ public class CourseService {
         
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Block reordering if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         List<Lesson> list = lessonRepo.findByChapter_IdOrderByOrderIndexAsc(ls.getChapter().getId());
         applyReorder(list, lessonId, newIndex, (it, idx) -> it.setOrderIndex(idx));
-        
-        // BR-03: Nếu course đang PUBLISHED và reorder lesson (thay đổi syllabus structure) → auto-submit
-        if (course.getStatus() == CourseStatus.PUBLISHED) {
-            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (lesson reordered)");
-        }
         
         return toLessonResShallow(ls);
     }
@@ -2152,7 +2134,14 @@ public class CourseService {
     public SectionRes updateSection(Long sectionId, Long teacherUserId, SectionUpsertReq r) {
         Section s = sectionRepo.findById(sectionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Section not found"));
-        assertOwner(s.getLesson().getChapter().getCourse().getId(), teacherUserId);
+        Long courseId = s.getLesson().getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Block editing if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         if (r.getTitle() != null) s.setTitle(r.getTitle());
         if (r.getStudyType() != null) s.setStudyType(r.getStudyType());
@@ -2171,15 +2160,8 @@ public class CourseService {
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         
-        // Only allow deleting sections from DRAFT or REJECTED courses
-        // For PUBLISHED courses, teachers should use the pending_update flow to modify structure
-        CourseStatus status = course.getStatus();
-        if (status != CourseStatus.DRAFT && status != CourseStatus.REJECTED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                "Cannot delete section from course with status " + status + ". " +
-                "Only sections in DRAFT or REJECTED courses can be deleted. " +
-                "For PUBLISHED courses, please submit an update request instead.");
-        }
+        // Block deleting if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         // Before deleting section, handle quiz if exists
         // Find quiz for this section (including soft-deleted ones for cleanup)
@@ -2256,10 +2238,6 @@ public class CourseService {
         Long lessonId = s.getLesson().getId();
         sectionRepo.delete(s);
         renormalizeSectionOrder(lessonId);
-        
-        // Note: No need to auto-submit for PUBLISHED courses anymore since we only allow
-        // deletion from DRAFT or REJECTED courses. Teachers must use pending_update flow
-        // to modify PUBLISHED course structure.
     }
 
     public SectionRes reorderSection(Long sectionId, Long teacherUserId, int newIndex) {
@@ -2270,14 +2248,12 @@ public class CourseService {
         
         Course course = courseRepo.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Block reordering if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         List<Section> list = sectionRepo.findByLesson_IdOrderByOrderIndexAsc(s.getLesson().getId());
         applyReorder(list, sectionId, newIndex, (it, idx) -> it.setOrderIndex(idx));
-        
-        // BR-03: Nếu course đang PUBLISHED và reorder section (thay đổi syllabus structure) → auto-submit
-        if (course.getStatus() == CourseStatus.PUBLISHED) {
-            autoSubmitForApprovalIfPublished(course, teacherUserId, "syllabus structure (section reordered)");
-        }
         
         return toSectionResShallow(s);
     }
@@ -2291,6 +2267,12 @@ public class CourseService {
 
         Long courseId = c.getSection().getLesson().getChapter().getCourse().getId();
         assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Block editing if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         // validate theo section hiện tại, exclude chính content đang update
         validateContentPayload(c.getSection(), r, contentId);
@@ -2326,6 +2308,12 @@ public class CourseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Content not found"));
         Long courseId = c.getSection().getLesson().getChapter().getCourse().getId();
         assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Block deleting if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         // Before deleting content, handle flashcard sets that reference this content
         // FlashcardSet has foreign key constraint (sectionContent) to SectionsContent
@@ -2358,7 +2346,14 @@ public class CourseService {
     public ContentRes reorderContent(Long contentId, Long teacherUserId, int newIndex) {
         SectionsContent c = contentRepo.findById(contentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Content not found"));
-        assertOwner(c.getSection().getLesson().getChapter().getCourse().getId(), teacherUserId);
+        Long courseId = c.getSection().getLesson().getChapter().getCourse().getId();
+        assertOwner(courseId, teacherUserId);
+        
+        Course course = courseRepo.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        
+        // Block reordering if course is PUBLISHED or PENDING_APPROVAL
+        ensureCourseEditable(course);
 
         List<SectionsContent> list = contentRepo.findBySection_IdOrderByOrderIndexAsc(c.getSection().getId());
         applyReorder(list, contentId, newIndex, (it, idx) -> it.setOrderIndex(idx));
