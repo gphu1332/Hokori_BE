@@ -65,6 +65,10 @@ public class JlptTest {
     @Column(name = "deleted_flag", nullable = false)
     private boolean deletedFlag = false;
 
+    @Column(name = "published", nullable = false)
+    @Builder.Default
+    private boolean published = false;
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

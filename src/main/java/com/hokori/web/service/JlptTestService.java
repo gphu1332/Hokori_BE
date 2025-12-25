@@ -47,6 +47,7 @@ public class JlptTestService {
                 .totalScore(DEFAULT_TOTAL_SCORE)
                 .result(req.getResultNote())
                 .deletedFlag(false)
+                .published(false) // Test mới tạo chưa published, chỉ hiển thị khi đủ 4 kỹ năng
                 .build();
         
         test = testRepo.save(test);
@@ -54,8 +55,15 @@ public class JlptTestService {
         // After saving test, validate if it already has questions
         // This handles case where test is being recreated or updated
         long questionCount = questionRepo.countByTest_IdAndDeletedFlagFalse(test.getId());
-        if (questionCount > 0) {
-            validateTestHasAllRequiredSkills(test.getId());
+        if (questionCount >= 4) {
+            // If test already has all 4 skills, auto-publish
+            try {
+                validateTestHasAllRequiredSkills(test.getId());
+                test.setPublished(true);
+                testRepo.save(test);
+            } catch (ResponseStatusException e) {
+                // Test chưa đủ 4 kỹ năng, giữ published = false
+            }
         }
         
         return test;
@@ -135,11 +143,19 @@ public class JlptTestService {
         questionRepo.save(q);
         
         // Validate test has all 4 required skills after creating question
-        // This ensures teacher cannot proceed without having all required skills
         // Only validate if test has at least 4 questions (one for each skill)
+        // If test has all 4 skills, automatically publish it so learners can see it
         long totalQuestions = questionRepo.countByTest_IdAndDeletedFlagFalse(testId);
         if (totalQuestions >= 4) {
-            validateTestHasAllRequiredSkills(testId);
+            try {
+                validateTestHasAllRequiredSkills(testId);
+                // Test đã có đủ 4 kỹ năng, tự động publish để hiển thị cho learner
+                test.setPublished(true);
+                testRepo.save(test);
+            } catch (ResponseStatusException e) {
+                // Test chưa đủ 4 kỹ năng, giữ published = false
+                // Không throw exception ở đây vì teacher có thể đang thêm questions từng bước
+            }
         }
         
         return JlptQuestionWithOptionsResponse.fromEntity(q, List.of());
@@ -1145,8 +1161,10 @@ public class JlptTestService {
 
     @Transactional(readOnly = true)
     public List<JlptTestListItemResponse> listTestsForLearner(Long eventId) {
+        // Chỉ lấy các test đã published và chưa bị xóa
+        // Test chỉ được publish khi đã có đủ 4 kỹ năng (LISTENING, READING, GRAMMAR, VOCAB)
         List<JlptTest> tests =
-                testRepo.findByEvent_IdAndDeletedFlagFalseOrderByCreatedAtDesc(eventId);
+                testRepo.findByEvent_IdAndPublishedTrueAndDeletedFlagFalseOrderByCreatedAtDesc(eventId);
 
         return tests.stream()
                 .map(t -> {
