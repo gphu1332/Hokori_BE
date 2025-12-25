@@ -381,7 +381,8 @@ public class JlptTestService {
         double score = 0.0;
         int totalMax = test.getTotalScore() != null ? test.getTotalScore() : 180;
         if (totalQuestions > 0 && totalMax > 0) {
-            score = (double) totalMax * correctCount / totalQuestions;
+            double rawScore = (double) totalMax * correctCount / totalQuestions;
+            score = roundScore(rawScore);
         }
 
         // ====== ĐIỂM TỪNG PHẦN ======
@@ -394,9 +395,10 @@ public class JlptTestService {
                 testId, grammarVocabTypes).intValue();
         int grammarVocabCorrect = answerRepo.countCorrectByUserAndTestAndQuestionTypes(
                 userId, testId, grammarVocabTypes).intValue();
-        double grammarVocabScore = calculateSectionScore(grammarVocabTotal, grammarVocabCorrect, totalMax, totalQuestions);
+        // Tính điểm từng phần (chưa làm tròn)
+        double grammarVocabScoreRaw = calculateSectionScore(grammarVocabTotal, grammarVocabCorrect, totalMax, totalQuestions);
         double grammarVocabMaxScore = grammarVocabTotal > 0 
-                ? (double) totalMax * grammarVocabTotal / totalQuestions 
+                ? roundScore((double) totalMax * grammarVocabTotal / totalQuestions)
                 : 0.0;
 
         // 2. Reading
@@ -404,9 +406,9 @@ public class JlptTestService {
                 testId, JlptQuestionType.READING).intValue();
         int readingCorrect = answerRepo.countCorrectByUserAndTestAndQuestionTypes(
                 userId, testId, java.util.List.of(JlptQuestionType.READING)).intValue();
-        double readingScore = calculateSectionScore(readingTotal, readingCorrect, totalMax, totalQuestions);
+        double readingScoreRaw = calculateSectionScore(readingTotal, readingCorrect, totalMax, totalQuestions);
         double readingMaxScore = readingTotal > 0 
-                ? (double) totalMax * readingTotal / totalQuestions 
+                ? roundScore((double) totalMax * readingTotal / totalQuestions)
                 : 0.0;
 
         // 3. Listening
@@ -414,10 +416,17 @@ public class JlptTestService {
                 testId, JlptQuestionType.LISTENING).intValue();
         int listeningCorrect = answerRepo.countCorrectByUserAndTestAndQuestionTypes(
                 userId, testId, java.util.List.of(JlptQuestionType.LISTENING)).intValue();
-        double listeningScore = calculateSectionScore(listeningTotal, listeningCorrect, totalMax, totalQuestions);
+        double listeningScoreRaw = calculateSectionScore(listeningTotal, listeningCorrect, totalMax, totalQuestions);
         double listeningMaxScore = listeningTotal > 0 
-                ? (double) totalMax * listeningTotal / totalQuestions 
+                ? roundScore((double) totalMax * listeningTotal / totalQuestions)
                 : 0.0;
+
+        // Phân bổ lại điểm từng phần để tổng bằng score (đã làm tròn)
+        double[] sectionScoresRaw = {grammarVocabScoreRaw, readingScoreRaw, listeningScoreRaw};
+        double[] sectionScoresRounded = distributeRoundedScores(sectionScoresRaw, score);
+        double grammarVocabScore = sectionScoresRounded[0];
+        double readingScore = sectionScoresRounded[1];
+        double listeningScore = sectionScoresRounded[2];
 
         // ====== Áp dụng rule JLPT chính thức ======
         String level = test.getLevel();
@@ -477,13 +486,13 @@ public class JlptTestService {
                 testId, JlptQuestionType.LISTENING).intValue();
 
         double grammarVocabMaxScore = grammarVocabTotal > 0 
-                ? (double) totalMax * grammarVocabTotal / totalQuestions 
+                ? roundScore((double) totalMax * grammarVocabTotal / totalQuestions)
                 : 0.0;
         double readingMaxScore = readingTotal > 0 
-                ? (double) totalMax * readingTotal / totalQuestions 
+                ? roundScore((double) totalMax * readingTotal / totalQuestions)
                 : 0.0;
         double listeningMaxScore = listeningTotal > 0 
-                ? (double) totalMax * listeningTotal / totalQuestions 
+                ? roundScore((double) totalMax * listeningTotal / totalQuestions)
                 : 0.0;
 
         String level = test.getLevel();
@@ -532,17 +541,17 @@ public class JlptTestService {
         // Tính maxScore cho từng phần
         double grammarVocabMaxScore = 0.0;
         if (attempt.getGrammarVocabTotal() != null && totalQuestions > 0) {
-            grammarVocabMaxScore = (double) totalMax * attempt.getGrammarVocabTotal() / totalQuestions;
+            grammarVocabMaxScore = roundScore((double) totalMax * attempt.getGrammarVocabTotal() / totalQuestions);
         }
         
         double readingMaxScore = 0.0;
         if (attempt.getReadingTotal() != null && totalQuestions > 0) {
-            readingMaxScore = (double) totalMax * attempt.getReadingTotal() / totalQuestions;
+            readingMaxScore = roundScore((double) totalMax * attempt.getReadingTotal() / totalQuestions);
         }
         
         double listeningMaxScore = 0.0;
         if (attempt.getListeningTotal() != null && totalQuestions > 0) {
-            listeningMaxScore = (double) totalMax * attempt.getListeningTotal() / totalQuestions;
+            listeningMaxScore = roundScore((double) totalMax * attempt.getListeningTotal() / totalQuestions);
         }
 
         String level = test.getLevel();
@@ -590,12 +599,53 @@ public class JlptTestService {
      * @param totalQuestions Tổng số câu của toàn bộ test
      * @return Điểm của phần này (tính theo tỷ lệ)
      */
+    /**
+     * Làm tròn điểm số đến số nguyên (vì điểm JLPT thường là số nguyên).
+     */
+    private double roundScore(double score) {
+        return Math.round(score);
+    }
+
+    /**
+     * Tính điểm từng phần và đảm bảo tổng các phần bằng tổng điểm đã làm tròn.
+     * 
+     * @param sectionScores Mảng điểm từng phần (chưa làm tròn): [grammarVocab, reading, listening]
+     * @param totalScoreRounded Tổng điểm đã làm tròn
+     * @return Mảng điểm từng phần đã điều chỉnh để tổng bằng totalScoreRounded
+     */
+    private double[] distributeRoundedScores(double[] sectionScores, double totalScoreRounded) {
+        double totalRaw = 0.0;
+        for (double s : sectionScores) {
+            totalRaw += s;
+        }
+        
+        if (totalRaw == 0.0) {
+            return new double[]{0.0, 0.0, 0.0};
+        }
+        
+        // Phân bổ lại theo tỷ lệ
+        double[] rounded = new double[3];
+        double distributed = 0.0;
+        
+        // Làm tròn 2 phần đầu
+        for (int i = 0; i < 2; i++) {
+            rounded[i] = roundScore(sectionScores[i] * totalScoreRounded / totalRaw);
+            distributed += rounded[i];
+        }
+        
+        // Phần cuối = tổng - tổng 2 phần đầu (đảm bảo tổng chính xác)
+        rounded[2] = totalScoreRounded - distributed;
+        
+        return rounded;
+    }
+
     private double calculateSectionScore(int sectionTotal, int sectionCorrect, int totalMax, int totalQuestions) {
         if (sectionTotal == 0 || totalQuestions == 0 || totalMax == 0) {
             return 0.0;
         }
         // Điểm phần này = (tổng điểm test / tổng số câu) * số câu đúng trong phần này
         // Hoặc: (tổng điểm test * số câu đúng phần này) / tổng số câu
+        // KHÔNG làm tròn ở đây, sẽ làm tròn sau khi phân bổ
         return (double) totalMax * sectionCorrect / totalQuestions;
     }
 
@@ -751,15 +801,15 @@ public class JlptTestService {
         // Tính maxScore cho từng phần
         double grammarVocabMaxScore = 0.0;
         if (attempt.getGrammarVocabTotal() != null && totalQuestions > 0) {
-            grammarVocabMaxScore = (double) totalMax * attempt.getGrammarVocabTotal() / totalQuestions;
+            grammarVocabMaxScore = roundScore((double) totalMax * attempt.getGrammarVocabTotal() / totalQuestions);
         }
         double readingMaxScore = 0.0;
         if (attempt.getReadingTotal() != null && totalQuestions > 0) {
-            readingMaxScore = (double) totalMax * attempt.getReadingTotal() / totalQuestions;
+            readingMaxScore = roundScore((double) totalMax * attempt.getReadingTotal() / totalQuestions);
         }
         double listeningMaxScore = 0.0;
         if (attempt.getListeningTotal() != null && totalQuestions > 0) {
-            listeningMaxScore = (double) totalMax * attempt.getListeningTotal() / totalQuestions;
+            listeningMaxScore = roundScore((double) totalMax * attempt.getListeningTotal() / totalQuestions);
         }
 
         String level = test.getLevel();
@@ -926,7 +976,7 @@ public class JlptTestService {
         }
 
         double raw = totalMax * ratio;
-        return Math.round(raw * 10.0) / 10.0;
+        return roundScore(raw); // Làm tròn đến số nguyên như các điểm khác
     }
 
     @Transactional
