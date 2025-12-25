@@ -35,6 +35,10 @@ public class JlptTestService {
 
     @Transactional
     public JlptTest createTest(JlptEvent event, User moderator, JlptTestCreateRequest req) {
+        // Validate that test has all 4 required skills before allowing creation
+        // Check if test already exists and has questions - validate skills
+        // Note: For new test creation, validation will happen when questions are added
+        
         JlptTest test = JlptTest.builder()
                 .event(event)
                 .createdBy(moderator)
@@ -44,7 +48,42 @@ public class JlptTestService {
                 .result(req.getResultNote())
                 .deletedFlag(false)
                 .build();
-        return testRepo.save(test);
+        
+        test = testRepo.save(test);
+        
+        // After saving test, validate if it already has questions
+        // This handles case where test is being recreated or updated
+        long questionCount = questionRepo.countByTest_IdAndDeletedFlagFalse(test.getId());
+        if (questionCount > 0) {
+            validateTestHasAllRequiredSkills(test.getId());
+        }
+        
+        return test;
+    }
+
+    /**
+     * Validate that JLPT test has all 4 required skills: LISTENING, READING, GRAMMAR, VOCAB
+     * Throws exception if test is missing any of the required skills.
+     */
+    private void validateTestHasAllRequiredSkills(Long testId) {
+        // Check if test has questions for all 4 required skills
+        boolean hasListening = questionRepo.countByTest_IdAndQuestionTypeAndDeletedFlagFalse(testId, JlptQuestionType.LISTENING) > 0;
+        boolean hasReading = questionRepo.countByTest_IdAndQuestionTypeAndDeletedFlagFalse(testId, JlptQuestionType.READING) > 0;
+        boolean hasGrammar = questionRepo.countByTest_IdAndQuestionTypeAndDeletedFlagFalse(testId, JlptQuestionType.GRAMMAR) > 0;
+        boolean hasVocab = questionRepo.countByTest_IdAndQuestionTypeAndDeletedFlagFalse(testId, JlptQuestionType.VOCAB) > 0;
+        
+        if (!hasListening || !hasReading || !hasGrammar || !hasVocab) {
+            java.util.List<String> missingSkills = new java.util.ArrayList<>();
+            if (!hasListening) missingSkills.add("LISTENING");
+            if (!hasReading) missingSkills.add("READING");
+            if (!hasGrammar) missingSkills.add("GRAMMAR");
+            if (!hasVocab) missingSkills.add("VOCAB");
+            
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "JLPT test must have questions for all 4 skills: LISTENING, READING, GRAMMAR, VOCAB. " +
+                "Missing skills: " + String.join(", ", missingSkills) + ". " +
+                "Please add questions for all required skills before completing the test.");
+        }
     }
 
     @Transactional
@@ -94,6 +133,15 @@ public class JlptTestService {
                 .build();
 
         questionRepo.save(q);
+        
+        // Validate test has all 4 required skills after creating question
+        // This ensures teacher cannot proceed without having all required skills
+        // Only validate if test has at least 4 questions (one for each skill)
+        long totalQuestions = questionRepo.countByTest_IdAndDeletedFlagFalse(testId);
+        if (totalQuestions >= 4) {
+            validateTestHasAllRequiredSkills(testId);
+        }
+        
         return JlptQuestionWithOptionsResponse.fromEntity(q, List.of());
     }
 
